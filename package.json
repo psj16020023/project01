@@ -1,0 +1,9 @@
+{
+  "name": "pyeonpick-web",
+  "version": "1.0.0",
+  "description": "PyeonPick convenience food recommendation web prototype",
+  "main": "server.js",
+  "scripts": {
+    "start": "node server.js"
+  }
+}

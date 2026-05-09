@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>편pick! 오늘은 뭘 사먹을까?</title>
+    <link rel="stylesheet" href="./styles.css" />
+  </head>
+  <body>
+    <div class="top-line"></div>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="hero-copy">
+          <p class="hero-title">편pick! 오늘은 뭘 사먹을까?</p>
+          <p class="hero-subtitle">잘 pick해 주는 편의점 음식 추천앱 편pick!</p>
+        </div>
+      </header>
+
+      <main class="app-frame">
+        <section class="feature-nav" aria-label="앱 기능 메뉴">
+          <button class="feature-chip active" data-feature="communication">커뮤니케이션</button>
+          <button class="feature-chip" data-feature="bot">편봇</button>
+          <button class="feature-chip" data-feature="health">건강계산기</button>
+          <button class="feature-chip" data-feature="scanner">편의점 스캐너</button>
+          <button class="feature-chip" data-feature="profile">내 정보</button>
+        </section>
+
+        <div class="section-line"></div>
+
+        <section id="communicationView" class="feature-view active">
+          <div class="toolbar">
+            <div class="search-row">
+              <div class="search-group">
+                <input
+                  id="searchInput"
+                  class="text-input"
+                  type="text"
+                  placeholder="제목 검색 또는 #달달 처럼 카테고리 검색"
+                />
+                <div class="price-range">
+                  <input id="minPriceFilter" class="text-input price-input" type="number" placeholder="____" />
+                  <span>~</span>
+                  <input id="maxPriceFilter" class="text-input price-input" type="number" placeholder="____" />
+                </div>
+              </div>
+              <div class="sort-group" role="tablist" aria-label="게시글 정렬">
+                <button class="sort-button active" data-sort="latest">최신순</button>
+                <button class="sort-button" data-sort="popular">인기순</button>
+              </div>
+            </div>
+          </div>
+
+          <div id="postsFeed" class="posts-feed"></div>
+        </section>
+
+        <section id="botView" class="feature-view">
+          <div class="placeholder-panel">
+            <h2>편봇</h2>
+            <p>개인 취향, 예산, 카테고리를 바탕으로 오늘 먹기 좋은 편의점 조합을 추천해주는 AI 공간입니다.</p>
+          </div>
+        </section>
+
+        <section id="healthView" class="feature-view">
+          <div class="placeholder-panel">
+            <h2>건강계산기</h2>
+            <p>칼로리, 단백질, 당류, 나트륨을 빠르게 계산해서 조합의 균형을 보는 공간입니다.</p>
+          </div>
+        </section>
+
+        <section id="scannerView" class="feature-view">
+          <div class="placeholder-panel">
+            <h2>편의점 스캐너</h2>
+            <p>주변 편의점과 재고 가능성을 함께 확인하고, 원하는 조합을 근처에서 찾는 기능입니다.</p>
+          </div>
+        </section>
+
+        <section id="profileView" class="feature-view">
+          <div class="placeholder-panel">
+            <h2>내 정보</h2>
+            <p>저장한 조합, 좋아요 기록, 내가 쓴 글과 개인 추천 설정을 관리하는 공간입니다.</p>
+          </div>
+        </section>
+      </main>
+    </div>
+
+    <button id="openComposer" class="fab" aria-label="게시글 작성">+</button>
+
+    <div id="composerModal" class="modal hidden" aria-hidden="true">
+      <div class="modal-backdrop"></div>
+      <div class="modal-panel">
+        <div class="modal-header">
+          <div>
+            <p class="modal-title">꿀조합 올리기</p>
+            <p class="modal-subtitle">사진 또는 제목+내용을 입력하고, 가격대와 카테고리를 골라주세요.</p>
+          </div>
+          <button id="closeComposer" class="icon-button" aria-label="닫기">×</button>
+        </div>
+
+        <form id="composerForm" class="composer-form">
+          <label class="field-block">
+            <span>사진 첨부</span>
+            <input id="imageInput" type="file" accept="image/*" />
+          </label>
+
+          <div id="imagePreview" class="image-preview empty">
+            <span>사진을 올리면 여기에 미리보기가 보여요.</span>
+          </div>
+
+          <label class="field-block">
+            <span>큰 주제(조합 이름)</span>
+            <input
+              id="titleInput"
+              class="text-input"
+              type="text"
+              placeholder="예: 초코우유 + 크루아상 + 바나나킥"
+            />
+          </label>
+
+          <label class="field-block">
+            <span>자세한 내용</span>
+            <textarea
+              id="contentInput"
+              class="text-area"
+              rows="5"
+              placeholder="왜 맛있는지, 어느 편의점 제품인지, 먹는 순서까지 자유롭게 적어주세요."
+            ></textarea>
+          </label>
+
+          <div class="field-grid">
+            <label class="field-block">
+              <span>가격 범위</span>
+              <div class="price-range">
+                <input id="priceMinInput" class="text-input price-input" type="number" placeholder="____" />
+                <span>~</span>
+                <input id="priceMaxInput" class="text-input price-input" type="number" placeholder="____" />
+              </div>
+            </label>
+
+            <label class="field-block">
+              <span>기타 카테고리</span>
+              <input
+                id="customCategoryInput"
+                class="text-input"
+                type="text"
+                placeholder="#을 치고 '기발한' 같은 새 카테고리"
+              />
+            </label>
+          </div>
+
+          <div class="field-block">
+            <span>카테고리 선택</span>
+            <div id="categoryOptions" class="category-options"></div>
+          </div>
+
+          <p id="formError" class="form-error"></p>
+
+          <div class="modal-actions">
+            <button type="submit" class="submit-button">게시</button>
+          </div>
+        </form>
+      </div>
+    </div>
+
+    <template id="postTemplate">
+      <article class="post-card">
+        <div class="post-date"></div>
+        <button class="post-main" type="button">
+          <div class="post-image-wrap">
+            <div class="post-image"></div>
+          </div>
+          <div class="bookmark hidden">
+            <span>인기</span>
+            <small></small>
+          </div>
+          <div class="post-summary">
+            <div class="summary-top">
+              <h3 class="post-title"></h3>
+              <span class="post-price"></span>
+            </div>
+            <div class="post-tags"></div>
+          </div>
+        </button>
+
+        <div class="post-detail hidden">
+          <p class="post-content"></p>
+          <div class="post-actions">
+            <button class="action-button like-button" type="button"></button>
+            <button class="action-button comment-toggle" type="button"></button>
+          </div>
+          <div class="comment-area hidden">
+            <div class="comment-list"></div>
+            <form class="comment-form">
+              <input class="text-input comment-input" type="text" placeholder="댓글을 입력해 주세요." />
+              <button class="mini-button" type="submit">등록</button>
+            </form>
+          </div>
+        </div>
+      </article>
+    </template>
+
+    <script src="./app.js"></script>
+  </body>
+</html>
