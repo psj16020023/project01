@@ -1,0 +1,11 @@
+services:
+  - type: web
+    name: pyeonpick
+    runtime: docker
+    plan: free
+    dockerfilePath: ./Dockerfile
+    autoDeploy: true
+    healthCheckPath: /api/posts
+    envVars:
+      - key: MONGO_URI
+        sync: false

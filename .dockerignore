@@ -1,0 +1,17 @@
+.git
+.gitignore
+node_modules
+backend/node_modules
+flutter_sdk
+flutter_sdk_ascii
+backend/.env
+frontend/pyeonpick_app/.dart_tool
+frontend/pyeonpick_app/build
+frontend/pyeonpick_app/.flutter-plugins
+frontend/pyeonpick_app/.flutter-plugins-dependencies
+frontend/pyeonpick_app/.packages
+frontend/pyeonpick_app/android/.gradle
+frontend/pyeonpick_app/android/local.properties
+frontend/pyeonpick_app/ios/Pods
+frontend/pyeonpick_app/macos/Pods
+.DS_Store

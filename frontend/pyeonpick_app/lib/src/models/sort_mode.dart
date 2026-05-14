@@ -1,0 +1,1 @@
+enum SortMode { latest, popular }
