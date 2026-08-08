@@ -850,9 +850,7 @@ class _HomeScreenState extends State<HomeScreen> {
     await widget.onUserChanged(
       widget.currentUser.copyWith(
         botSetup: setup,
-        botMessages: widget.currentUser.botMessages.isEmpty
-            ? <BotMessage>[welcome]
-            : widget.currentUser.botMessages,
+        botMessages: <BotMessage>[welcome],
         archivedConversations: widget.currentUser.archivedConversations,
       ),
     );
