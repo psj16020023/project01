@@ -107,12 +107,12 @@ void main() {
       ),
     );
 
-    await tester.enterText(find.widgetWithText(TextField, '예산'), '4300');
+    await tester.enterText(find.byKey(const Key('bot-budget-input')), '4300');
     await tester.enterText(
-      find.widgetWithText(TextField, '나 방금 학원 끝났어. 지치고 힘들다. 뭐 사먹지'),
+      find.byKey(const Key('bot-message-input')),
       '저녁 추천해줘',
     );
-    await tester.tap(find.text('보내기'));
+    await tester.tap(find.byKey(const Key('bot-send-button')));
     await tester.pump();
     expect(receivedBudget, 4300);
     await tester.pump(const Duration(milliseconds: 400));
@@ -156,7 +156,8 @@ void main() {
     );
 
     expect(find.text('권장 칼로리 반영'), findsOneWidget);
-    expect(find.widgetWithText(TextField, '예산'), findsOneWidget);
+    expect(find.byKey(const Key('bot-budget-input')), findsOneWidget);
+    expect(find.byKey(const Key('bot-message-input')), findsOneWidget);
     expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
@@ -197,14 +198,14 @@ void main() {
     );
 
     await tester.enterText(
-      find.widgetWithText(TextField, '나 방금 학원 끝났어. 지치고 힘들다. 뭐 사먹지'),
+      find.byKey(const Key('bot-message-input')),
       '5천 원 있는데 아무거나',
     );
-    await tester.tap(find.text('보내기'));
+    await tester.tap(find.byKey(const Key('bot-send-button')));
     await tester.pump(const Duration(milliseconds: 200));
 
     final budgetField = tester.widget<TextField>(
-      find.widgetWithText(TextField, '예산'),
+      find.byKey(const Key('bot-budget-input')),
     );
     expect(budgetField.controller?.text, '5000');
   });

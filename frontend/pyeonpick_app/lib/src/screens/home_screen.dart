@@ -5371,125 +5371,152 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
             ],
           ),
         ),
-        Container(
-          padding: const EdgeInsets.fromLTRB(16, 10, 16, 18),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            border: Border(top: BorderSide(color: Color(0xFFEDF3F7))),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                crossAxisAlignment: WrapCrossAlignment.center,
-                children: [
-                  InkWell(
-                    borderRadius: BorderRadius.circular(999),
-                    onTap: _sending
-                        ? null
-                        : () => setState(
-                            () => _useAgeCalorieGuide = !_useAgeCalorieGuide,
+        SafeArea(
+          top: false,
+          child: Container(
+            padding: const EdgeInsets.fromLTRB(16, 10, 16, 12),
+            decoration: const BoxDecoration(
+              color: Colors.white,
+              border: Border(top: BorderSide(color: Color(0xFFEDF3F7))),
+            ),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Row(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        key: const Key('bot-message-input'),
+                        controller: _controller,
+                        minLines: 1,
+                        maxLines: 3,
+                        textInputAction: TextInputAction.send,
+                        decoration: inputDecoration('지금 상황을 말해줘').copyWith(
+                          isDense: true,
+                          contentPadding: const EdgeInsets.symmetric(
+                            horizontal: 14,
+                            vertical: 12,
                           ),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 10,
-                        vertical: 8,
-                      ),
-                      decoration: BoxDecoration(
-                        color: _useAgeCalorieGuide
-                            ? const Color(0xFFF1F7DF)
-                            : const Color(0xFFF1F3F5),
-                        borderRadius: BorderRadius.circular(999),
-                        border: Border.all(
-                          color: _useAgeCalorieGuide
-                              ? AppColors.lime
-                              : AppColors.line,
                         ),
+                        onSubmitted: (_) => _submit(),
                       ),
-                      child: Row(
-                        mainAxisSize: MainAxisSize.min,
-                        children: [
-                          Icon(
-                            Icons.monitor_heart_outlined,
-                            size: 15,
-                            color: _useAgeCalorieGuide
-                                ? AppColors.navy
-                                : AppColors.muted,
+                    ),
+                    const SizedBox(width: 8),
+                    SizedBox(
+                      width: 46,
+                      height: 46,
+                      child: FilledButton(
+                        key: const Key('bot-send-button'),
+                        onPressed: _sending ? null : _submit,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: AppColors.lime,
+                          foregroundColor: Colors.white,
+                          padding: EdgeInsets.zero,
+                          shape: RoundedRectangleBorder(
+                            borderRadius: BorderRadius.circular(16),
                           ),
-                          const SizedBox(width: 5),
-                          Text(
-                            _useAgeCalorieGuide ? '권장 칼로리 반영' : '권장 칼로리 제외',
-                            style: TextStyle(
+                        ),
+                        child: _sending
+                            ? const SizedBox(
+                                width: 18,
+                                height: 18,
+                                child: CircularProgressIndicator(
+                                  strokeWidth: 2,
+                                  color: Colors.white,
+                                ),
+                              )
+                            : const Icon(Icons.arrow_upward_rounded, size: 21),
+                      ),
+                    ),
+                  ],
+                ),
+                const SizedBox(height: 8),
+                SingleChildScrollView(
+                  scrollDirection: Axis.horizontal,
+                  child: Row(
+                    children: [
+                      InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: _sending
+                            ? null
+                            : () => setState(
+                                () =>
+                                    _useAgeCalorieGuide = !_useAgeCalorieGuide,
+                              ),
+                        child: AnimatedContainer(
+                          duration: const Duration(milliseconds: 160),
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 10,
+                            vertical: 8,
+                          ),
+                          decoration: BoxDecoration(
+                            color: _useAgeCalorieGuide
+                                ? const Color(0xFFF1F7DF)
+                                : const Color(0xFFF1F3F5),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
                               color: _useAgeCalorieGuide
-                                  ? AppColors.navy
-                                  : AppColors.muted,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 11,
+                                  ? AppColors.lime
+                                  : AppColors.line,
                             ),
                           ),
-                        ],
-                      ),
-                    ),
-                  ),
-                  SizedBox(
-                    width: 116,
-                    height: 36,
-                    child: TextField(
-                      controller: _budgetController,
-                      keyboardType: TextInputType.number,
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 12,
-                      ),
-                      decoration: inputDecoration('예산').copyWith(
-                        isDense: true,
-                        suffixText: '원',
-                        contentPadding: const EdgeInsets.symmetric(
-                          horizontal: 9,
-                          vertical: 8,
+                          child: Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.monitor_heart_outlined,
+                                size: 15,
+                                color: _useAgeCalorieGuide
+                                    ? AppColors.navy
+                                    : AppColors.muted,
+                              ),
+                              const SizedBox(width: 5),
+                              Text(
+                                _useAgeCalorieGuide
+                                    ? '권장 칼로리 반영'
+                                    : '권장 칼로리 제외',
+                                style: TextStyle(
+                                  color: _useAgeCalorieGuide
+                                      ? AppColors.navy
+                                      : AppColors.muted,
+                                  fontWeight: FontWeight.w800,
+                                  fontSize: 11,
+                                ),
+                              ),
+                            ],
+                          ),
                         ),
                       ),
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 9),
-              Row(
-                children: [
-                  Expanded(
-                    child: TextField(
-                      controller: _controller,
-                      minLines: 1,
-                      maxLines: 4,
-                      decoration: inputDecoration(
-                        '나 방금 학원 끝났어. 지치고 힘들다. 뭐 사먹지',
+                      const SizedBox(width: 8),
+                      SizedBox(
+                        width: 116,
+                        height: 36,
+                        child: TextField(
+                          key: const Key('bot-budget-input'),
+                          controller: _budgetController,
+                          keyboardType: TextInputType.number,
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontWeight: FontWeight.w800,
+                            fontSize: 12,
+                          ),
+                          decoration: inputDecoration('예산').copyWith(
+                            isDense: true,
+                            suffixText: '원',
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 9,
+                              vertical: 8,
+                            ),
+                          ),
+                        ),
                       ),
-                      onSubmitted: (_) => _submit(),
-                    ),
+                    ],
                   ),
-                  const SizedBox(width: 10),
-                  FilledButton(
-                    onPressed: _sending ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.lime,
-                      foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(
-                        horizontal: 18,
-                        vertical: 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    child: Text(_sending ? '...' : '보내기'),
-                  ),
-                ],
-              ),
-            ],
+                ),
+              ],
+            ),
           ),
         ),
       ],
