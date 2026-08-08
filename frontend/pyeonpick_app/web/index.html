@@ -19,6 +19,7 @@
   <meta charset="UTF-8">
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -29,10 +30,149 @@
   <!-- Favicon -->
   <link rel="icon" type="image/png" href="favicon.png"/>
 
-  <title>pyeonpick_app</title>
+  <title>편pick!</title>
   <link rel="manifest" href="manifest.json">
+  <style>
+    html, body {
+      margin: 0;
+      padding: 0;
+      width: 100%;
+      height: 100%;
+      min-height: 100%;
+      overflow: hidden;
+      background: linear-gradient(180deg, #e6f8ff 0%, #ffffff 68%);
+      font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
+    }
+
+    flutter-view, flt-glass-pane {
+      width: 100vw !important;
+      height: 100vh !important;
+    }
+
+    #boot-screen {
+      position: fixed;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(180deg, #d9f4ff 0%, #ffffff 72%);
+      z-index: 9999;
+      transition: opacity 240ms ease;
+    }
+
+    #boot-screen.hidden {
+      opacity: 0;
+      pointer-events: none;
+    }
+
+    #boot-screen.failed .boot-card {
+      border: 1px solid #eadada;
+    }
+
+    #boot-screen.failed .boot-progress {
+      display: none;
+    }
+
+    .boot-card {
+      width: min(88vw, 420px);
+      background: rgba(255, 255, 255, 0.92);
+      border-radius: 28px;
+      padding: 28px 24px;
+      box-shadow: 0 22px 48px rgba(35, 64, 94, 0.12);
+      text-align: center;
+    }
+
+    .boot-line {
+      width: 84px;
+      height: 5px;
+      border-radius: 999px;
+      margin: 0 auto 18px;
+      background: #a7d93a;
+    }
+
+    .boot-title {
+      color: #87bf19;
+      font-size: 30px;
+      font-weight: 900;
+      letter-spacing: -0.04em;
+      margin: 0 0 8px;
+    }
+
+    .boot-copy {
+      color: #4e6884;
+      line-height: 1.65;
+      font-size: 14px;
+      margin: 0;
+    }
+
+    .boot-progress {
+      margin-top: 18px;
+      height: 10px;
+      border-radius: 999px;
+      overflow: hidden;
+      background: #eef6fa;
+    }
+
+    .boot-progress::after {
+      content: "";
+      display: block;
+      width: 42%;
+      height: 100%;
+      border-radius: inherit;
+      background: linear-gradient(90deg, #a7d93a 0%, #16467a 100%);
+      animation: boot-slide 1.2s ease-in-out infinite;
+      transform-origin: left center;
+    }
+
+    .boot-subtle {
+      margin-top: 12px;
+      color: #7c90a2;
+      font-size: 12px;
+      font-weight: 700;
+    }
+
+    .boot-actions {
+      display: none;
+      margin-top: 16px;
+      justify-content: center;
+    }
+
+    #boot-screen.failed .boot-actions {
+      display: flex;
+    }
+
+    .boot-button {
+      border: none;
+      border-radius: 999px;
+      padding: 11px 18px;
+      background: #a7d93a;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 14px;
+      cursor: pointer;
+    }
+
+    @keyframes boot-slide {
+      0% { transform: translateX(-30%) scaleX(0.9); }
+      50% { transform: translateX(95%) scaleX(1.15); }
+      100% { transform: translateX(-30%) scaleX(0.9); }
+    }
+  </style>
 </head>
 <body>
+  <div id="boot-screen">
+    <div class="boot-card">
+      <div class="boot-line"></div>
+      <h1 class="boot-title">편pick!</h1>
+      <p class="boot-copy">화면을 준비하고 있어요.<br>맥북에서 처음 열 때는 몇 초 정도 걸릴 수 있어요.</p>
+      <div class="boot-progress"></div>
+      <div class="boot-subtle">로딩이 길면 탭을 한 번 닫았다가 다시 열어 주세요.</div>
+      <div class="boot-actions">
+        <button class="boot-button" onclick="window.location.reload()">다시 열기</button>
+        <button class="boot-button" style="background:#eef6fa;color:#36506e;margin-left:8px;" onclick="window.__forceHideBoot && window.__forceHideBoot()">앱 화면 보기</button>
+      </div>
+    </div>
+  </div>
   <!--
     You can customize the "flutter_bootstrap.js" script.
     This is useful to provide a custom configuration to the Flutter loader
@@ -41,6 +181,55 @@
     For more details:
     * https://docs.flutter.dev/platform-integration/web/initialization
   -->
-  <script src="flutter_bootstrap.js" async></script>
+  <script>
+    document.write('<script src="flutter_bootstrap.js?v=' + Date.now() + '" async><\/script>');
+  </script>
+  <script>
+    window.__forceHideBoot = function () {
+      var boot = document.getElementById("boot-screen");
+      if (!boot) return;
+      boot.classList.add("hidden");
+      setTimeout(function () {
+        if (boot && boot.parentNode) {
+          boot.remove();
+        }
+      }, 320);
+    };
+
+    var bootFailedTimer = setTimeout(function () {
+      var boot = document.getElementById("boot-screen");
+      if (!boot) return;
+      boot.classList.add("failed");
+      var copy = boot.querySelector(".boot-copy");
+      if (copy) {
+        copy.innerHTML = "로딩이 예상보다 오래 걸리고 있어요.<br>인앱 브라우저보다 Chrome이나 Safari에서 더 잘 열릴 수 있어요.";
+      }
+    }, 10000);
+
+    var bootForceHideTimer = setTimeout(function () {
+      window.__forceHideBoot();
+    }, 14000);
+
+    window.addEventListener("error", function (event) {
+      var boot = document.getElementById("boot-screen");
+      if (!boot) return;
+      boot.classList.add("failed");
+      var copy = boot.querySelector(".boot-copy");
+      if (copy && event && event.message) {
+        copy.innerHTML = "앱을 띄우는 중 오류가 있었어요.<br>" + String(event.message).replace(/</g, "&lt;");
+      }
+    });
+
+    window.addEventListener("flutter-first-frame", function () {
+      clearTimeout(bootFailedTimer);
+      clearTimeout(bootForceHideTimer);
+      var boot = document.getElementById("boot-screen");
+      if (!boot) return;
+      boot.classList.add("hidden");
+      setTimeout(function () {
+        boot.remove();
+      }, 320);
+    });
+  </script>
 </body>
 </html>

@@ -1,1 +1,1 @@
-enum SortMode { latest, popular }
+enum SortMode { latest, popular, worst }

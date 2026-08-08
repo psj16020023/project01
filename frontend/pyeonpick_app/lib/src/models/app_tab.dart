@@ -1,1 +1,1 @@
-enum AppTab { communication, bot, health, scanner, profile }
+enum AppTab { communication, battle, bot, profile }

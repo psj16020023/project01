@@ -3,7 +3,9 @@ import 'dart:convert';
 import 'package:http/http.dart' as http;
 
 import '../models/post.dart';
+import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
+import '../models/post_page.dart';
 import '../models/product_lookup_result.dart';
 import '../models/sort_mode.dart';
 import 'post_repository.dart';
@@ -14,15 +16,67 @@ class RemotePostRepository implements PostRepository {
   final String baseUrl;
 
   @override
-  Future<void> addComment(String id, String text) async {
+  Future<Post> addReview(String id, PostReview review) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/posts/$id/reviews'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(review.toJson()),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('후기 등록 실패');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return Post.fromJson(json['post'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Post> updateReview(String postId, PostReview review) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/posts/$postId/reviews/${review.id}'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode(review.toJson()),
+    );
+    if (response.statusCode != 200) throw Exception('후기 수정 실패');
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return Post.fromJson(json['post'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Post> deleteReview(
+    String postId,
+    String reviewId, {
+    required String authorId,
+  }) async {
+    final uri = Uri.parse(
+      '$baseUrl/posts/$postId/reviews/$reviewId',
+    ).replace(queryParameters: {'authorId': authorId});
+    final response = await http.delete(uri);
+    if (response.statusCode != 200) throw Exception('후기 삭제 실패');
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return Post.fromJson(json['post'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Post> addComment(
+    String id,
+    String text, {
+    required String authorId,
+    required String authorNickname,
+  }) async {
     final response = await http.post(
       Uri.parse('$baseUrl/posts/$id/comments'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'text': text}),
+      body: jsonEncode({
+        'text': text,
+        'authorId': authorId,
+        'authorNickname': authorNickname,
+      }),
     );
     if (response.statusCode != 200) {
       throw Exception('댓글 등록 실패');
     }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return Post.fromJson(json['post'] as Map<String, dynamic>);
   }
 
   @override
@@ -31,12 +85,18 @@ class RemotePostRepository implements PostRepository {
       Uri.parse('$baseUrl/posts'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({
+        'authorId': draft.authorId,
+        'authorNickname': draft.authorNickname,
         'title': draft.title,
         'content': draft.content,
         'priceMin': draft.priceMin,
         'priceMax': draft.priceMax,
         'categories': draft.categories,
-        'imageData': draft.imageBytes == null ? null : base64Encode(draft.imageBytes!),
+        'imageDatas': draft.imageBytes.map(base64Encode).toList(),
+        'imageUrls': draft.imageUrls,
+        'details': draft.details.toJson(),
+        'calories': draft.calories,
+        'rating': draft.rating,
       }),
     );
     if (response.statusCode != 201) {
@@ -45,18 +105,48 @@ class RemotePostRepository implements PostRepository {
   }
 
   @override
-  Future<List<Post>> fetchPosts({
+  Future<void> deletePost(String id, String authorId) async {
+    final uri = Uri.parse(
+      '$baseUrl/posts/$id',
+    ).replace(queryParameters: {'authorId': authorId});
+    final response = await http.delete(uri);
+    if (response.statusCode != 200) {
+      throw Exception('게시글 삭제 실패');
+    }
+  }
+
+  @override
+  Future<PostPage> fetchPosts({
     String? query,
+    List<String>? selectedTags,
     int? minPrice,
     int? maxPrice,
+    String? likedGenderMajority,
+    String? currentUserId,
+    String? cursor,
+    int? limit,
     required SortMode sortMode,
   }) async {
-    final uri = Uri.parse('$baseUrl/posts').replace(queryParameters: {
-      if (query != null && query.isNotEmpty) 'query': query,
-      if (minPrice != null) 'minPrice': '$minPrice',
-      if (maxPrice != null) 'maxPrice': '$maxPrice',
-      'sort': sortMode == SortMode.latest ? 'latest' : 'popular',
-    });
+    final uri = Uri.parse('$baseUrl/posts').replace(
+      queryParameters: {
+        if (query != null && query.isNotEmpty) 'query': query,
+        if (selectedTags != null && selectedTags.isNotEmpty)
+          'tags': selectedTags.join(','),
+        if (minPrice != null) 'minPrice': '$minPrice',
+        if (maxPrice != null) 'maxPrice': '$maxPrice',
+        if (likedGenderMajority != null && likedGenderMajority.isNotEmpty)
+          'likedGenderMajority': likedGenderMajority,
+        if (currentUserId != null && currentUserId.isNotEmpty)
+          'viewerId': currentUserId,
+        if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,
+        if (limit != null) 'limit': '$limit',
+        'sort': switch (sortMode) {
+          SortMode.latest => 'latest',
+          SortMode.popular => 'popular',
+          SortMode.worst => 'worst',
+        },
+      },
+    );
 
     final response = await http.get(uri);
     if (response.statusCode != 200) {
@@ -65,26 +155,95 @@ class RemotePostRepository implements PostRepository {
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
     final items = json['posts'] as List<dynamic>;
-    return items.map((item) => Post.fromJson(item as Map<String, dynamic>)).toList();
+    return PostPage(
+      posts: items
+          .map((item) => Post.fromJson(item as Map<String, dynamic>))
+          .toList(),
+      hasMore: json['hasMore'] as bool? ?? false,
+      nextCursor: json['nextCursor'] as String?,
+    );
   }
 
   @override
-  Future<void> toggleLike(String id) async {
-    final response = await http.post(Uri.parse('$baseUrl/posts/$id/like'));
+  Future<List<PostFeatureInfo>> fetchPostFeatureIndex() async {
+    final response = await http.get(Uri.parse('$baseUrl/posts/feature-index'));
+    if (response.statusCode != 200) {
+      throw Exception('게시글 기능 인덱스 조회 실패');
+    }
+
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final items = json['posts'] as List<dynamic>? ?? const <dynamic>[];
+    return items
+        .map((item) => PostFeatureInfo.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<Post> toggleLike(String id, String currentUserId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/posts/$id/like'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': currentUserId}),
+    );
     if (response.statusCode != 200) {
       throw Exception('좋아요 실패');
     }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return Post.fromJson(json['post'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<Post> toggleDislike(String id, String currentUserId) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/posts/$id/dislike'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'userId': currentUserId}),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('싫어요 실패');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return Post.fromJson(json['post'] as Map<String, dynamic>);
   }
 
   @override
   Future<ProductLookupResult> lookupProductByBarcode(String barcode) async {
     final normalized = barcode.replaceAll(RegExp(r'[^0-9A-Za-z]'), '');
-    final response = await http.get(Uri.parse('$baseUrl/products/lookup/$normalized'));
+    final response = await http.get(
+      Uri.parse('$baseUrl/products/lookup/$normalized'),
+    );
     if (response.statusCode != 200) {
       throw Exception('상품 조회 실패');
     }
 
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return ProductLookupResult.fromJson(json['product'] as Map<String, dynamic>);
+    return ProductLookupResult.fromJson(
+      json['product'] as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<void> updatePost(String id, PostDraft draft) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/posts/$id'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({
+        'authorId': draft.authorId,
+        'authorNickname': draft.authorNickname,
+        'title': draft.title,
+        'content': draft.content,
+        'priceMin': draft.priceMin,
+        'priceMax': draft.priceMax,
+        'categories': draft.categories,
+        'imageDatas': draft.imageBytes.map(base64Encode).toList(),
+        'imageUrls': draft.imageUrls,
+        'details': draft.details.toJson(),
+        'calories': draft.calories,
+        'rating': draft.rating,
+      }),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('게시글 수정 실패');
+    }
   }
 }

@@ -2,7 +2,7 @@
 
 `편pick` Flutter 앱 프로젝트입니다.
 
-이 앱은 기본적으로 `mock` 데이터 모드로 실행되므로, 백엔드 서버 없이도 바로 에뮬레이터나 데스크톱에서 확인할 수 있습니다.
+이 앱은 기본적으로 실제 API를 사용하는 `remote` 데이터 모드로 실행됩니다. 샘플 데이터가 필요한 개발 작업에서만 `DATA_MODE=mock`을 명시합니다.
 
 ## Run
 
@@ -31,19 +31,19 @@ cd /Users/parksinjae/Documents/실적물/frontend/pyeonpick_ap
 Android 에뮬레이터:
 
 ```bash
-../../flutter_sdk/bin/flutter run -d android --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://10.0.2.2:3000/api
+../../flutter_sdk/bin/flutter run -d android --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://10.0.2.2:4173/api
 ```
 
 iOS 시뮬레이터:
 
 ```bash
-../../flutter_sdk/bin/flutter run -d ios --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://127.0.0.1:3000/api
+../../flutter_sdk/bin/flutter run -d ios --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://127.0.0.1:4173/api
 ```
 
 macOS:
 
 ```bash
-../../flutter_sdk/bin/flutter run -d macos --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://127.0.0.1:3000/api
+../../flutter_sdk/bin/flutter run -d macos --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://127.0.0.1:4173/api
 ```
 
 웹:
@@ -54,11 +54,31 @@ macOS:
 ../../flutter_sdk/bin/flutter run -d chrome --dart-define=DATA_MODE=remote
 ```
 
+MapTiler 지도를 쓰려면 `API key`를 같이 넣으면 됩니다.
+
+```bash
+../../flutter_sdk/bin/flutter run -d chrome --dart-define=DATA_MODE=remote --dart-define=MAPTILER_API_KEY=여기에_키 --dart-define=MAPTILER_MAP_ID=streets-v2
+```
+
 배포용 웹 빌드:
 
 ```bash
 ../../flutter_sdk/bin/flutter build web --dart-define=DATA_MODE=remote --pwa-strategy=none
 ```
+
+MapTiler 포함 웹 빌드:
+
+```bash
+../../flutter_sdk/bin/flutter build web --dart-define=DATA_MODE=remote --dart-define=MAPTILER_API_KEY=여기에_키 --dart-define=MAPTILER_MAP_ID=streets-v2 --pwa-strategy=none
+```
+
+## Health OCR
+
+건강계산기의 영양정보 OCR은 현재 `Naver CLOVA`가 아니라 백엔드의 `Tesseract.js`로 동작합니다.
+즉 별도 OCR API 키 없이 바로 쓸 수 있습니다.
+
+Firebase는 아직 프로젝트 설정값이 없어서 실제 연결은 넣지 않았습니다.
+나중에 `Firebase project config`를 만들면 건강계산기 사진/분석 기록 저장 같은 확장을 붙일 수 있습니다.
 
 실제 안드로이드 폰에 설치할 APK:
 

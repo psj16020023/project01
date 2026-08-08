@@ -6,11 +6,14 @@
   "scripts": {
     "start": "node server.js",
     "backend": "node backend/server.js",
+    "cu:refresh": "curl -fsS -X POST http://127.0.0.1:4173/api/products/cu/refresh",
+    "convenience:refresh": "node backend/scripts/refresh-convenience-products.js",
+    "db:cleanup-legacy": "node backend/scripts/cleanup-legacy-features.js",
     "flutter:android:mock": "cd frontend/pyeonpick_app && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter run -d emulator-5554 --dart-define=DATA_MODE=mock",
-    "flutter:android:remote": "cd frontend/pyeonpick_app && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter run -d emulator-5554 --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://127.0.0.1:3000/api",
+    "flutter:android:remote": "cd frontend/pyeonpick_app && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter run -d emulator-5554 --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=http://10.0.2.2:4173/api",
     "flutter:android:public": "cd frontend/pyeonpick_app && test -n \"$API_BASE_URL\" && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter run -d emulator-5554 --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=$API_BASE_URL",
     "flutter:apk:public": "cd frontend/pyeonpick_app && test -n \"$API_BASE_URL\" && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter build apk --release --dart-define=DATA_MODE=remote --dart-define=API_BASE_URL=$API_BASE_URL",
     "flutter:web:remote": "cd frontend/pyeonpick_app && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter run -d chrome --dart-define=DATA_MODE=remote",
-    "flutter:web:build:remote": "cd frontend/pyeonpick_app && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter build web --dart-define=DATA_MODE=remote --pwa-strategy=none"
+    "flutter:web:build:remote": "cd frontend/pyeonpick_app && FLUTTER_ROOT=/Users/parksinjae/flutter_sdk_ascii /Users/parksinjae/flutter_sdk_ascii/bin/flutter build web --pwa-strategy=none --dart-define=DATA_MODE=remote"
   }
 }

@@ -1,101 +1,382 @@
 import 'dart:convert';
+import 'dart:math' as math;
+
+import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/mock_posts.dart';
 import '../data/product_catalog.dart' as catalog;
 import '../models/post.dart';
+import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
+import '../models/post_page.dart';
 import '../models/product_lookup_result.dart';
 import '../models/sort_mode.dart';
 import 'post_repository.dart';
 
 class MockPostRepository implements PostRepository {
-  MockPostRepository() : _posts = mockPosts.map((post) => post.copyWith()).toList() {
+  MockPostRepository()
+    : _posts = mockPosts.map((post) => post.copyWith()).toList() {
     _applyTopFiveBadges();
   }
 
   final List<Post> _posts;
+  static const _storageKey = 'pyeonpick_mock_posts_v3';
+  static const _reactionStorageKey = 'pyeonpick_mock_post_reactions_v1';
+  final Map<String, Set<String>> _likedPostIdsByUser = <String, Set<String>>{};
+  final Map<String, Set<String>> _dislikedPostIdsByUser =
+      <String, Set<String>>{};
+  bool _loaded = false;
+
+  Future<void> _ensureLoaded() async {
+    if (_loaded) return;
+    _loaded = true;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final raw = prefs.getString(_storageKey);
+      if (raw == null || raw.isEmpty) return;
+      final items = jsonDecode(raw) as List<dynamic>;
+      _posts
+        ..clear()
+        ..addAll(
+          items.map((item) => Post.fromJson(item as Map<String, dynamic>)),
+        );
+
+      final reactionRaw = prefs.getString(_reactionStorageKey);
+      if (reactionRaw != null && reactionRaw.isNotEmpty) {
+        _loadReactionMap(jsonDecode(reactionRaw) as Map<String, dynamic>);
+      }
+    } catch (_) {
+      // Keep seeded posts when browser storage is unavailable or invalid.
+    }
+  }
+
+  Future<void> _persist() async {
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        _storageKey,
+        jsonEncode(_posts.map((post) => post.toJson()).toList()),
+      );
+      await prefs.setString(
+        _reactionStorageKey,
+        jsonEncode(_serializeReactionMap()),
+      );
+    } catch (_) {
+      // The in-memory state remains usable for the current session.
+    }
+  }
+
+  void _loadReactionMap(Map<String, dynamic> json) {
+    _likedPostIdsByUser
+      ..clear()
+      ..addAll(_decodeReactionGroup(json['liked']));
+    _dislikedPostIdsByUser
+      ..clear()
+      ..addAll(_decodeReactionGroup(json['disliked']));
+  }
+
+  Map<String, Set<String>> _decodeReactionGroup(Object? raw) {
+    if (raw is! Map) return <String, Set<String>>{};
+    return raw.map(
+      (key, value) => MapEntry(
+        key.toString(),
+        (value as List<dynamic>? ?? const <dynamic>[])
+            .map((item) => item.toString())
+            .toSet(),
+      ),
+    );
+  }
+
+  Map<String, dynamic> _serializeReactionMap() {
+    return <String, dynamic>{
+      'liked': _likedPostIdsByUser.map(
+        (userId, ids) => MapEntry(userId, ids.toList()),
+      ),
+      'disliked': _dislikedPostIdsByUser.map(
+        (userId, ids) => MapEntry(userId, ids.toList()),
+      ),
+    };
+  }
+
+  Set<String> _likedIdsFor(String userId) {
+    return _likedPostIdsByUser.putIfAbsent(userId, () => <String>{});
+  }
+
+  Set<String> _dislikedIdsFor(String userId) {
+    return _dislikedPostIdsByUser.putIfAbsent(userId, () => <String>{});
+  }
+
+  Post _withViewerReaction(Post post, String? currentUserId) {
+    if (currentUserId == null || currentUserId.isEmpty) {
+      return post.copyWith(likedByMe: false, dislikedByMe: false);
+    }
+    return post.copyWith(
+      likedByMe: _likedIdsFor(currentUserId).contains(post.id),
+      dislikedByMe: _dislikedIdsFor(currentUserId).contains(post.id),
+    );
+  }
 
   @override
-  Future<void> addComment(String id, String text) async {
+  Future<Post> addReview(String id, PostReview review) async {
+    await _ensureLoaded();
     final index = _posts.indexWhere((post) => post.id == id);
-    if (index < 0) return;
+    if (index < 0) throw StateError('게시글을 찾을 수 없어요.');
+    _posts[index] = _posts[index].copyWith(
+      reviews: <PostReview>[..._posts[index].reviews, review],
+    );
+    await _persist();
+    return _posts[index];
+  }
+
+  @override
+  Future<Post> updateReview(String postId, PostReview review) async {
+    await _ensureLoaded();
+    final index = _posts.indexWhere((post) => post.id == postId);
+    if (index < 0) throw StateError('게시글을 찾을 수 없어요.');
+    _posts[index] = _posts[index].copyWith(
+      reviews: _posts[index].reviews
+          .map((item) => item.id == review.id ? review : item)
+          .toList(),
+    );
+    await _persist();
+    return _posts[index];
+  }
+
+  @override
+  Future<Post> deleteReview(
+    String postId,
+    String reviewId, {
+    required String authorId,
+  }) async {
+    await _ensureLoaded();
+    final index = _posts.indexWhere((post) => post.id == postId);
+    if (index < 0) throw StateError('게시글을 찾을 수 없어요.');
+    _posts[index] = _posts[index].copyWith(
+      reviews: _posts[index].reviews
+          .where((item) => !(item.id == reviewId && item.authorId == authorId))
+          .toList(),
+    );
+    await _persist();
+    return _posts[index];
+  }
+
+  @override
+  Future<Post> addComment(
+    String id,
+    String text, {
+    required String authorId,
+    required String authorNickname,
+  }) async {
+    await _ensureLoaded();
+    final index = _posts.indexWhere((post) => post.id == id);
+    if (index < 0) {
+      throw StateError('게시글을 찾을 수 없어요.');
+    }
 
     final post = _posts[index];
     _posts[index] = post.copyWith(
       comments: [
         ...post.comments,
-        PostComment(text: text.trim(), createdAt: DateTime.now()),
+        PostComment(
+          authorId: authorId,
+          authorNickname: authorNickname,
+          text: text.trim(),
+          createdAt: DateTime.now(),
+        ),
       ],
     );
+    return _posts[index];
   }
 
   @override
   Future<void> createPost(PostDraft draft) async {
+    await _ensureLoaded();
     final now = DateTime.now();
     _posts.insert(
       0,
       Post(
         id: 'local-${now.microsecondsSinceEpoch}',
+        authorId: draft.authorId,
+        authorNickname: draft.authorNickname,
         title: draft.title.isEmpty ? '제목 없는 꿀조합' : draft.title,
         content: draft.content,
         priceMin: draft.priceMin,
         priceMax: draft.priceMax,
         categories: draft.categories,
         likes: 0,
+        dislikes: 0,
         comments: const [],
         createdAt: now,
-        imageData: draft.imageBytes == null ? null : base64Encode(draft.imageBytes!),
+        imageData: draft.imageBytes.isEmpty
+            ? null
+            : base64Encode(draft.imageBytes.first),
         imageUrl: null,
+        imageDatas: draft.imageBytes.map(base64Encode).toList(),
+        imageUrls: draft.imageUrls,
+        details: draft.details,
         likedByMe: false,
+        dislikedByMe: false,
         topFiveEnteredAt: null,
+        topWorstEnteredAt: null,
+        calories: draft.calories,
+        rating: draft.rating,
+        reviews: const <PostReview>[],
       ),
     );
     _applyTopFiveBadges();
+    await _persist();
   }
 
   @override
-  Future<List<Post>> fetchPosts({
+  Future<void> deletePost(String id, String authorId) async {
+    await _ensureLoaded();
+    _posts.removeWhere((post) => post.id == id && post.authorId == authorId);
+    _applyTopFiveBadges();
+    await _persist();
+  }
+
+  @override
+  Future<PostPage> fetchPosts({
     String? query,
+    List<String>? selectedTags,
     int? minPrice,
     int? maxPrice,
+    String? likedGenderMajority,
+    String? currentUserId,
+    String? cursor,
+    int? limit,
     required SortMode sortMode,
   }) async {
+    await _ensureLoaded();
     final normalized = (query ?? '').trim().toLowerCase();
 
     final filtered = _posts.where((post) {
       final matchesQuery = normalized.isEmpty
           ? true
           : normalized.startsWith('#')
-              ? post.categories.any((category) => category.toLowerCase().contains(normalized.substring(1)))
-              : post.title.toLowerCase().contains(normalized);
+          ? post.categories.any(
+              (category) =>
+                  category.toLowerCase().contains(normalized.substring(1)),
+            )
+          : post.title.toLowerCase().contains(normalized);
+      final matchesTags = selectedTags == null || selectedTags.isEmpty
+          ? true
+          : selectedTags.every(
+              (tag) => post.categories.any(
+                (category) =>
+                    category.toLowerCase().contains(tag.toLowerCase()),
+              ),
+            );
 
       final matchesMin = minPrice == null || post.priceMax >= minPrice;
       final matchesMax = maxPrice == null || post.priceMin <= maxPrice;
-      return matchesQuery && matchesMin && matchesMax;
+      return matchesQuery && matchesTags && matchesMin && matchesMax;
     }).toList();
 
     filtered.sort((a, b) {
       if (sortMode == SortMode.popular) {
-        return b.likes - a.likes != 0 ? b.likes - a.likes : b.createdAt.compareTo(a.createdAt);
+        return b.likes - a.likes != 0
+            ? b.likes - a.likes
+            : b.createdAt.compareTo(a.createdAt);
+      }
+      if (sortMode == SortMode.worst) {
+        return b.dislikes - a.dislikes != 0
+            ? b.dislikes - a.dislikes
+            : b.createdAt.compareTo(a.createdAt);
       }
       return b.createdAt.compareTo(a.createdAt);
     });
 
-    return filtered.map((post) => post.copyWith()).toList();
+    final pageSize = limit ?? 6;
+    final startIndex = int.tryParse(cursor ?? '') ?? 0;
+    final endIndex = (startIndex + pageSize) > filtered.length
+        ? filtered.length
+        : (startIndex + pageSize);
+    final pageItems = filtered
+        .sublist(startIndex, endIndex)
+        .map((post) => _withViewerReaction(post, currentUserId))
+        .toList();
+    return PostPage(
+      posts: pageItems,
+      hasMore: endIndex < filtered.length,
+      nextCursor: endIndex < filtered.length ? '$endIndex' : null,
+    );
   }
 
   @override
-  Future<void> toggleLike(String id) async {
+  Future<List<PostFeatureInfo>> fetchPostFeatureIndex() async {
+    await _ensureLoaded();
+    final items = _posts.map(PostFeatureInfo.fromPost).toList()
+      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    return items;
+  }
+
+  @override
+  Future<Post> toggleLike(String id, String currentUserId) async {
+    await _ensureLoaded();
     final index = _posts.indexWhere((post) => post.id == id);
-    if (index < 0) return;
+    if (index < 0) {
+      throw StateError('게시글을 찾을 수 없어요.');
+    }
 
     final post = _posts[index];
-    final toggled = !post.likedByMe;
+    final likedIds = _likedIdsFor(currentUserId);
+    final dislikedIds = _dislikedIdsFor(currentUserId);
+    final wasLiked = likedIds.contains(id);
+    final wasDisliked = dislikedIds.contains(id);
+    final toggled = !wasLiked;
+    if (toggled) {
+      likedIds.add(id);
+      dislikedIds.remove(id);
+    } else {
+      likedIds.remove(id);
+    }
     _posts[index] = post.copyWith(
       likedByMe: toggled,
       likes: toggled ? post.likes + 1 : (post.likes > 0 ? post.likes - 1 : 0),
+      dislikedByMe: false,
+      dislikes: toggled && wasDisliked
+          ? (post.dislikes > 0 ? post.dislikes - 1 : 0)
+          : post.dislikes,
     );
     _applyTopFiveBadges();
+    await _persist();
+    return _withViewerReaction(_posts[index], currentUserId);
+  }
+
+  @override
+  Future<Post> toggleDislike(String id, String currentUserId) async {
+    await _ensureLoaded();
+    final index = _posts.indexWhere((post) => post.id == id);
+    if (index < 0) {
+      throw StateError('게시글을 찾을 수 없어요.');
+    }
+
+    final post = _posts[index];
+    final likedIds = _likedIdsFor(currentUserId);
+    final dislikedIds = _dislikedIdsFor(currentUserId);
+    final wasDisliked = dislikedIds.contains(id);
+    final wasLiked = likedIds.contains(id);
+    final toggled = !wasDisliked;
+    if (toggled) {
+      dislikedIds.add(id);
+      likedIds.remove(id);
+    } else {
+      dislikedIds.remove(id);
+    }
+    _posts[index] = post.copyWith(
+      dislikedByMe: toggled,
+      dislikes: toggled
+          ? post.dislikes + 1
+          : (post.dislikes > 0 ? post.dislikes - 1 : 0),
+      likedByMe: false,
+      likes: toggled && wasLiked
+          ? (post.likes > 0 ? post.likes - 1 : 0)
+          : post.likes,
+    );
+    _applyTopFiveBadges();
+    await _persist();
+    return _withViewerReaction(_posts[index], currentUserId);
   }
 
   @override
@@ -106,21 +387,98 @@ class MockPostRepository implements PostRepository {
       scannedCode: result.scannedCode,
       source: result.matchedFromCatalog ? 'mock-catalog' : 'manual-needed',
       cached: true,
+      tentative: !result.matchedFromCatalog,
       store: '편pick 샘플',
+      warning: result.matchedFromCatalog
+          ? null
+          : '샘플 카탈로그에 없는 상품이라 직접 확인이 필요해요.',
     );
   }
 
+  @override
+  Future<void> updatePost(String id, PostDraft draft) async {
+    await _ensureLoaded();
+    final index = _posts.indexWhere(
+      (post) => post.id == id && post.authorId == draft.authorId,
+    );
+    if (index < 0) return;
+
+    final existing = _posts[index];
+    _posts[index] = existing.copyWith(
+      title: draft.title.isEmpty ? '제목 없는 꿀조합' : draft.title,
+      content: draft.content,
+      priceMin: draft.priceMin,
+      priceMax: draft.priceMax,
+      categories: draft.categories,
+      imageData: draft.imageBytes.isEmpty
+          ? existing.imageData
+          : base64Encode(draft.imageBytes.first),
+      imageDatas: draft.imageBytes.isEmpty
+          ? existing.imageDatas
+          : draft.imageBytes.map(base64Encode).toList(),
+      imageUrls: draft.imageUrls.isNotEmpty
+          ? draft.imageUrls
+          : draft.imageBytes.isEmpty
+          ? existing.imageUrls
+          : const <String>[],
+      details: draft.details,
+      authorNickname: draft.authorNickname,
+      calories: draft.calories,
+      rating: draft.rating,
+    );
+    _applyTopFiveBadges();
+    await _persist();
+  }
+
   void _applyTopFiveBadges() {
-    final ranked = [..._posts]
-      ..sort((a, b) => b.likes - a.likes != 0 ? b.likes - a.likes : b.createdAt.compareTo(a.createdAt));
+    final ranked = _posts.where(_qualifiesForPopularBadge).toList()
+      ..sort(
+        (a, b) => b.likes != a.likes
+            ? b.likes.compareTo(a.likes)
+            : b.createdAt.compareTo(a.createdAt),
+      );
     final topIds = ranked.take(5).map((post) => post.id).toSet();
+    final worstRanked = _posts.where(_qualifiesForWorstBadge).toList()
+      ..sort(
+        (a, b) => b.dislikes - a.dislikes != 0
+            ? b.dislikes - a.dislikes
+            : _dislikeRatio(b).compareTo(_dislikeRatio(a)) != 0
+            ? _dislikeRatio(b).compareTo(_dislikeRatio(a))
+            : b.createdAt.compareTo(a.createdAt),
+      );
+    final worstIds = worstRanked.take(5).map((post) => post.id).toSet();
     final now = DateTime.now();
 
     for (var index = 0; index < _posts.length; index += 1) {
       final post = _posts[index];
+      var next = post;
       if (topIds.contains(post.id) && post.topFiveEnteredAt == null) {
-        _posts[index] = post.copyWith(topFiveEnteredAt: now);
+        next = next.copyWith(topFiveEnteredAt: now);
+      } else if (!topIds.contains(post.id) && post.topFiveEnteredAt != null) {
+        next = next.copyWith(clearTopFiveEnteredAt: true);
       }
+      if (worstIds.contains(post.id) && post.topWorstEnteredAt == null) {
+        next = next.copyWith(topWorstEnteredAt: now);
+      } else if (!worstIds.contains(post.id) &&
+          post.topWorstEnteredAt != null) {
+        next = next.copyWith(clearTopWorstEnteredAt: true);
+      }
+      _posts[index] = next;
     }
+  }
+
+  bool _qualifiesForPopularBadge(Post post) {
+    if (post.likes < 10) return false;
+    return post.likes >= math.max(1, post.dislikes * 3);
+  }
+
+  double _dislikeRatio(Post post) {
+    final total = post.likes + post.dislikes;
+    return total <= 0 ? 0 : post.dislikes / total;
+  }
+
+  bool _qualifiesForWorstBadge(Post post) {
+    if (post.dislikes < 8) return false;
+    return _dislikeRatio(post) >= 0.45 || post.dislikes >= post.likes;
   }
 }
