@@ -77,8 +77,12 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
     setState(() => _currentUser = user);
     try {
       await store.saveUser(user);
-    } catch (_) {
+    } catch (error) {
       if (!mounted) return;
+      if (error is StateError && error.message.contains('로그인이 만료')) {
+        setState(() => _currentUser = null);
+        return;
+      }
       setState(() => _currentUser = previousUser ?? user);
       rethrow;
     }

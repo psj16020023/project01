@@ -3928,20 +3928,12 @@ app.use(
   express.static(webBuildPath, {
     setHeaders: (res, filePath) => {
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-      if (
-        filePath.endsWith("index.html") ||
-        filePath.endsWith("flutter_bootstrap.js") ||
-        filePath.endsWith("flutter_service_worker.js")
-      ) {
-        res.setHeader("Clear-Site-Data", '"cache"');
-      }
     },
   })
 );
 
 app.get(/^(?!\/api).*/, (req, res) => {
   res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
-  res.setHeader("Clear-Site-Data", '"cache"');
   res.sendFile(path.join(webBuildPath, "index.html"));
 });
 

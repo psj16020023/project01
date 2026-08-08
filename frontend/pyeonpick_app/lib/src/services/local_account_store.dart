@@ -121,6 +121,12 @@ class LocalAccountStore {
       return null;
     }
 
+    final token = _store.getString(_authTokenKey);
+    if (token == null || token.isEmpty) {
+      await signOut();
+      return null;
+    }
+
     final cached = _getCachedCurrentUser();
     try {
       final response = await http
@@ -139,6 +145,10 @@ class LocalAccountStore {
         return user;
       }
       if (response.statusCode == 404) {
+        await signOut();
+        return null;
+      }
+      if (response.statusCode == 401 || response.statusCode == 403) {
         await signOut();
         return null;
       }
@@ -287,6 +297,10 @@ class LocalAccountStore {
         .timeout(const Duration(seconds: 5));
 
     if (response.statusCode != 200) {
+      if (response.statusCode == 401 || response.statusCode == 403) {
+        await signOut();
+        throw StateError('로그인이 만료됐어요. 다시 로그인해 주세요.');
+      }
       final message = _extractMessage(response.body, '사용자 정보를 저장하지 못했어요.');
       throw StateError(message);
     }

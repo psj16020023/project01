@@ -5240,11 +5240,18 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
     if (value.isEmpty) return;
     setState(() => _sending = true);
     _controller.clear();
-    final result = await widget.onSend(
-      value,
-      _useAgeCalorieGuide,
-      _currentBudget,
-    );
+    late final BotTurnResult result;
+    try {
+      result = await widget.onSend(
+        value,
+        _useAgeCalorieGuide,
+        _currentBudget,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      return;
+    }
     if (!mounted) return;
     setState(() {
       _sending = false;
@@ -5284,7 +5291,13 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
 
   Future<void> _loadMoreRecommendations() async {
     setState(() => _sending = true);
-    await widget.onMore(_useAgeCalorieGuide, _currentBudget);
+    try {
+      await widget.onMore(_useAgeCalorieGuide, _currentBudget);
+    } catch (_) {
+      if (!mounted) return;
+      setState(() => _sending = false);
+      return;
+    }
     if (!mounted) return;
     setState(() => _sending = false);
     Future<void>.delayed(const Duration(milliseconds: 120), () {
