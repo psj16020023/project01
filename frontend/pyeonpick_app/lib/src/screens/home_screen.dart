@@ -2332,13 +2332,13 @@ class _HomeScreenState extends State<HomeScreen> {
                 color: AppColors.sky,
                 child: Center(
                   child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1180),
+                    constraints: const BoxConstraints(maxWidth: 1760),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
-                        desktop ? 24 : 16,
-                        desktop ? 12 : 8,
-                        desktop ? 24 : 12,
-                        desktop ? 12 : 8,
+                        desktop ? 34 : 16,
+                        desktop ? 16 : 8,
+                        desktop ? 34 : 12,
+                        desktop ? 16 : 8,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2352,7 +2352,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   style: TextStyle(
                                     color: AppColors.navy,
                                     fontWeight: FontWeight.w900,
-                                    fontSize: desktop ? 28 : 20,
+                                    fontSize: desktop ? 32 : 20,
                                     letterSpacing: -0.8,
                                   ),
                                 ),
@@ -2363,7 +2363,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ],
                           ),
-                          SizedBox(height: desktop ? 12 : 7),
+                          SizedBox(height: desktop ? 16 : 7),
                           FeatureTabs(
                             selectedTab: _selectedTab,
                             onChanged: (tab) =>
@@ -2381,10 +2381,10 @@ class _HomeScreenState extends State<HomeScreen> {
                   child: LayoutBuilder(
                     builder: (context, constraints) {
                       final maxWidth = switch (_selectedTab) {
-                        AppTab.communication => 1180.0,
-                        AppTab.battle => 1320.0,
-                        AppTab.bot => 940.0,
-                        AppTab.profile => 1100.0,
+                        AppTab.communication => 1680.0,
+                        AppTab.battle => 1760.0,
+                        AppTab.bot => 1680.0,
+                        AppTab.profile => 1520.0,
                       };
                       return Align(
                         alignment: Alignment.topCenter,
@@ -2798,19 +2798,19 @@ class FeatureTabs extends StatelessWidget {
             return Expanded(
               child: InkWell(
                 onTap: () => onChanged(item.tab),
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(desktop ? 12 : 8),
                 child: AnimatedContainer(
                   duration: const Duration(milliseconds: 160),
                   alignment: Alignment.center,
                   padding: EdgeInsets.symmetric(
-                    horizontal: desktop ? 10 : 3,
-                    vertical: desktop ? 11 : 7,
+                    horizontal: desktop ? 16 : 3,
+                    vertical: desktop ? 15 : 7,
                   ),
                   decoration: BoxDecoration(
                     color: active
                         ? Colors.white.withAlpha(220)
                         : Colors.transparent,
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(desktop ? 12 : 8),
                     border: Border.all(
                       color: active
                           ? const Color(0xFFCFE2EA)
@@ -2822,7 +2822,7 @@ class FeatureTabs extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: desktop ? 14 : 11,
+                      fontSize: desktop ? 16 : 11,
                       fontWeight: active ? FontWeight.w900 : FontWeight.w700,
                       color: active ? AppColors.navy : const Color(0xFF68859A),
                     ),
@@ -5648,34 +5648,147 @@ class _BotSetupPageState extends State<BotSetupPage> {
 
   @override
   Widget build(BuildContext context) {
-    return SingleChildScrollView(
-      padding: const EdgeInsets.all(18),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
+    final range = MealCalorieRange.forAge(
+      int.tryParse(_ageController.text.trim()) ?? 0,
+    );
+    final basicSection = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _setupSectionTitle('나이는? (만)'),
+        const SizedBox(height: 10),
+        TextField(
+          controller: _ageController,
+          keyboardType: TextInputType.number,
+          decoration: inputDecoration('예: 20'),
+          onChanged: (_) => setState(() {}),
+        ),
+        if (range != null) ...[
+          const SizedBox(height: 10),
           Container(
-            padding: const EdgeInsets.all(22),
+            width: double.infinity,
+            padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
+            decoration: BoxDecoration(
+              color: const Color(0xFFF4F8E9),
+              borderRadius: BorderRadius.circular(12),
+              border: Border.all(color: AppColors.lime),
+            ),
+            child: Text(
+              '${range.ageLabel} 한 끼 참고 범위 · ${range.label}',
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+          ),
+        ],
+        const SizedBox(height: 24),
+        _setupSectionTitle('성별은?'),
+        const SizedBox(height: 10),
+        SegmentedButton<String>(
+          segments: const [
+            ButtonSegment(
+              value: '여자',
+              label: SizedBox(
+                width: 54,
+                child: Center(child: Text('여자', maxLines: 1)),
+              ),
+            ),
+            ButtonSegment(
+              value: '남자',
+              label: SizedBox(
+                width: 54,
+                child: Center(child: Text('남자', maxLines: 1)),
+              ),
+            ),
+          ],
+          selected: {_gender},
+          onSelectionChanged: (values) =>
+              setState(() => _gender = values.first),
+          style: ButtonStyle(
+            textStyle: WidgetStateProperty.all(
+              const TextStyle(fontWeight: FontWeight.w900),
+            ),
+          ),
+        ),
+        const SizedBox(height: 24),
+        _setupSectionTitle('추천에서 중요한 기준은?'),
+        const SizedBox(height: 8),
+        const Text(
+          '두 개를 고르면 선택한 순서대로 1·2순위가 됩니다.',
+          style: TextStyle(
+            color: Color(0xFF7C90A2),
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 12),
+        _PriorityChoiceWrap(
+          labels: const ['저칼로리', '가성비', '시간절약', '호불호', '트렌드'],
+          selected: _priorityValues,
+          onChanged: () => setState(() {}),
+        ),
+      ],
+    );
+
+    final tasteSection = Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        _setupSectionTitle('가장 좋아하는 맛은?'),
+        const SizedBox(height: 8),
+        const Text(
+          '각 맛을 얼마나 좋아하는지 1~5로 표시해 주세요.',
+          style: TextStyle(
+            color: Color(0xFF7C90A2),
+            fontWeight: FontWeight.w600,
+            fontSize: 12,
+          ),
+        ),
+        const SizedBox(height: 16),
+        _TasteRatingEditor(
+          ratings: _tasteRatings,
+          onChanged: (taste, value) =>
+              setState(() => _tasteRatings[taste] = value),
+        ),
+      ],
+    );
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 980;
+        final outerPadding = EdgeInsets.fromLTRB(
+          desktop ? 32 : 18,
+          desktop ? 28 : 18,
+          desktop ? 32 : 18,
+          28,
+        );
+
+        return SingleChildScrollView(
+          padding: outerPadding,
+          child: Container(
+            width: double.infinity,
+            padding: EdgeInsets.all(desktop ? 34 : 22),
             decoration: BoxDecoration(
               color: Colors.white,
-              borderRadius: BorderRadius.circular(30),
+              borderRadius: BorderRadius.circular(desktop ? 34 : 30),
               border: Border.all(color: const Color(0xFFE6EEF3)),
               boxShadow: [
                 BoxShadow(
                   color: Colors.black.withAlpha(14),
-                  blurRadius: 24,
-                  offset: const Offset(0, 16),
+                  blurRadius: 28,
+                  offset: const Offset(0, 18),
                 ),
               ],
             ),
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   '편봇 초기 설정',
                   style: TextStyle(
                     color: AppColors.ink,
                     fontWeight: FontWeight.w900,
-                    fontSize: 24,
+                    fontSize: desktop ? 32 : 24,
+                    letterSpacing: -0.8,
                   ),
                 ),
                 const SizedBox(height: 8),
@@ -5687,127 +5800,21 @@ class _BotSetupPageState extends State<BotSetupPage> {
                     height: 1.5,
                   ),
                 ),
-                const SizedBox(height: 22),
-                const Text(
-                  '나이는? (만)',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                TextField(
-                  controller: _ageController,
-                  keyboardType: TextInputType.number,
-                  decoration: inputDecoration('예: 20'),
-                  onChanged: (_) => setState(() {}),
-                ),
-                if (MealCalorieRange.forAge(
-                      int.tryParse(_ageController.text.trim()) ?? 0,
-                    )
-                    case final range?) ...[
-                  const SizedBox(height: 10),
-                  Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 13,
-                      vertical: 11,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF4F8E9),
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: AppColors.lime),
-                    ),
-                    child: Text(
-                      '${range.ageLabel} 한 끼 참고 범위 · ${range.label}',
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontWeight: FontWeight.w800,
-                      ),
-                    ),
-                  ),
+                SizedBox(height: desktop ? 30 : 22),
+                if (desktop)
+                  Row(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Expanded(child: basicSection),
+                      const SizedBox(width: 34),
+                      Expanded(child: tasteSection),
+                    ],
+                  )
+                else ...[
+                  basicSection,
+                  const SizedBox(height: 24),
+                  tasteSection,
                 ],
-                const SizedBox(height: 22),
-                const Text(
-                  '성별은?',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                SegmentedButton<String>(
-                  segments: const [
-                    ButtonSegment(
-                      value: '여자',
-                      label: SizedBox(
-                        width: 42,
-                        child: Center(child: Text('여자', maxLines: 1)),
-                      ),
-                    ),
-                    ButtonSegment(
-                      value: '남자',
-                      label: SizedBox(
-                        width: 42,
-                        child: Center(child: Text('남자', maxLines: 1)),
-                      ),
-                    ),
-                  ],
-                  selected: {_gender},
-                  onSelectionChanged: (values) =>
-                      setState(() => _gender = values.first),
-                  style: ButtonStyle(
-                    textStyle: WidgetStateProperty.all(
-                      const TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 22),
-                const Text(
-                  '가장 좋아하는 맛은?',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  '각 맛을 얼마나 좋아하는지 1~5로 표시해 주세요.',
-                  style: TextStyle(
-                    color: Color(0xFF7C90A2),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _TasteRatingEditor(
-                  ratings: _tasteRatings,
-                  onChanged: (taste, value) =>
-                      setState(() => _tasteRatings[taste] = value),
-                ),
-                const SizedBox(height: 22),
-                const Text(
-                  '추천에서 중요한 기준은?',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                const Text(
-                  '두 개를 고르면 선택한 순서대로 1·2순위가 됩니다.',
-                  style: TextStyle(
-                    color: Color(0xFF7C90A2),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _PriorityChoiceWrap(
-                  labels: const ['저칼로리', '가성비', '시간절약', '호불호', '트렌드'],
-                  selected: _priorityValues,
-                  onChanged: () => setState(() {}),
-                ),
                 if (_error != null) ...[
                   const SizedBox(height: 16),
                   Text(
@@ -5818,7 +5825,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
                     ),
                   ),
                 ],
-                const SizedBox(height: 18),
+                SizedBox(height: desktop ? 26 : 18),
                 SizedBox(
                   width: double.infinity,
                   child: FilledButton(
@@ -5826,7 +5833,9 @@ class _BotSetupPageState extends State<BotSetupPage> {
                     style: FilledButton.styleFrom(
                       backgroundColor: AppColors.lime,
                       foregroundColor: Colors.white,
-                      padding: const EdgeInsets.symmetric(vertical: 16),
+                      padding: EdgeInsets.symmetric(
+                        vertical: desktop ? 18 : 16,
+                      ),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
                       ),
@@ -5837,7 +5846,17 @@ class _BotSetupPageState extends State<BotSetupPage> {
               ],
             ),
           ),
-        ],
+        );
+      },
+    );
+  }
+
+  Widget _setupSectionTitle(String text) {
+    return Text(
+      text,
+      style: const TextStyle(
+        color: AppColors.ink,
+        fontWeight: FontWeight.w900,
       ),
     );
   }
