@@ -175,6 +175,15 @@ class CuProductCatalog {
     ),
     CuProductSignal(
       store: 'CU',
+      productName: '샌)햄치즈샌드',
+      aliases: <String>['햄치즈 샌드', '햄치즈샌드'],
+      labels: <CuProductLabel>{
+        CuProductLabel.newProduct,
+        CuProductLabel.pbProduct,
+      },
+    ),
+    CuProductSignal(
+      store: 'CU',
       productName: '햄)보양삼계버거',
       barcode: '8800387750695',
       aliases: <String>['보양 삼계버거', '보양삼계버거'],
@@ -205,9 +214,29 @@ class CuProductCatalog {
     ),
     CuProductSignal(
       store: 'CU',
+      productName: '도)맵달양념닭강정',
+      barcode: '8800281969919',
+      aliases: <String>['맵달 양념 닭강정', '맵달양념닭강정'],
+      labels: <CuProductLabel>{
+        CuProductLabel.newProduct,
+        CuProductLabel.pbProduct,
+      },
+    ),
+    CuProductSignal(
+      store: 'CU',
       productName: '면)베이컨크림스파게티',
       barcode: '8800281969957',
       aliases: <String>['베이컨 크림 스파게티', '베이컨크림스파게티'],
+      labels: <CuProductLabel>{
+        CuProductLabel.newProduct,
+        CuProductLabel.pbProduct,
+      },
+    ),
+    CuProductSignal(
+      store: 'CU',
+      productName: '빅삼)밥도둑묵은지참치',
+      barcode: '8800336394239',
+      aliases: <String>['밥도둑 묵은지 참치', '밥도둑묵은지참치'],
       labels: <CuProductLabel>{
         CuProductLabel.newProduct,
         CuProductLabel.pbProduct,
@@ -238,6 +267,16 @@ class CuProductCatalog {
       productName: '햄)통새우치즈버거',
       barcode: '8800336395588',
       aliases: <String>['통새우 치즈버거', '통새우치즈버거'],
+      labels: <CuProductLabel>{
+        CuProductLabel.newProduct,
+        CuProductLabel.pbProduct,
+      },
+    ),
+    CuProductSignal(
+      store: 'CU',
+      productName: '햄)더블치즈불고기버거',
+      barcode: '8800336394567',
+      aliases: <String>['더블 치즈 불고기 버거', '더블치즈불고기버거'],
       labels: <CuProductLabel>{
         CuProductLabel.newProduct,
         CuProductLabel.pbProduct,

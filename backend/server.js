@@ -1975,7 +1975,7 @@ function absoluteCuImageUrl(src) {
 }
 
 function extractCuBarcode(imageUrl) {
-  const match = String(imageUrl || "").match(/\/([0-9]{8,14})\.[a-z0-9]+(?:\?|$)/i);
+  const match = String(imageUrl || "").match(/\/([0-9]{8,14})(?:_[0-9]+)?\.[a-z0-9]+(?:\?|$)/i);
   return match ? match[1] : null;
 }
 

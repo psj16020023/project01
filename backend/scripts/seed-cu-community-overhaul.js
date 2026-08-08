@@ -114,7 +114,7 @@ const combos = [
   },
   {
     title: "밥도둑 묵은지 참치 + 더블 감자 베이컨 피자",
-    products: ["김)밥도둑묵은지참치", "PBICK)더블감자베이컨피자"],
+    products: ["빅삼)밥도둑묵은지참치", "PBICK)더블감자베이컨피자"],
     content: "김밥으로 짭짤하게 시작하고 피자로 마무리. 둘이 나눠 먹기 좋은 조합.",
     categories: ["짭짤", "간식", "든든함"],
     likes: 17,
@@ -200,11 +200,13 @@ async function main() {
       0
     );
 
+    const title = products.map((product) => product.name).join(" + ");
+
     await posts.insertOne({
       authorId: author.id,
       authorNickname: author.nickname,
       authorProfileImageUrl: author.image,
-      title: combo.title,
+      title,
       content: `${combo.content}\n바코드 ${barcodes.join(" / ")}.`,
       priceMin: priceTotal,
       priceMax: priceTotal,

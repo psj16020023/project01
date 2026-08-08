@@ -197,9 +197,11 @@ async function main() {
       .filter(Boolean);
     const author = authorProfiles[combo.author];
 
+    const title = products.map((product) => product.name).join(" + ");
+
     await posts.insertOne({
       ...author,
-      title: combo.title,
+      title,
       content:
         `${combo.content}\n` +
         `바코드 ${barcodes.length ? barcodes.join(" / ") : "확인 전"}.`,
