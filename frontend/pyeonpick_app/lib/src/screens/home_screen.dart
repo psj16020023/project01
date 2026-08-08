@@ -2383,7 +2383,7 @@ class _HomeScreenState extends State<HomeScreen> {
                       final maxWidth = switch (_selectedTab) {
                         AppTab.communication => 1680.0,
                         AppTab.battle => 1760.0,
-                        AppTab.bot => 1680.0,
+                        AppTab.bot => 1880.0,
                         AppTab.profile => 1520.0,
                       };
                       return Align(
@@ -5648,6 +5648,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
 
   @override
   Widget build(BuildContext context) {
+    const desktopTextScale = TextScaler.linear(1.18);
     final range = MealCalorieRange.forAge(
       int.tryParse(_ageController.text.trim()) ?? 0,
     );
@@ -5660,6 +5661,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
           controller: _ageController,
           keyboardType: TextInputType.number,
           decoration: inputDecoration('예: 20'),
+          style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w800),
           onChanged: (_) => setState(() {}),
         ),
         if (range != null) ...[
@@ -5676,6 +5678,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
               '${range.ageLabel} 한 끼 참고 범위 · ${range.label}',
               style: const TextStyle(
                 color: AppColors.ink,
+                fontSize: 15,
                 fontWeight: FontWeight.w800,
               ),
             ),
@@ -5689,14 +5692,14 @@ class _BotSetupPageState extends State<BotSetupPage> {
             ButtonSegment(
               value: '여자',
               label: SizedBox(
-                width: 54,
+                width: 68,
                 child: Center(child: Text('여자', maxLines: 1)),
               ),
             ),
             ButtonSegment(
               value: '남자',
               label: SizedBox(
-                width: 54,
+                width: 68,
                 child: Center(child: Text('남자', maxLines: 1)),
               ),
             ),
@@ -5706,7 +5709,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
               setState(() => _gender = values.first),
           style: ButtonStyle(
             textStyle: WidgetStateProperty.all(
-              const TextStyle(fontWeight: FontWeight.w900),
+              const TextStyle(fontSize: 15, fontWeight: FontWeight.w900),
             ),
           ),
         ),
@@ -5718,7 +5721,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
           style: TextStyle(
             color: Color(0xFF7C90A2),
             fontWeight: FontWeight.w600,
-            fontSize: 12,
+            fontSize: 14,
           ),
         ),
         const SizedBox(height: 12),
@@ -5740,7 +5743,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
           style: TextStyle(
             color: Color(0xFF7C90A2),
             fontWeight: FontWeight.w600,
-            fontSize: 12,
+            fontSize: 14,
           ),
         ),
         const SizedBox(height: 16),
@@ -5756,94 +5759,104 @@ class _BotSetupPageState extends State<BotSetupPage> {
       builder: (context, constraints) {
         final desktop = constraints.maxWidth >= 980;
         final outerPadding = EdgeInsets.fromLTRB(
-          desktop ? 32 : 18,
-          desktop ? 28 : 18,
-          desktop ? 32 : 18,
-          28,
+          desktop ? 44 : 18,
+          desktop ? 36 : 18,
+          desktop ? 44 : 18,
+          desktop ? 40 : 28,
         );
 
         return SingleChildScrollView(
           padding: outerPadding,
-          child: Container(
-            width: double.infinity,
-            padding: EdgeInsets.all(desktop ? 34 : 22),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(desktop ? 34 : 30),
-              border: Border.all(color: const Color(0xFFE6EEF3)),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(14),
-                  blurRadius: 28,
-                  offset: const Offset(0, 18),
-                ),
-              ],
+          child: MediaQuery(
+            data: MediaQuery.of(context).copyWith(
+              textScaler: desktop ? desktopTextScale : TextScaler.noScaling,
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  '편봇 초기 설정',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: desktop ? 32 : 24,
-                    letterSpacing: -0.8,
+            child: Container(
+              width: double.infinity,
+              constraints: BoxConstraints(minHeight: desktop ? 520 : 0),
+              padding: EdgeInsets.all(desktop ? 46 : 22),
+              decoration: BoxDecoration(
+                color: Colors.white,
+                borderRadius: BorderRadius.circular(desktop ? 38 : 30),
+                border: Border.all(color: const Color(0xFFE6EEF3)),
+                boxShadow: [
+                  BoxShadow(
+                    color: Colors.black.withAlpha(16),
+                    blurRadius: 34,
+                    offset: const Offset(0, 20),
                   ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '처음 한 번만 답하면, 좋아요와 대화 기록을 바탕으로 취향을 더 잘 기억해요.',
-                  style: TextStyle(
-                    color: Color(0xFF73889B),
-                    fontWeight: FontWeight.w600,
-                    height: 1.5,
-                  ),
-                ),
-                SizedBox(height: desktop ? 30 : 22),
-                if (desktop)
-                  Row(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Expanded(child: basicSection),
-                      const SizedBox(width: 34),
-                      Expanded(child: tasteSection),
-                    ],
-                  )
-                else ...[
-                  basicSection,
-                  const SizedBox(height: 24),
-                  tasteSection,
                 ],
-                if (_error != null) ...[
-                  const SizedBox(height: 16),
+              ),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    _error!,
-                    style: const TextStyle(
-                      color: Color(0xFFD44444),
-                      fontWeight: FontWeight.w700,
+                    '편봇 초기 설정',
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w900,
+                      fontSize: desktop ? 38 : 24,
+                      letterSpacing: -0.8,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  const Text(
+                    '처음 한 번만 답하면, 좋아요와 대화 기록을 바탕으로 취향을 더 잘 기억해요.',
+                    style: TextStyle(
+                      color: Color(0xFF73889B),
+                      fontSize: 15,
+                      fontWeight: FontWeight.w600,
+                      height: 1.5,
+                    ),
+                  ),
+                  SizedBox(height: desktop ? 42 : 22),
+                  if (desktop)
+                    Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Expanded(child: basicSection),
+                        const SizedBox(width: 54),
+                        Expanded(child: tasteSection),
+                      ],
+                    )
+                  else ...[
+                    basicSection,
+                    const SizedBox(height: 24),
+                    tasteSection,
+                  ],
+                  if (_error != null) ...[
+                    const SizedBox(height: 16),
+                    Text(
+                      _error!,
+                      style: const TextStyle(
+                        color: Color(0xFFD44444),
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                  ],
+                  SizedBox(height: desktop ? 36 : 18),
+                  SizedBox(
+                    width: double.infinity,
+                    child: FilledButton(
+                      onPressed: _saving ? null : _submit,
+                      style: FilledButton.styleFrom(
+                        backgroundColor: AppColors.lime,
+                        foregroundColor: Colors.white,
+                        padding: EdgeInsets.symmetric(
+                          vertical: desktop ? 22 : 16,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(18),
+                        ),
+                      ),
+                      child: Text(
+                        _saving ? '저장 중...' : '편봇 시작하기',
+                        style: const TextStyle(fontWeight: FontWeight.w900),
+                      ),
                     ),
                   ),
                 ],
-                SizedBox(height: desktop ? 26 : 18),
-                SizedBox(
-                  width: double.infinity,
-                  child: FilledButton(
-                    onPressed: _saving ? null : _submit,
-                    style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.lime,
-                      foregroundColor: Colors.white,
-                      padding: EdgeInsets.symmetric(
-                        vertical: desktop ? 18 : 16,
-                      ),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(18),
-                      ),
-                    ),
-                    child: Text(_saving ? '저장 중...' : '편봇 시작하기'),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         );
@@ -5856,6 +5869,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
       text,
       style: const TextStyle(
         color: AppColors.ink,
+        fontSize: 15,
         fontWeight: FontWeight.w900,
       ),
     );
