@@ -9,6 +9,7 @@ class PostFeatureInfo {
     required this.dislikes,
     required this.commentCount,
     required this.reviewCount,
+    required this.recentLikeCount,
     required this.createdAt,
     required this.topFiveEnteredAt,
     required this.topWorstEnteredAt,
@@ -23,6 +24,7 @@ class PostFeatureInfo {
       dislikes: json['dislikes'] as int? ?? 0,
       commentCount: json['commentCount'] as int? ?? 0,
       reviewCount: json['reviewCount'] as int? ?? 0,
+      recentLikeCount: json['recentLikeCount'] as int? ?? 0,
       createdAt:
           DateTime.tryParse(json['createdAt'] as String? ?? '') ??
           DateTime.now(),
@@ -44,6 +46,7 @@ class PostFeatureInfo {
       dislikes: post.dislikes,
       commentCount: post.comments.length,
       reviewCount: post.reviews.length,
+      recentLikeCount: 0,
       createdAt: post.createdAt,
       topFiveEnteredAt: post.topFiveEnteredAt,
       topWorstEnteredAt: post.topWorstEnteredAt,
@@ -57,6 +60,7 @@ class PostFeatureInfo {
   final int dislikes;
   final int commentCount;
   final int reviewCount;
+  final int recentLikeCount;
   final DateTime createdAt;
   final DateTime? topFiveEnteredAt;
   final DateTime? topWorstEnteredAt;

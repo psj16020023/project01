@@ -153,6 +153,14 @@ const productSourceSchema = new mongoose.Schema(
   { _id: false }
 );
 
+const likeEventSchema = new mongoose.Schema(
+  {
+    userId: { type: String, required: true },
+    createdAt: { type: Date, default: Date.now },
+  },
+  { _id: false }
+);
+
 const postSchema = new mongoose.Schema(
   {
     authorId: { type: String, required: true },
@@ -164,6 +172,7 @@ const postSchema = new mongoose.Schema(
     priceMax: { type: Number, required: true },
     categories: [{ type: String, required: true }],
     likes: { type: Number, default: 0 },
+    likeEvents: { type: [likeEventSchema], default: [] },
     dislikes: { type: Number, default: 0 },
     comments: { type: [commentSchema], default: [] },
     reviews: { type: [postReviewSchema], default: [] },
@@ -986,6 +995,7 @@ function serializePost(post, currentUser = null) {
 }
 
 function serializePostFeatureInfo(post) {
+  const recentLikeCutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
   return {
     id: post._id.toString(),
     authorId: post.authorId,
@@ -994,7 +1004,62 @@ function serializePostFeatureInfo(post) {
     dislikes: Number(post.dislikes || 0),
     commentCount: (post.comments || []).length,
     reviewCount: (post.reviews || []).length,
+    recentLikeCount: (post.likeEvents || []).filter(
+      (event) => new Date(event.createdAt).getTime() >= recentLikeCutoff
+    ).length,
     createdAt: post.createdAt,
+    topFiveEnteredAt: post.topFiveEnteredAt || null,
+    topWorstEnteredAt: post.topWorstEnteredAt || null,
+  };
+}
+
+function requestOrigin(req) {
+  const forwardedProto = String(req.get("x-forwarded-proto") || "")
+    .split(",")[0]
+    .trim();
+  return `${forwardedProto || req.protocol}://${req.get("host")}`;
+}
+
+function serializePostCatalog(post, currentUser, req) {
+  const postId = post._id.toString();
+  const likedPostIds = new Set((currentUser?.likedPostIds || []).map(String));
+  const dislikedPostIds = new Set((currentUser?.dislikedPostIds || []).map(String));
+  const remoteImageUrls = (post.imageUrls && post.imageUrls.length > 0)
+    ? post.imageUrls.filter(Boolean)
+    : (post.imageUrl ? [post.imageUrl] : []);
+  const storedImageCount = (post.imageDatas && post.imageDatas.length > 0)
+    ? post.imageDatas.length
+    : (post.imageData ? 1 : 0);
+  const storedImageUrls = Array.from(
+    { length: storedImageCount },
+    (_, index) => `${requestOrigin(req)}/api/posts/${postId}/images/${index}`
+  );
+  const imageUrls = [...remoteImageUrls, ...storedImageUrls];
+
+  return {
+    id: postId,
+    authorId: post.authorId,
+    authorNickname: post.authorNickname,
+    authorProfileImageUrl: post.authorProfileImageUrl || null,
+    title: post.title,
+    content: post.content || "",
+    priceMin: Number(post.priceMin || 0),
+    priceMax: Number(post.priceMax || 0),
+    categories: post.categories || [],
+    likes: Number(post.likes || 0),
+    dislikes: Number(post.dislikes || 0),
+    comments: post.comments || [],
+    reviews: post.reviews || [],
+    calories: post.calories ?? null,
+    rating: Number(post.rating || 0),
+    createdAt: post.createdAt,
+    imageData: null,
+    imageUrl: imageUrls[0] || null,
+    imageDatas: [],
+    imageUrls,
+    details: post.details || {},
+    likedByMe: likedPostIds.has(postId),
+    dislikedByMe: dislikedPostIds.has(postId),
     topFiveEnteredAt: post.topFiveEnteredAt || null,
     topWorstEnteredAt: post.topWorstEnteredAt || null,
   };
@@ -1613,6 +1678,61 @@ function extractResponsesText(payload) {
     }
   }
   return parts.join("\n").trim();
+}
+
+function analyzeBotPromptLocally(prompt) {
+  const text = String(prompt || "").trim();
+  const amountMatch = text.match(/(\d+(?:\.\d+)?)\s*(만|천)?\s*원?/);
+  let budget = null;
+  if (amountMatch) {
+    const multiplier = amountMatch[2] === "만" ? 10000 : amountMatch[2] === "천" ? 1000 : 1;
+    const parsed = Math.round(Number(amountMatch[1]) * multiplier);
+    if (parsed >= 500) budget = parsed;
+  }
+  const timeMatch = text.match(/(\d+)\s*분/);
+  const wantedTastes = [
+    ["달달", /달달|달콤|단맛|단 거/],
+    ["매콤", /매콤|매운|불닭/],
+    ["새콤", /새콤|상큼|신맛/],
+    ["짭짤", /짭짤|짠맛|짠 거/],
+  ].filter(([, pattern]) => pattern.test(text)).map(([taste]) => taste);
+  let emotion = "neutral";
+  if (/피곤|지쳤|졸려|힘들/.test(text)) emotion = "tired";
+  else if (/스트레스|짜증|화나/.test(text)) emotion = "stressed";
+  else if (/불안|긴장|걱정/.test(text)) emotion = "anxious";
+  else if (/아파|속이 안|몸이 안/.test(text)) emotion = "sick";
+  else if (/외로|쓸쓸/.test(text)) emotion = "lonely";
+  else if (/슬퍼|우울/.test(text)) emotion = "sad";
+  else if (/신나|기뻐|행복/.test(text)) emotion = "happy";
+
+  const lateNight = /야식|새벽|밤늦|밤에/.test(text);
+  const mealPurpose = /간식/.test(text)
+    ? "간식"
+    : /야식/.test(text)
+      ? "야식"
+      : /아침/.test(text)
+        ? "아침"
+        : /점심/.test(text)
+          ? "점심"
+          : /저녁/.test(text)
+            ? "저녁"
+            : null;
+  const bodyCondition = emotion === "sick" ? "몸 상태가 좋지 않음" : null;
+  const summary = emotion === "neutral"
+    ? "말해준 조건을 기준으로 지금 잘 맞는 편의점 조합을 찾아볼게요."
+    : "지금 기분과 상황을 반영해서 부담 없이 고를 수 있는 조합을 찾아볼게요.";
+
+  return {
+    emotion,
+    budget,
+    timeAvailableMinutes: timeMatch ? Number(timeMatch[1]) : null,
+    lateNight,
+    mealPurpose,
+    bodyCondition,
+    wantedTastes,
+    avoidConditions: [],
+    summary,
+  };
 }
 
 async function fetchProductFromOpenAITemporary(barcode) {
@@ -2879,17 +2999,16 @@ app.post("/api/auth/signin", async (req, res) => {
 });
 
 app.post("/api/bot/analyze", requireAuth, async (req, res) => {
-  if (!OPENAI_API_KEY) {
-    return res.status(503).json({
-      message: "AI 상황 분석이 아직 설정되지 않았어요.",
-    });
-  }
   const prompt = String(req.body.prompt || "").trim();
   const memoryNotes = Array.isArray(req.body.memoryNotes)
     ? req.body.memoryNotes.map(String).slice(0, 6)
     : [];
   if (!prompt) {
     return res.status(400).json({ message: "분석할 문장이 필요해요." });
+  }
+  const localAnalysis = analyzeBotPromptLocally(prompt);
+  if (!OPENAI_API_KEY) {
+    return res.json({ analysis: localAnalysis, source: "local-fallback" });
   }
 
   try {
@@ -2981,20 +3100,20 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
           },
         },
       }),
-      signal: AbortSignal.timeout(8000),
+      signal: AbortSignal.timeout(4000),
     });
 
     if (!response.ok) {
-      return res.status(502).json({ message: "AI 상황 분석에 실패했어요." });
+      return res.json({ analysis: localAnalysis, source: "local-fallback" });
     }
     const payload = await response.json();
     const analysis = tryParseJsonObject(extractResponsesText(payload));
     if (!analysis) {
-      return res.status(502).json({ message: "AI 분석 결과를 읽지 못했어요." });
+      return res.json({ analysis: localAnalysis, source: "local-fallback" });
     }
     return res.json({ analysis, source: "openai" });
   } catch (_) {
-    return res.status(502).json({ message: "AI 상황 분석이 잠시 지연되고 있어요." });
+    return res.json({ analysis: localAnalysis, source: "local-fallback" });
   }
 });
 
@@ -3160,15 +3279,75 @@ app.get("/api/posts", async (req, res) => {
   });
 });
 
+app.get("/api/posts/catalog", async (req, res) => {
+  const viewerId = String(req.query.viewerId || "").trim();
+  const currentUser = viewerId ? await findUserByIdLeanOrNull(viewerId) : null;
+  const posts = await Post.find({})
+    .select(
+      "authorId authorNickname authorProfileImageUrl title content priceMin priceMax categories likes dislikes comments reviews calories rating createdAt imageData imageUrl imageDatas imageUrls details topFiveEnteredAt topWorstEnteredAt"
+    )
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(1000);
+  await hydratePostAuthorImages(posts);
+  return res.json({
+    posts: posts.map((post) => serializePostCatalog(post, currentUser, req)),
+  });
+});
+
 app.get("/api/posts/feature-index", async (req, res) => {
   const posts = await Post.find({})
-    .select("authorId title likes dislikes comments reviews createdAt topFiveEnteredAt topWorstEnteredAt")
+    .select("authorId title likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt")
     .sort({ createdAt: -1, _id: -1 })
     .limit(1000);
 
   res.json({
     posts: posts.map(serializePostFeatureInfo),
   });
+});
+
+app.get("/api/posts/:id/images/:index", async (req, res) => {
+  const post = await Post.findById(req.params.id)
+    .select("imageData imageDatas")
+    .lean();
+  if (!post) return res.status(404).send("Post not found");
+
+  const images = post.imageDatas && post.imageDatas.length > 0
+    ? post.imageDatas
+    : (post.imageData ? [post.imageData] : []);
+  const rawImage = images[Number(req.params.index)];
+  if (!rawImage) return res.status(404).send("Image not found");
+
+  const dataUrlMatch = String(rawImage).match(/^data:([^;]+);base64,(.+)$/s);
+  const mimeType = dataUrlMatch?.[1] || "image/jpeg";
+  const base64 = dataUrlMatch?.[2] || String(rawImage).split(",").pop();
+  try {
+    const imageBuffer = Buffer.from(base64, "base64");
+    res.setHeader("Content-Type", mimeType);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.send(imageBuffer);
+  } catch (_) {
+    return res.status(415).send("Invalid image data");
+  }
+});
+
+app.get("/api/posts/:id/audience", async (req, res) => {
+  const postId = String(req.params.id || "");
+  if (!mongoose.Types.ObjectId.isValid(postId)) {
+    return res.status(400).json({ message: "게시글 정보가 올바르지 않아요." });
+  }
+  if (!(await Post.exists({ _id: postId }))) {
+    return res.status(404).json({ message: "게시글을 찾을 수 없어요." });
+  }
+
+  const users = await User.find({
+    likedPostIds: postId,
+    "botSetup.gender": { $in: ["남자", "여자"] },
+  })
+    .select("botSetup.gender")
+    .lean();
+  const maleCount = users.filter((user) => user.botSetup?.gender === "남자").length;
+  const femaleCount = users.filter((user) => user.botSetup?.gender === "여자").length;
+  return res.json({ maleCount, femaleCount, totalWithGender: maleCount + femaleCount });
 });
 
 app.post("/api/posts", async (req, res) => {
@@ -3327,9 +3506,18 @@ app.post("/api/posts/:id/like", async (req, res) => {
 
   if (likedIndex >= 0) {
     post.likes = Math.max(0, post.likes - 1);
+    post.likeEvents = (post.likeEvents || []).filter(
+      (event) => String(event.userId) !== userId
+    );
     user.likedPostIds.splice(likedIndex, 1);
   } else {
     post.likes += 1;
+    post.likeEvents = [
+      ...(post.likeEvents || []).filter(
+        (event) => String(event.userId) !== userId
+      ),
+      { userId, createdAt: new Date() },
+    ];
     user.likedPostIds.push(postId);
     if (dislikedIndex >= 0) {
       post.dislikes = Math.max(0, post.dislikes - 1);
@@ -3365,6 +3553,9 @@ app.post("/api/posts/:id/dislike", async (req, res) => {
     user.dislikedPostIds.push(postId);
     if (likedIndex >= 0) {
       post.likes = Math.max(0, post.likes - 1);
+      post.likeEvents = (post.likeEvents || []).filter(
+        (event) => String(event.userId) !== userId
+      );
       user.likedPostIds.splice(likedIndex, 1);
     }
   }

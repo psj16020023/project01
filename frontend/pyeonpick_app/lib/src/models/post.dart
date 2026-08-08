@@ -209,6 +209,22 @@ class PostDetails {
   }
 }
 
+class PostAudienceStats {
+  const PostAudienceStats({required this.maleCount, required this.femaleCount});
+
+  factory PostAudienceStats.fromJson(Map<String, dynamic> json) {
+    return PostAudienceStats(
+      maleCount: (json['maleCount'] as num?)?.toInt() ?? 0,
+      femaleCount: (json['femaleCount'] as num?)?.toInt() ?? 0,
+    );
+  }
+
+  final int maleCount;
+  final int femaleCount;
+
+  int get totalWithGender => maleCount + femaleCount;
+}
+
 class Post {
   const Post({
     required this.id,

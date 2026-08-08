@@ -23,6 +23,10 @@ abstract class PostRepository {
 
   Future<List<PostFeatureInfo>> fetchPostFeatureIndex();
 
+  Future<List<Post>> fetchPostCatalog({String? currentUserId});
+
+  Future<PostAudienceStats> fetchPostAudienceStats(String postId);
+
   Future<Post> toggleLike(String id, String currentUserId);
 
   Future<Post> toggleDislike(String id, String currentUserId);

@@ -179,6 +179,37 @@ class RemotePostRepository implements PostRepository {
   }
 
   @override
+  Future<List<Post>> fetchPostCatalog({String? currentUserId}) async {
+    final uri = Uri.parse('$baseUrl/posts/catalog').replace(
+      queryParameters: {
+        if (currentUserId != null && currentUserId.isNotEmpty)
+          'viewerId': currentUserId,
+      },
+    );
+    final response = await http.get(uri);
+    if (response.statusCode != 200) {
+      throw Exception('게시글 카탈로그 조회 실패');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    final items = json['posts'] as List<dynamic>? ?? const <dynamic>[];
+    return items
+        .map((item) => Post.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
+  Future<PostAudienceStats> fetchPostAudienceStats(String postId) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/posts/$postId/audience'),
+    );
+    if (response.statusCode != 200) {
+      throw Exception('게시글 성비 조회 실패');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return PostAudienceStats.fromJson(json);
+  }
+
+  @override
   Future<Post> toggleLike(String id, String currentUserId) async {
     final response = await http.post(
       Uri.parse('$baseUrl/posts/$id/like'),

@@ -312,6 +312,20 @@ class MockPostRepository implements PostRepository {
   }
 
   @override
+  Future<List<Post>> fetchPostCatalog({String? currentUserId}) async {
+    await _ensureLoaded();
+    return _posts
+        .map((post) => _withViewerReaction(post, currentUserId))
+        .toList();
+  }
+
+  @override
+  Future<PostAudienceStats> fetchPostAudienceStats(String postId) async {
+    await _ensureLoaded();
+    return const PostAudienceStats(maleCount: 0, femaleCount: 0);
+  }
+
+  @override
   Future<Post> toggleLike(String id, String currentUserId) async {
     await _ensureLoaded();
     final index = _posts.indexWhere((post) => post.id == id);

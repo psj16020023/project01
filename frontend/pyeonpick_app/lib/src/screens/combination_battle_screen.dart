@@ -222,27 +222,9 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   }
 
   Future<List<Post>> _fetchAllBattlePosts() async {
-    final byId = <String, Post>{};
-    String? cursor;
-    var hasMore = true;
-    var guard = 0;
-
-    while (hasMore && guard < 80) {
-      guard += 1;
-      final page = await widget.repository.fetchPosts(
-        currentUserId: widget.currentUser.id,
-        cursor: cursor,
-        limit: 20,
-        sortMode: SortMode.latest,
-      );
-      for (final post in page.posts) {
-        byId[post.id] = post;
-      }
-      cursor = page.nextCursor;
-      hasMore = page.hasMore && cursor != null && cursor.isNotEmpty;
-    }
-
-    return byId.values.toList();
+    return widget.repository.fetchPostCatalog(
+      currentUserId: widget.currentUser.id,
+    );
   }
 
   Post? _postForId(String id) {

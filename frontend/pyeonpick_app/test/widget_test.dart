@@ -275,6 +275,7 @@ void main() {
     expect(find.text('카테고리'), findsNothing);
     expect(find.text('최신순'), findsOneWidget);
     expect(find.text('이번주 인기'), findsOneWidget);
+    expect(find.text('재평가'), findsOneWidget);
     await tester.tap(find.widgetWithText(TextField, '제목 검색'));
     await tester.pump();
     expect(find.text('카테고리'), findsOneWidget);

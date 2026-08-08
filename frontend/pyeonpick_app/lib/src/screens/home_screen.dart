@@ -191,7 +191,8 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
   if (posts.isEmpty) return const <_CommunityTrendGroup>[];
   final now = DateTime.now();
   final weekAgo = now.subtract(const Duration(days: 7));
-  final oldLine = now.subtract(const Duration(days: 14));
+  final oldLine = now.subtract(const Duration(days: 7));
+  final activityWindow = now.subtract(const Duration(days: 30));
 
   List<PostFeatureInfo> ranked(
     Iterable<PostFeatureInfo> candidates,
@@ -220,18 +221,26 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
     (post) => _communityMomentumScore(post, now),
     limit: 3,
   );
-  final weeklyPopular = ranked(
-    posts.where(qualifiesForPopularity),
-    (post) => (post.likes * 5) + (post.reviewCount * 4) - post.dislikes,
-  );
   final rediscovered = ranked(
     posts.where(
       (post) =>
           post.createdAt.isBefore(oldLine) &&
-          (post.topFiveEnteredAt?.isAfter(weekAgo) ?? false),
+          (post.recentLikeCount >= 2 ||
+              (post.topFiveEnteredAt?.isAfter(activityWindow) ?? false)),
     ),
     (post) =>
-        (post.likes * 4) + (post.reviewCount * 6) + (post.commentCount * 3),
+        (post.recentLikeCount * 12) +
+        (post.likes * 4) +
+        (post.reviewCount * 6) +
+        (post.commentCount * 3),
+  );
+  final rediscoveredIds = rediscovered.map((post) => post.id).toSet();
+  final weeklyPopular = ranked(
+    posts.where(
+      (post) =>
+          qualifiesForPopularity(post) && !rediscoveredIds.contains(post.id),
+    ),
+    (post) => (post.likes * 5) + (post.reviewCount * 4) - post.dislikes,
   );
 
   return <_CommunityTrendGroup>[
@@ -243,14 +252,13 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
         color: const Color(0xFFFF7A1A),
         posts: weeklyPopular,
       ),
-    if (rediscovered.isNotEmpty)
-      _CommunityTrendGroup(
-        label: '재평가',
-        caption: '오래된 글이 인기권 재진입',
-        icon: Icons.replay_circle_filled_rounded,
-        color: const Color(0xFF4F7DF0),
-        posts: rediscovered,
-      ),
+    _CommunityTrendGroup(
+      label: '재평가',
+      caption: rediscovered.isEmpty ? '조건에 맞는 글을 기다리는 중' : '오래된 글이 다시 주목받는 중',
+      icon: Icons.replay_circle_filled_rounded,
+      color: const Color(0xFF4F7DF0),
+      posts: rediscovered,
+    ),
     if (weeklyRising.isNotEmpty)
       _CommunityTrendGroup(
         label: '이번주 급상승',
@@ -302,8 +310,6 @@ class _HomeScreenState extends State<HomeScreen> {
   List<Post> _botRecommendationPosts = <Post>[];
   Post? _detailPost;
   String? _nextPostsCursor;
-  String? _nextBotPostsCursor;
-  bool _hasMoreBotPosts = true;
   bool _loadingFeaturePostPool = false;
   List<PyeonUser> _knownUsers = <PyeonUser>[];
 
@@ -335,6 +341,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadKnownUsers();
     _loadPosts();
     unawaited(_loadPostFeatureIndex());
+    unawaited(_loadFeaturePostPool());
   }
 
   @override
@@ -381,7 +388,7 @@ class _HomeScreenState extends State<HomeScreen> {
     }
   }
 
-  Future<void> _loadPosts({bool reset = true}) async {
+  Future<void> _loadPosts({bool reset = true, int attempt = 0}) async {
     setState(() {
       if (reset) {
         _loading = true;
@@ -427,6 +434,10 @@ class _HomeScreenState extends State<HomeScreen> {
         _loadingMore = false;
       });
     } catch (_) {
+      if (attempt == 0 && mounted) {
+        await Future<void>.delayed(const Duration(milliseconds: 350));
+        return _loadPosts(reset: reset, attempt: 1);
+      }
       if (!mounted) return;
       setState(() {
         _loading = false;
@@ -537,28 +548,14 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _loadBotRecommendationPool({bool reset = false}) async {
-    if (!reset && !_hasMoreBotPosts) return;
+    if (!reset && _botRecommendationPosts.isNotEmpty) return;
     try {
-      final page = await widget.repository.fetchPosts(
-        query: '',
-        selectedTags: const <String>[],
-        minPrice: null,
-        maxPrice: null,
+      final posts = await widget.repository.fetchPostCatalog(
         currentUserId: widget.currentUser.id,
-        cursor: reset ? null : _nextBotPostsCursor,
-        limit: 20,
-        sortMode: SortMode.latest,
       );
-      final merged = <String, Post>{
-        if (!reset)
-          for (final post in _botRecommendationPosts) post.id: post,
-        for (final post in page.posts) post.id: post,
-      }.values.toList();
       if (!mounted) return;
       setState(() {
-        _botRecommendationPosts = merged;
-        _nextBotPostsCursor = page.nextCursor;
-        _hasMoreBotPosts = page.hasMore;
+        _botRecommendationPosts = posts.map(_withCurrentUserReaction).toList();
       });
     } catch (_) {
       // Existing loaded posts remain available as the fallback pool.
@@ -566,31 +563,10 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<List<Post>> _fetchAllPostsForFunctions() async {
-    final byId = <String, Post>{};
-    String? cursor;
-    var hasMore = true;
-    var guard = 0;
-
-    while (hasMore && guard < 80) {
-      guard += 1;
-      final page = await widget.repository.fetchPosts(
-        query: '',
-        selectedTags: const <String>[],
-        minPrice: null,
-        maxPrice: null,
-        currentUserId: widget.currentUser.id,
-        cursor: cursor,
-        limit: 20,
-        sortMode: SortMode.latest,
-      );
-      for (final post in page.posts.map(_withCurrentUserReaction)) {
-        byId[post.id] = post;
-      }
-      cursor = page.nextCursor;
-      hasMore = page.hasMore && cursor != null && cursor.isNotEmpty;
-    }
-
-    return byId.values.toList();
+    final posts = await widget.repository.fetchPostCatalog(
+      currentUserId: widget.currentUser.id,
+    );
+    return posts.map(_withCurrentUserReaction).toList();
   }
 
   Future<List<Post>> _ensureFeaturePostPool() async {
@@ -599,8 +575,10 @@ class _HomeScreenState extends State<HomeScreen> {
     return _allFunctionalPosts;
   }
 
-  Future<void> _loadFeaturePostPool() async {
-    if (_loadingFeaturePostPool) return;
+  Future<void> _loadFeaturePostPool({bool reset = false}) async {
+    if (_loadingFeaturePostPool || (!reset && _featurePostPool.isNotEmpty)) {
+      return;
+    }
     _loadingFeaturePostPool = true;
     try {
       final posts = await _fetchAllPostsForFunctions();
@@ -608,6 +586,7 @@ class _HomeScreenState extends State<HomeScreen> {
       if (!mounted) return;
       setState(() {
         _featurePostPool = posts;
+        _botRecommendationPosts = posts;
         for (final post in posts) {
           _upsertPostFeature(post);
         }
@@ -698,11 +677,14 @@ class _HomeScreenState extends State<HomeScreen> {
   void _applyUpdatedPost(Post updated) {
     final nextPosts = [..._posts];
     final index = nextPosts.indexWhere((post) => post.id == updated.id);
-    if (index == -1) {
-      setState(() => _upsertPostFeature(updated));
-      return;
+    if (index != -1) {
+      nextPosts[index] = updated;
     }
-    nextPosts[index] = updated;
+    final nextPool = [..._featurePostPool];
+    final poolIndex = nextPool.indexWhere((post) => post.id == updated.id);
+    if (poolIndex != -1) {
+      nextPool[poolIndex] = updated;
+    }
     nextPosts.sort((a, b) {
       switch (_sortMode) {
         case SortMode.latest:
@@ -721,6 +703,7 @@ class _HomeScreenState extends State<HomeScreen> {
     });
     setState(() {
       _posts = nextPosts;
+      _featurePostPool = nextPool;
       _upsertPostFeature(updated);
       if (_detailPost?.id == updated.id) {
         _detailPost = updated;
@@ -754,8 +737,10 @@ class _HomeScreenState extends State<HomeScreen> {
         builder: (context) => PostDetailPage(
           post: _findPostById(post.id) ?? post,
           currentUser: widget.currentUser,
-          allPosts: _posts,
+          allPosts: _allFunctionalPosts,
           allUsers: _allUsersForStats,
+          onLoadAudienceStats: () =>
+              widget.repository.fetchPostAudienceStats(post.id),
           isMine: post.authorId == widget.currentUser.id,
           isSaved: widget.currentUser.savedPostIds.contains(post.id),
           isPickedAuthor: widget.currentUser.pickedAuthorIds.contains(
@@ -844,6 +829,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (changed == true) {
       await _loadPosts();
       await _loadPostFeatureIndex();
+      await _loadFeaturePostPool(reset: true);
     }
   }
 
@@ -852,6 +838,7 @@ class _HomeScreenState extends State<HomeScreen> {
     setState(() => _removePostFeature(post.id));
     await _loadPosts();
     await _loadPostFeatureIndex();
+    await _loadFeaturePostPool(reset: true);
   }
 
   Future<void> _saveBotSetup(BotSetup setup) async {
@@ -2433,7 +2420,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case AppTab.battle:
         return CombinationBattleScreen(
           currentUser: widget.currentUser,
-          posts: _posts,
+          posts: _allFunctionalPosts,
           repository: widget.repository,
           onUserChanged: widget.onUserChanged,
           onOpenPost: _openPostDetail,
@@ -2446,7 +2433,7 @@ class _HomeScreenState extends State<HomeScreen> {
         return PyeonBotPage(
           currentUser: widget.currentUser,
           posts: _botRecommendationPosts.isEmpty
-              ? _posts
+              ? (_allFunctionalPosts.isEmpty ? _posts : _allFunctionalPosts)
               : _botRecommendationPosts,
           onSend: _sendBotPrompt,
           onMore: _sendMoreBotRecommendations,
@@ -2457,7 +2444,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case AppTab.profile:
         return ProfilePage(
           currentUser: widget.currentUser,
-          posts: _posts,
+          posts: _allFunctionalPosts,
           onUserChanged: widget.onUserChanged,
           onResetBotSetup: _resetBotSetup,
           onLogout: widget.onLogout,
@@ -3621,44 +3608,54 @@ class _CommunityTrendStrip extends StatelessWidget {
               ),
               const SizedBox(height: 14),
               Expanded(
-                child: ListView.separated(
-                  itemCount: group.posts.length,
-                  separatorBuilder: (_, _) =>
-                      const Divider(height: 1, color: Color(0xFFE8EEF2)),
-                  itemBuilder: (context, index) {
-                    final post = group.posts[index];
-                    return ListTile(
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 2,
-                        vertical: 5,
-                      ),
-                      title: Text(
-                        post.title,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.ink,
-                          fontWeight: FontWeight.w900,
+                child: group.posts.isEmpty
+                    ? const Center(
+                        child: Text(
+                          '아직 재평가 조건을 충족한 글이 없어요.',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w700,
+                          ),
                         ),
+                      )
+                    : ListView.separated(
+                        itemCount: group.posts.length,
+                        separatorBuilder: (_, _) =>
+                            const Divider(height: 1, color: Color(0xFFE8EEF2)),
+                        itemBuilder: (context, index) {
+                          final post = group.posts[index];
+                          return ListTile(
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 2,
+                              vertical: 5,
+                            ),
+                            title: Text(
+                              post.title,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.ink,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                            subtitle: Text(
+                              '하트 ${post.likes} · 후기 ${post.reviewCount}',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                            trailing: const Icon(
+                              Icons.chevron_right_rounded,
+                              color: AppColors.muted,
+                            ),
+                            onTap: () {
+                              Navigator.of(sheetContext).pop();
+                              onOpenPost(post);
+                            },
+                          );
+                        },
                       ),
-                      subtitle: Text(
-                        '하트 ${post.likes} · 후기 ${post.reviewCount}',
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      trailing: const Icon(
-                        Icons.chevron_right_rounded,
-                        color: AppColors.muted,
-                      ),
-                      onTap: () {
-                        Navigator.of(sheetContext).pop();
-                        onOpenPost(post);
-                      },
-                    );
-                  },
-                ),
               ),
             ],
           ),
@@ -3677,7 +3674,9 @@ class _CommunityTrendStrip extends StatelessWidget {
         separatorBuilder: (_, _) => const SizedBox(width: 9),
         itemBuilder: (context, index) {
           final item = picks[index];
-          final post = item.posts.first;
+          final postTitle = item.posts.isEmpty
+              ? '아직 해당 글 없음'
+              : item.posts.first.title;
           return InkWell(
             onTap: () => _openGroup(context, item),
             borderRadius: BorderRadius.circular(16),
@@ -3725,7 +3724,7 @@ class _CommunityTrendStrip extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          post.title,
+                          postTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -7297,6 +7296,7 @@ class PostDetailPage extends StatefulWidget {
     required this.currentUser,
     required this.allPosts,
     required this.allUsers,
+    required this.onLoadAudienceStats,
     required this.isMine,
     required this.isSaved,
     required this.isPickedAuthor,
@@ -7318,6 +7318,7 @@ class PostDetailPage extends StatefulWidget {
   final PyeonUser currentUser;
   final List<Post> allPosts;
   final List<PyeonUser> allUsers;
+  final Future<PostAudienceStats> Function() onLoadAudienceStats;
   final bool isMine;
   final bool isSaved;
   final bool isPickedAuthor;
@@ -7343,6 +7344,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
   late Post _post;
   late bool _saved;
   late bool _pickedAuthor;
+  PostAudienceStats? _audienceStats;
 
   @override
   void initState() {
@@ -7350,6 +7352,17 @@ class _PostDetailPageState extends State<PostDetailPage> {
     _post = widget.post;
     _saved = widget.isSaved;
     _pickedAuthor = widget.isPickedAuthor;
+    unawaited(_loadAudienceStats());
+  }
+
+  Future<void> _loadAudienceStats() async {
+    try {
+      final stats = await widget.onLoadAudienceStats();
+      if (!mounted) return;
+      setState(() => _audienceStats = stats);
+    } catch (_) {
+      // Local account data remains available as a fallback.
+    }
   }
 
   Future<void> _openPhotoViewer() async {
@@ -7588,6 +7601,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                           final updated = await widget.onToggleLike();
                           if (!mounted) return;
                           setState(() => _post = updated);
+                          unawaited(_loadAudienceStats());
                         },
                       ),
                     ),
@@ -7637,6 +7651,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
           const SizedBox(height: 16),
           _PostLikeAudienceCard(
             likedUsers: _likedUsers,
+            audienceStats: _audienceStats,
             reviews: _post.reviews,
           ),
         ],
@@ -7675,15 +7690,17 @@ class _PostDetailsSection extends StatelessWidget {
 class _PostLikeAudienceCard extends StatelessWidget {
   const _PostLikeAudienceCard({
     required this.likedUsers,
+    required this.audienceStats,
     required this.reviews,
   });
 
   final List<PyeonUser> likedUsers;
+  final PostAudienceStats? audienceStats;
   final List<PostReview> reviews;
 
   @override
   Widget build(BuildContext context) {
-    final total = likedUsers.where((user) {
+    final localTotal = likedUsers.where((user) {
       final gender = user.botSetup?.gender;
       return gender == '여자' || gender == '남자';
     }).length;
@@ -7696,6 +7713,11 @@ class _PostLikeAudienceCard extends StatelessWidget {
         genderCounts[setup.gender] = genderCounts[setup.gender]! + 1;
       }
     }
+    if (audienceStats != null) {
+      genderCounts['남자'] = audienceStats!.maleCount;
+      genderCounts['여자'] = audienceStats!.femaleCount;
+    }
+    final total = audienceStats?.totalWithGender ?? localTotal;
 
     String ratio(int count) {
       if (total == 0) return '0%';
