@@ -2304,6 +2304,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final screenWidth = MediaQuery.sizeOf(context).width;
+    final desktop = screenWidth >= 900;
     return Scaffold(
       floatingActionButton: _selectedTab == AppTab.communication
           ? FloatingActionButton(
@@ -2328,42 +2330,76 @@ class _HomeScreenState extends State<HomeScreen> {
               Container(
                 width: double.infinity,
                 color: AppColors.sky,
-                padding: const EdgeInsets.fromLTRB(16, 8, 12, 8),
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Row(
-                      crossAxisAlignment: CrossAxisAlignment.center,
-                      children: [
-                        const Expanded(
-                          child: Text(
-                            '편pick!',
-                            style: TextStyle(
-                              color: AppColors.navy,
-                              fontWeight: FontWeight.w900,
-                              fontSize: 20,
-                              letterSpacing: -0.8,
-                            ),
+                child: Center(
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(maxWidth: 1180),
+                    child: Padding(
+                      padding: EdgeInsets.fromLTRB(
+                        desktop ? 24 : 16,
+                        desktop ? 12 : 8,
+                        desktop ? 24 : 12,
+                        desktop ? 12 : 8,
+                      ),
+                      child: Column(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Row(
+                            crossAxisAlignment: CrossAxisAlignment.center,
+                            children: [
+                              Expanded(
+                                child: Text(
+                                  '편pick!',
+                                  style: TextStyle(
+                                    color: AppColors.navy,
+                                    fontWeight: FontWeight.w900,
+                                    fontSize: desktop ? 28 : 20,
+                                    letterSpacing: -0.8,
+                                  ),
+                                ),
+                              ),
+                              _UserPill(
+                                user: widget.currentUser,
+                                onTap: _showOwnProfileTab,
+                              ),
+                            ],
                           ),
-                        ),
-                        _UserPill(
-                          user: widget.currentUser,
-                          onTap: _showOwnProfileTab,
-                        ),
-                      ],
+                          SizedBox(height: desktop ? 12 : 7),
+                          FeatureTabs(
+                            selectedTab: _selectedTab,
+                            onChanged: (tab) =>
+                                setState(() => _selectedTab = tab),
+                          ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 7),
-                    FeatureTabs(
-                      selectedTab: _selectedTab,
-                      onChanged: (tab) => setState(() => _selectedTab = tab),
-                    ),
-                  ],
+                  ),
                 ),
               ),
               Expanded(
                 child: Container(
                   color: Colors.white,
-                  child: _buildSelectedPage(),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final maxWidth = switch (_selectedTab) {
+                        AppTab.communication => 1180.0,
+                        AppTab.battle => 1320.0,
+                        AppTab.bot => 940.0,
+                        AppTab.profile => 1100.0,
+                      };
+                      return Align(
+                        alignment: Alignment.topCenter,
+                        child: ConstrainedBox(
+                          constraints: BoxConstraints(maxWidth: maxWidth),
+                          child: SizedBox(
+                            width: constraints.maxWidth < maxWidth
+                                ? double.infinity
+                                : maxWidth,
+                            child: _buildSelectedPage(),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               ),
             ],
@@ -2561,128 +2597,135 @@ class CommunicationBody extends StatelessWidget {
     final newProductCount = featureIndex.where(_featureHasNewProduct).length;
     final pbProductCount = featureIndex.where(_featureHasPbProduct).length;
     final trendPicks = _buildCommunityTrendPicks(featureIndex);
-    final rowCount = (posts.length / 2).ceil();
 
-    return RefreshIndicator(
-      color: AppColors.limeDeep,
-      onRefresh: onReload,
-      child: ListView(
-        controller: scrollController,
-        physics: const AlwaysScrollableScrollPhysics(),
-        padding: const EdgeInsets.fromLTRB(16, 14, 16, 100),
-        children: [
-          Toolbar(
-            searchController: searchController,
-            titleSuggestions: featureIndex.map((post) => post.title).toList(),
-            minFilterController: minFilterController,
-            maxFilterController: maxFilterController,
-            selectedTags: selectedTags,
-            likedGenderMajority: likedGenderMajority,
-            onSearch: onReload,
-            onToggleTag: onToggleSearchTag,
-            onChangeLikedGenderMajority: onChangeLikedGenderMajority,
-            onShuffle: onShuffle,
-            onScanBarcode: onScanBarcode,
-          ),
-          const SizedBox(height: 12),
-          _HighlightNavigation(
-            newProductCount: newProductCount,
-            pbProductCount: pbProductCount,
-            onOpenNew: () =>
-                onOpenCollection(HighlightCollectionType.newProduct),
-            onOpenPb: () => onOpenCollection(HighlightCollectionType.pbProduct),
-          ),
-          if (trendPicks.isNotEmpty) ...[
-            const SizedBox(height: 12),
-            _CommunityTrendStrip(
-              picks: trendPicks,
-              onOpenPost: (post) => unawaited(onOpenFeaturePost(post)),
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = constraints.maxWidth >= 1040
+            ? 3
+            : constraints.maxWidth >= 620
+            ? 2
+            : 1;
+        final gap = constraints.maxWidth >= 900 ? 16.0 : 12.0;
+        final horizontalPadding = constraints.maxWidth >= 900 ? 24.0 : 16.0;
+        final rowCount = (posts.length / columns).ceil();
+
+        return RefreshIndicator(
+          color: AppColors.limeDeep,
+          onRefresh: onReload,
+          child: ListView(
+            controller: scrollController,
+            physics: const AlwaysScrollableScrollPhysics(),
+            padding: EdgeInsets.fromLTRB(
+              horizontalPadding,
+              constraints.maxWidth >= 900 ? 22 : 14,
+              horizontalPadding,
+              100,
             ),
-          ],
-          const SizedBox(height: 18),
-          Row(
             children: [
-              const Expanded(
-                child: Text(
-                  '전체 게시글',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 18,
-                    fontWeight: FontWeight.w900,
-                  ),
+              Toolbar(
+                searchController: searchController,
+                titleSuggestions: featureIndex
+                    .map((post) => post.title)
+                    .toList(),
+                minFilterController: minFilterController,
+                maxFilterController: maxFilterController,
+                selectedTags: selectedTags,
+                likedGenderMajority: likedGenderMajority,
+                onSearch: onReload,
+                onToggleTag: onToggleSearchTag,
+                onChangeLikedGenderMajority: onChangeLikedGenderMajority,
+                onShuffle: onShuffle,
+                onScanBarcode: onScanBarcode,
+              ),
+              const SizedBox(height: 12),
+              _HighlightNavigation(
+                newProductCount: newProductCount,
+                pbProductCount: pbProductCount,
+                onOpenNew: () =>
+                    onOpenCollection(HighlightCollectionType.newProduct),
+                onOpenPb: () =>
+                    onOpenCollection(HighlightCollectionType.pbProduct),
+              ),
+              if (trendPicks.isNotEmpty) ...[
+                const SizedBox(height: 12),
+                _CommunityTrendStrip(
+                  picks: trendPicks,
+                  onOpenPost: (post) => unawaited(onOpenFeaturePost(post)),
                 ),
-              ),
-              SortSelector(
-                sortMode: sortMode,
-                onChanged: onChangeSort,
-                compact: true,
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          const Divider(height: 1, color: AppColors.line),
-          const SizedBox(height: 14),
-          if (posts.isEmpty)
-            const EmptyState()
-          else
-            ...List.generate(rowCount, (rowIndex) {
-              final leftIndex = rowIndex * 2;
-              final rightIndex = leftIndex + 1;
-              final leftPost = posts[leftIndex];
-              final Post? rightPost = rightIndex < posts.length
-                  ? posts[rightIndex]
-                  : null;
-              return Padding(
-                padding: const EdgeInsets.only(bottom: 12),
-                child: Row(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Expanded(
-                      child: PostCard(
-                        post: leftPost,
-                        isMine: leftPost.authorId == currentUser.id,
-                        isSaved: currentUser.savedPostIds.contains(leftPost.id),
-                        onToggleLike: () => onToggleLike(leftPost),
-                        onToggleDislike: () => onToggleDislike(leftPost),
-                        onToggleSave: () => onToggleSave(leftPost.id),
-                        onEdit: () => onEditPost(leftPost),
-                        onDelete: () => onDeletePost(leftPost),
-                        onOpenAuthor: () => onOpenAuthor(leftPost),
-                        onOpenPost: () => onOpenPost(leftPost),
+              ],
+              const SizedBox(height: 18),
+              Row(
+                children: [
+                  const Expanded(
+                    child: Text(
+                      '전체 게시글',
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w900,
                       ),
                     ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: rightPost == null
-                          ? const SizedBox.shrink()
-                          : PostCard(
-                              post: rightPost,
-                              isMine: rightPost.authorId == currentUser.id,
-                              isSaved: currentUser.savedPostIds.contains(
-                                rightPost.id,
-                              ),
-                              onToggleLike: () => onToggleLike(rightPost),
-                              onToggleDislike: () => onToggleDislike(rightPost),
-                              onToggleSave: () => onToggleSave(rightPost.id),
-                              onEdit: () => onEditPost(rightPost),
-                              onDelete: () => onDeletePost(rightPost),
-                              onOpenAuthor: () => onOpenAuthor(rightPost),
-                              onOpenPost: () => onOpenPost(rightPost),
-                            ),
-                    ),
-                  ],
-                ),
-              );
-            }),
-          if (loadingMore)
-            const Padding(
-              padding: EdgeInsets.symmetric(vertical: 20),
-              child: Center(
-                child: CircularProgressIndicator(color: AppColors.limeDeep),
+                  ),
+                  SortSelector(
+                    sortMode: sortMode,
+                    onChanged: onChangeSort,
+                    compact: true,
+                  ),
+                ],
               ),
-            ),
-        ],
-      ),
+              const SizedBox(height: 8),
+              const Divider(height: 1, color: AppColors.line),
+              const SizedBox(height: 14),
+              if (posts.isEmpty)
+                const EmptyState()
+              else
+                ...List.generate(rowCount, (rowIndex) {
+                  return Padding(
+                    padding: EdgeInsets.only(bottom: gap),
+                    child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        for (var column = 0; column < columns; column++) ...[
+                          if (column > 0) SizedBox(width: gap),
+                          Expanded(
+                            child: () {
+                              final index = rowIndex * columns + column;
+                              if (index >= posts.length) {
+                                return const SizedBox.shrink();
+                              }
+                              final post = posts[index];
+                              return PostCard(
+                                post: post,
+                                isMine: post.authorId == currentUser.id,
+                                isSaved: currentUser.savedPostIds.contains(
+                                  post.id,
+                                ),
+                                onToggleLike: () => onToggleLike(post),
+                                onToggleDislike: () => onToggleDislike(post),
+                                onToggleSave: () => onToggleSave(post.id),
+                                onEdit: () => onEditPost(post),
+                                onDelete: () => onDeletePost(post),
+                                onOpenAuthor: () => onOpenAuthor(post),
+                                onOpenPost: () => onOpenPost(post),
+                              );
+                            }(),
+                          ),
+                        ],
+                      ],
+                    ),
+                  );
+                }),
+              if (loadingMore)
+                const Padding(
+                  padding: EdgeInsets.symmetric(vertical: 20),
+                  child: Center(
+                    child: CircularProgressIndicator(color: AppColors.limeDeep),
+                  ),
+                ),
+            ],
+          ),
+        );
+      },
     );
   }
 }
@@ -2746,40 +2789,50 @@ class FeatureTabs extends StatelessWidget {
       (tab: AppTab.profile, label: '내 정보'),
     ];
 
-    return Row(
-      children: tabs.map((item) {
-        final active = selectedTab == item.tab;
-        return Expanded(
-          child: InkWell(
-            onTap: () => onChanged(item.tab),
-            borderRadius: BorderRadius.circular(8),
-            child: AnimatedContainer(
-              duration: const Duration(milliseconds: 160),
-              alignment: Alignment.center,
-              padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 7),
-              decoration: BoxDecoration(
-                color: active
-                    ? Colors.white.withAlpha(210)
-                    : Colors.transparent,
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final desktop = constraints.maxWidth >= 760;
+        return Row(
+          children: tabs.map((item) {
+            final active = selectedTab == item.tab;
+            return Expanded(
+              child: InkWell(
+                onTap: () => onChanged(item.tab),
                 borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: active ? const Color(0xFFCFE2EA) : Colors.transparent,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  alignment: Alignment.center,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: desktop ? 10 : 3,
+                    vertical: desktop ? 11 : 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: active
+                        ? Colors.white.withAlpha(220)
+                        : Colors.transparent,
+                    borderRadius: BorderRadius.circular(8),
+                    border: Border.all(
+                      color: active
+                          ? const Color(0xFFCFE2EA)
+                          : Colors.transparent,
+                    ),
+                  ),
+                  child: Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: desktop ? 14 : 11,
+                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                      color: active ? AppColors.navy : const Color(0xFF68859A),
+                    ),
+                  ),
                 ),
               ),
-              child: Text(
-                item.label,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: TextStyle(
-                  fontSize: 11,
-                  fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                  color: active ? AppColors.navy : const Color(0xFF68859A),
-                ),
-              ),
-            ),
-          ),
+            );
+          }).toList(),
         );
-      }).toList(),
+      },
     );
   }
 }
@@ -5242,11 +5295,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
     _controller.clear();
     late final BotTurnResult result;
     try {
-      result = await widget.onSend(
-        value,
-        _useAgeCalorieGuide,
-        _currentBudget,
-      );
+      result = await widget.onSend(value, _useAgeCalorieGuide, _currentBudget);
     } catch (_) {
       if (!mounted) return;
       setState(() => _sending = false);
@@ -5485,9 +5534,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                               ),
                               const SizedBox(width: 5),
                               Text(
-                                _useAgeCalorieGuide
-                                    ? '권장 칼로리 반영'
-                                    : '권장 칼로리 제외',
+                                _useAgeCalorieGuide ? '권장 칼로리 반영' : '권장 칼로리 제외',
                                 style: TextStyle(
                                   color: _useAgeCalorieGuide
                                       ? AppColors.navy
@@ -5691,8 +5738,20 @@ class _BotSetupPageState extends State<BotSetupPage> {
                 const SizedBox(height: 10),
                 SegmentedButton<String>(
                   segments: const [
-                    ButtonSegment(value: '여자', label: Text('여자')),
-                    ButtonSegment(value: '남자', label: Text('남자')),
+                    ButtonSegment(
+                      value: '여자',
+                      label: SizedBox(
+                        width: 42,
+                        child: Center(child: Text('여자', maxLines: 1)),
+                      ),
+                    ),
+                    ButtonSegment(
+                      value: '남자',
+                      label: SizedBox(
+                        width: 42,
+                        child: Center(child: Text('남자', maxLines: 1)),
+                      ),
+                    ),
                   ],
                   selected: {_gender},
                   onSelectionChanged: (values) =>
