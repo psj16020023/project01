@@ -248,7 +248,6 @@ void main() {
             maxFilterController: maxController,
             sortMode: SortMode.latest,
             selectedTags: const <String>{},
-            likedGenderMajority: null,
             scrollController: scrollController,
             hasMorePosts: false,
             loadingMore: false,
@@ -264,7 +263,6 @@ void main() {
             onOpenPost: (_) async {},
             onOpenFeaturePost: (_) async {},
             onToggleSearchTag: (_) async {},
-            onChangeLikedGenderMajority: (_) {},
             onOpenCollection: (_) {},
             onShuffle: () {},
             onScanBarcode: () async {},
@@ -277,6 +275,7 @@ void main() {
     expect(find.text('최신순'), findsOneWidget);
     expect(find.text('이번주 인기'), findsOneWidget);
     expect(find.text('재평가'), findsOneWidget);
+    expect(find.text('하트 성비'), findsNothing);
     await tester.tap(find.widgetWithText(TextField, '제목 검색'));
     await tester.pump();
     expect(find.text('카테고리'), findsOneWidget);

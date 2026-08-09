@@ -10,6 +10,8 @@ class PostFeatureInfo {
     required this.commentCount,
     required this.reviewCount,
     required this.recentLikeCount,
+    required this.maleLikeCount,
+    required this.femaleLikeCount,
     required this.createdAt,
     required this.topFiveEnteredAt,
     required this.topWorstEnteredAt,
@@ -25,6 +27,8 @@ class PostFeatureInfo {
       commentCount: json['commentCount'] as int? ?? 0,
       reviewCount: json['reviewCount'] as int? ?? 0,
       recentLikeCount: json['recentLikeCount'] as int? ?? 0,
+      maleLikeCount: json['maleLikeCount'] as int? ?? 0,
+      femaleLikeCount: json['femaleLikeCount'] as int? ?? 0,
       createdAt:
           DateTime.tryParse(json['createdAt'] as String? ?? '') ??
           DateTime.now(),
@@ -47,6 +51,8 @@ class PostFeatureInfo {
       commentCount: post.comments.length,
       reviewCount: post.reviews.length,
       recentLikeCount: 0,
+      maleLikeCount: 0,
+      femaleLikeCount: 0,
       createdAt: post.createdAt,
       topFiveEnteredAt: post.topFiveEnteredAt,
       topWorstEnteredAt: post.topWorstEnteredAt,
@@ -61,7 +67,35 @@ class PostFeatureInfo {
   final int commentCount;
   final int reviewCount;
   final int recentLikeCount;
+  final int maleLikeCount;
+  final int femaleLikeCount;
   final DateTime createdAt;
   final DateTime? topFiveEnteredAt;
   final DateTime? topWorstEnteredAt;
+
+  int get genderLikeTotal => maleLikeCount + femaleLikeCount;
+
+  double get maleLikeRatio =>
+      genderLikeTotal == 0 ? 0 : maleLikeCount / genderLikeTotal;
+
+  double get femaleLikeRatio =>
+      genderLikeTotal == 0 ? 0 : femaleLikeCount / genderLikeTotal;
+
+  PostFeatureInfo copyWith({int? maleLikeCount, int? femaleLikeCount}) {
+    return PostFeatureInfo(
+      id: id,
+      authorId: authorId,
+      title: title,
+      likes: likes,
+      dislikes: dislikes,
+      commentCount: commentCount,
+      reviewCount: reviewCount,
+      recentLikeCount: recentLikeCount,
+      maleLikeCount: maleLikeCount ?? this.maleLikeCount,
+      femaleLikeCount: femaleLikeCount ?? this.femaleLikeCount,
+      createdAt: createdAt,
+      topFiveEnteredAt: topFiveEnteredAt,
+      topWorstEnteredAt: topWorstEnteredAt,
+    );
+  }
 }

@@ -211,6 +211,20 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
     return post.likes >= 10 && post.likes >= math.max(1, post.dislikes * 3);
   }
 
+  bool hasGenderMajority(PostFeatureInfo post, String gender) {
+    if (post.genderLikeTotal <= 0) return false;
+    final ratio = gender == 'male' ? post.maleLikeRatio : post.femaleLikeRatio;
+    return ratio >= 0.75;
+  }
+
+  int genderMajorityScore(PostFeatureInfo post, String gender) {
+    final targetCount = gender == 'male'
+        ? post.maleLikeCount
+        : post.femaleLikeCount;
+    final ratio = gender == 'male' ? post.maleLikeRatio : post.femaleLikeRatio;
+    return (ratio * 1000).round() + (targetCount * 20) + post.likes;
+  }
+
   final weeklyRising = ranked(
     posts.where(
       (post) =>
@@ -242,6 +256,14 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
     ),
     (post) => (post.likes * 5) + (post.reviewCount * 4) - post.dislikes,
   );
+  final maleMajority = ranked(
+    posts.where((post) => hasGenderMajority(post, 'male')),
+    (post) => genderMajorityScore(post, 'male'),
+  );
+  final femaleMajority = ranked(
+    posts.where((post) => hasGenderMajority(post, 'female')),
+    (post) => genderMajorityScore(post, 'female'),
+  );
 
   return <_CommunityTrendGroup>[
     if (weeklyPopular.isNotEmpty)
@@ -258,6 +280,20 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
       icon: Icons.replay_circle_filled_rounded,
       color: const Color(0xFF4F7DF0),
       posts: rediscovered,
+    ),
+    _CommunityTrendGroup(
+      label: '남',
+      caption: maleMajority.isEmpty ? '남자 하트 75% 이상 대기 중' : '남자 하트 75% 이상',
+      icon: Icons.male_rounded,
+      color: const Color(0xFF2869E6),
+      posts: maleMajority,
+    ),
+    _CommunityTrendGroup(
+      label: '여',
+      caption: femaleMajority.isEmpty ? '여자 하트 75% 이상 대기 중' : '여자 하트 75% 이상',
+      icon: Icons.female_rounded,
+      color: const Color(0xFFE65086),
+      posts: femaleMajority,
     ),
     if (weeklyRising.isNotEmpty)
       _CommunityTrendGroup(
@@ -299,7 +335,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   AppTab _selectedTab = AppTab.communication;
   SortMode _sortMode = SortMode.latest;
-  String? _likedGenderMajority;
   bool _loading = true;
   bool _loadingMore = false;
   bool _hasMorePosts = true;
@@ -323,10 +358,10 @@ class _HomeScreenState extends State<HomeScreen> {
 
   List<PostFeatureInfo> get _allFeatureInfo {
     final byId = <String, PostFeatureInfo>{
-      for (final post in _postFeatureIndex) post.id: post,
       for (final post in _featurePostPool)
         post.id: PostFeatureInfo.fromPost(post),
       for (final post in _posts) post.id: PostFeatureInfo.fromPost(post),
+      for (final post in _postFeatureIndex) post.id: post,
     };
     return byId.values.toList();
   }
@@ -405,7 +440,6 @@ class _HomeScreenState extends State<HomeScreen> {
         selectedTags: _selectedSearchTags.toList(),
         minPrice: int.tryParse(_minFilterController.text.trim()),
         maxPrice: int.tryParse(_maxFilterController.text.trim()),
-        likedGenderMajority: _likedGenderMajority,
         currentUserId: widget.currentUser.id,
         cursor: reset ? null : _nextPostsCursor,
         limit: 6,
@@ -533,9 +567,20 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   void _upsertPostFeature(Post post) {
+    PostFeatureInfo? previous;
+    for (final item in _postFeatureIndex) {
+      if (item.id == post.id) {
+        previous = item;
+        break;
+      }
+    }
+    final nextFeature = PostFeatureInfo.fromPost(post).copyWith(
+      maleLikeCount: previous?.maleLikeCount,
+      femaleLikeCount: previous?.femaleLikeCount,
+    );
     final next = <String, PostFeatureInfo>{
       for (final item in _postFeatureIndex) item.id: item,
-      post.id: PostFeatureInfo.fromPost(post),
+      post.id: nextFeature,
     };
     _postFeatureIndex = next.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
@@ -2423,7 +2468,6 @@ class _HomeScreenState extends State<HomeScreen> {
           maxFilterController: _maxFilterController,
           sortMode: _sortMode,
           selectedTags: _selectedSearchTags,
-          likedGenderMajority: _likedGenderMajority,
           scrollController: _communicationScrollController,
           hasMorePosts: _hasMorePosts,
           loadingMore: _loadingMore,
@@ -2442,11 +2486,6 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenPost: _openPostDetail,
           onOpenFeaturePost: _openFeaturePost,
           onToggleSearchTag: _toggleSearchTag,
-          onChangeLikedGenderMajority: (value) {
-            if (_likedGenderMajority == value) return;
-            setState(() => _likedGenderMajority = value);
-            unawaited(_loadPosts());
-          },
           onOpenCollection: _openHighlightCollection,
           onShuffle: _shufflePosts,
           onScanBarcode: _scanCommunicationBarcode,
@@ -2503,7 +2542,6 @@ class CommunicationBody extends StatelessWidget {
     required this.maxFilterController,
     required this.sortMode,
     required this.selectedTags,
-    required this.likedGenderMajority,
     required this.scrollController,
     required this.hasMorePosts,
     required this.loadingMore,
@@ -2519,7 +2557,6 @@ class CommunicationBody extends StatelessWidget {
     required this.onOpenPost,
     required this.onOpenFeaturePost,
     required this.onToggleSearchTag,
-    required this.onChangeLikedGenderMajority,
     required this.onOpenCollection,
     required this.onShuffle,
     required this.onScanBarcode,
@@ -2535,7 +2572,6 @@ class CommunicationBody extends StatelessWidget {
   final TextEditingController maxFilterController;
   final SortMode sortMode;
   final Set<String> selectedTags;
-  final String? likedGenderMajority;
   final ScrollController scrollController;
   final bool hasMorePosts;
   final bool loadingMore;
@@ -2551,7 +2587,6 @@ class CommunicationBody extends StatelessWidget {
   final Future<void> Function(Post post) onOpenPost;
   final Future<void> Function(PostFeatureInfo post) onOpenFeaturePost;
   final Future<void> Function(String tag) onToggleSearchTag;
-  final ValueChanged<String?> onChangeLikedGenderMajority;
   final void Function(HighlightCollectionType type) onOpenCollection;
   final VoidCallback onShuffle;
   final Future<void> Function() onScanBarcode;
@@ -2631,10 +2666,8 @@ class CommunicationBody extends StatelessWidget {
                 minFilterController: minFilterController,
                 maxFilterController: maxFilterController,
                 selectedTags: selectedTags,
-                likedGenderMajority: likedGenderMajority,
                 onSearch: onReload,
                 onToggleTag: onToggleSearchTag,
-                onChangeLikedGenderMajority: onChangeLikedGenderMajority,
                 onShuffle: onShuffle,
                 onScanBarcode: onScanBarcode,
               ),
@@ -2847,10 +2880,8 @@ class Toolbar extends StatefulWidget {
     required this.minFilterController,
     required this.maxFilterController,
     required this.selectedTags,
-    required this.likedGenderMajority,
     required this.onSearch,
     required this.onToggleTag,
-    required this.onChangeLikedGenderMajority,
     required this.onShuffle,
     required this.onScanBarcode,
   });
@@ -2860,10 +2891,8 @@ class Toolbar extends StatefulWidget {
   final TextEditingController minFilterController;
   final TextEditingController maxFilterController;
   final Set<String> selectedTags;
-  final String? likedGenderMajority;
   final Future<void> Function() onSearch;
   final Future<void> Function(String tag) onToggleTag;
-  final ValueChanged<String?> onChangeLikedGenderMajority;
   final VoidCallback onShuffle;
   final Future<void> Function() onScanBarcode;
 
@@ -3010,11 +3039,6 @@ class _ToolbarState extends State<Toolbar> {
             },
           ),
         ],
-        const SizedBox(height: 8),
-        _HeartGenderFilter(
-          value: widget.likedGenderMajority,
-          onChanged: widget.onChangeLikedGenderMajority,
-        ),
         if (_categoriesVisible) ...[
           const SizedBox(height: 8),
           Row(
@@ -3109,88 +3133,6 @@ class _ToolbarState extends State<Toolbar> {
             ),
           ),
         ],
-      ],
-    );
-  }
-}
-
-class _HeartGenderFilter extends StatelessWidget {
-  const _HeartGenderFilter({required this.value, required this.onChanged});
-
-  final String? value;
-  final ValueChanged<String?> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    const options = <String?, String>{
-      null: '선택 안함',
-      'male': '남자',
-      'female': '여자',
-    };
-
-    return Row(
-      children: [
-        const Text(
-          '하트 성비',
-          style: TextStyle(
-            color: AppColors.ink,
-            fontSize: 11,
-            fontWeight: FontWeight.w900,
-          ),
-        ),
-        const SizedBox(width: 8),
-        Expanded(
-          child: Container(
-            height: 34,
-            padding: const EdgeInsets.all(3),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF2F7FA),
-              borderRadius: BorderRadius.circular(11),
-              border: Border.all(color: AppColors.line),
-            ),
-            child: Row(
-              children: options.entries.map((option) {
-                final selected = value == option.key;
-                return Expanded(
-                  child: InkWell(
-                    onTap: () => onChanged(option.key),
-                    borderRadius: BorderRadius.circular(8),
-                    child: AnimatedContainer(
-                      duration: const Duration(milliseconds: 160),
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: selected ? Colors.white : Colors.transparent,
-                        borderRadius: BorderRadius.circular(8),
-                        boxShadow: selected
-                            ? const [
-                                BoxShadow(
-                                  color: Color(0x140D3657),
-                                  blurRadius: 7,
-                                  offset: Offset(0, 2),
-                                ),
-                              ]
-                            : null,
-                      ),
-                      child: Text(
-                        option.value,
-                        maxLines: 1,
-                        style: TextStyle(
-                          color: selected
-                              ? AppColors.navy
-                              : const Color(0xFF7A8F9F),
-                          fontSize: 10.5,
-                          fontWeight: selected
-                              ? FontWeight.w900
-                              : FontWeight.w700,
-                        ),
-                      ),
-                    ),
-                  ),
-                );
-              }).toList(),
-            ),
-          ),
-        ),
       ],
     );
   }

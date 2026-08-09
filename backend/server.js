@@ -994,7 +994,7 @@ function serializePost(post, currentUser = null) {
   };
 }
 
-function serializePostFeatureInfo(post) {
+function serializePostFeatureInfo(post, audienceCounts = { male: 0, female: 0 }) {
   const recentLikeCutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
   return {
     id: post._id.toString(),
@@ -1007,6 +1007,8 @@ function serializePostFeatureInfo(post) {
     recentLikeCount: (post.likeEvents || []).filter(
       (event) => new Date(event.createdAt).getTime() >= recentLikeCutoff
     ).length,
+    maleLikeCount: Number(audienceCounts.male || 0),
+    femaleLikeCount: Number(audienceCounts.female || 0),
     createdAt: post.createdAt,
     topFiveEnteredAt: post.topFiveEnteredAt || null,
     topWorstEnteredAt: post.topWorstEnteredAt || null,
@@ -3247,7 +3249,11 @@ app.get("/api/posts", async (req, res) => {
     }
 
     const matchingPostIds = Array.from(audienceByPost.entries())
-      .filter(([, counts]) => counts[likedGenderMajority] > counts[likedGenderMajority === "male" ? "female" : "male"])
+      .filter(([, counts]) => {
+        const total = counts.male + counts.female;
+        if (total <= 0) return false;
+        return counts[likedGenderMajority] / total >= 0.75;
+      })
       .map(([postId]) => postId);
     filters._id = { $in: matchingPostIds };
   }
@@ -3299,9 +3305,27 @@ app.get("/api/posts/feature-index", async (req, res) => {
     .select("authorId title likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt")
     .sort({ createdAt: -1, _id: -1 })
     .limit(1000);
+  const usersWithGender = await User.find({
+    "botSetup.gender": { $in: ["남자", "여자"] },
+    likedPostIds: { $exists: true, $ne: [] },
+  })
+    .select("botSetup.gender likedPostIds")
+    .lean();
+  const audienceByPost = new Map();
+
+  for (const user of usersWithGender) {
+    const key = user.botSetup?.gender === "남자" ? "male" : "female";
+    for (const postId of new Set((user.likedPostIds || []).map(String))) {
+      const counts = audienceByPost.get(postId) || { male: 0, female: 0 };
+      counts[key] += 1;
+      audienceByPost.set(postId, counts);
+    }
+  }
 
   res.json({
-    posts: posts.map(serializePostFeatureInfo),
+    posts: posts.map((post) =>
+      serializePostFeatureInfo(post, audienceByPost.get(post._id.toString()))
+    ),
   });
 });
 
