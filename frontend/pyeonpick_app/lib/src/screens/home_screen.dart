@@ -2700,6 +2700,7 @@ class CommunicationBody extends StatelessWidget {
                                 isSaved: currentUser.savedPostIds.contains(
                                   post.id,
                                 ),
+                                compact: columns == 1,
                                 onToggleLike: () => onToggleLike(post),
                                 onToggleDislike: () => onToggleDislike(post),
                                 onToggleSave: () => onToggleSave(post.id),
@@ -3493,7 +3494,6 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
   @override
   Widget build(BuildContext context) {
     final posts = _sortedPosts;
-    final rowCount = (posts.length / 2).ceil();
     return Scaffold(
       backgroundColor: const Color(0xFFF7FBFD),
       appBar: AppBar(
@@ -3505,82 +3505,73 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
           style: const TextStyle(fontWeight: FontWeight.w900),
         ),
       ),
-      body: ListView.builder(
-        padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
-        itemCount: rowCount + 1,
-        itemBuilder: (context, index) {
-          if (index == 0) {
-            return Padding(
-              padding: const EdgeInsets.only(bottom: 14),
-              child: Row(
-                children: [
-                  Expanded(
-                    child: Text(
-                      '${posts.length}개 조합',
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                  SortSelector(
-                    sortMode: _sortMode,
-                    onChanged: (value) => setState(() => _sortMode = value),
-                  ),
-                ],
-              ),
-            );
-          }
-          final rowIndex = index - 1;
-          final leftIndex = rowIndex * 2;
-          final rightIndex = leftIndex + 1;
-          final leftPost = posts[leftIndex];
-          final Post? rightPost = rightIndex < posts.length
-              ? posts[rightIndex]
-              : null;
-          return Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Expanded(
-                  child: PostCard(
-                    post: leftPost,
-                    isMine: leftPost.authorId == widget.currentUser.id,
-                    isSaved: widget.currentUser.savedPostIds.contains(
-                      leftPost.id,
-                    ),
-                    onToggleLike: () => widget.onToggleLike(leftPost),
-                    onToggleDislike: () => widget.onToggleDislike(leftPost),
-                    onToggleSave: () => widget.onToggleSave(leftPost.id),
-                    onEdit: () => widget.onEditPost(leftPost),
-                    onDelete: () => widget.onDeletePost(leftPost),
-                    onOpenAuthor: () => widget.onOpenAuthor(leftPost),
-                    onOpenPost: () => widget.onOpenPost(leftPost),
-                  ),
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: rightPost == null
-                      ? const SizedBox.shrink()
-                      : PostCard(
-                          post: rightPost,
-                          isMine: rightPost.authorId == widget.currentUser.id,
-                          isSaved: widget.currentUser.savedPostIds.contains(
-                            rightPost.id,
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final columns = constraints.maxWidth >= 620 ? 2 : 1;
+          final rowCount = (posts.length / columns).ceil();
+          return ListView.builder(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
+            itemCount: rowCount + 1,
+            itemBuilder: (context, index) {
+              if (index == 0) {
+                return Padding(
+                  padding: const EdgeInsets.only(bottom: 14),
+                  child: Row(
+                    children: [
+                      Expanded(
+                        child: Text(
+                          '${posts.length}개 조합',
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontWeight: FontWeight.w700,
                           ),
-                          onToggleLike: () => widget.onToggleLike(rightPost),
-                          onToggleDislike: () =>
-                              widget.onToggleDislike(rightPost),
-                          onToggleSave: () => widget.onToggleSave(rightPost.id),
-                          onEdit: () => widget.onEditPost(rightPost),
-                          onDelete: () => widget.onDeletePost(rightPost),
-                          onOpenAuthor: () => widget.onOpenAuthor(rightPost),
-                          onOpenPost: () => widget.onOpenPost(rightPost),
                         ),
+                      ),
+                      SortSelector(
+                        sortMode: _sortMode,
+                        onChanged: (value) => setState(() => _sortMode = value),
+                      ),
+                    ],
+                  ),
+                );
+              }
+              final rowIndex = index - 1;
+              return Padding(
+                padding: const EdgeInsets.only(bottom: 12),
+                child: Row(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    for (var column = 0; column < columns; column++) ...[
+                      if (column > 0) const SizedBox(width: 12),
+                      Expanded(
+                        child: () {
+                          final postIndex = rowIndex * columns + column;
+                          if (postIndex >= posts.length) {
+                            return const SizedBox.shrink();
+                          }
+                          final post = posts[postIndex];
+                          return PostCard(
+                            post: post,
+                            isMine: post.authorId == widget.currentUser.id,
+                            isSaved: widget.currentUser.savedPostIds.contains(
+                              post.id,
+                            ),
+                            compact: columns == 1,
+                            onToggleLike: () => widget.onToggleLike(post),
+                            onToggleDislike: () => widget.onToggleDislike(post),
+                            onToggleSave: () => widget.onToggleSave(post.id),
+                            onEdit: () => widget.onEditPost(post),
+                            onDelete: () => widget.onDeletePost(post),
+                            onOpenAuthor: () => widget.onOpenAuthor(post),
+                            onOpenPost: () => widget.onOpenPost(post),
+                          );
+                        }(),
+                      ),
+                    ],
+                  ],
                 ),
-              ],
-            ),
+              );
+            },
           );
         },
       ),
@@ -3956,11 +3947,13 @@ class PostCard extends StatelessWidget {
     required this.onDelete,
     required this.onOpenAuthor,
     required this.onOpenPost,
+    this.compact = false,
   });
 
   final Post post;
   final bool isMine;
   final bool isSaved;
+  final bool compact;
   final Future<void> Function() onToggleLike;
   final Future<void> Function() onToggleDislike;
   final Future<void> Function() onToggleSave;
@@ -3974,17 +3967,24 @@ class PostCard extends StatelessWidget {
     final post = this.post;
     final displayCategories = _displayCategories(
       post.categories,
-      maxVisible: 2,
+      maxVisible: compact ? 1 : 2,
     );
+    final cardHeight = compact ? 238.0 : 304.0;
+    final cardPadding = compact ? 8.0 : 7.0;
+    final avatarRadius = compact ? 11.0 : 13.0;
+    final imageHeight = compact ? 82.0 : 132.0;
+    final titleHeight = compact ? 30.0 : 36.0;
+    final titleFontSize = compact ? 12.0 : 12.5;
+    final tagHeight = compact ? 0.0 : 18.0;
     return SizedBox(
-      height: 326,
+      height: cardHeight,
       child: Container(
         decoration: BoxDecoration(
           color: AppColors.receipt,
           borderRadius: BorderRadius.circular(AppColors.radiusMedium),
           border: Border.all(color: AppColors.line),
         ),
-        padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
+        padding: EdgeInsets.all(cardPadding),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
@@ -3994,10 +3994,10 @@ class PostCard extends StatelessWidget {
                   onTap: onOpenAuthor,
                   child: _UserAvatar(
                     imageSource: post.authorProfileImageUrl,
-                    radius: 13,
+                    radius: avatarRadius,
                   ),
                 ),
-                const SizedBox(width: 7),
+                SizedBox(width: compact ? 6 : 7),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -4009,10 +4009,12 @@ class PostCard extends StatelessWidget {
                           style: const TextStyle(
                             color: AppColors.ink,
                             fontWeight: FontWeight.w900,
-                            fontSize: 12,
+                            fontSize: 11.5,
                             decoration: TextDecoration.underline,
                             decorationColor: Color(0xFF85A0B7),
                           ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
                         ),
                       ),
                       Text(
@@ -4028,6 +4030,8 @@ class PostCard extends StatelessWidget {
                 ),
                 if (isMine)
                   PopupMenuButton<String>(
+                    iconSize: compact ? 20 : 24,
+                    padding: EdgeInsets.zero,
                     onSelected: (value) async {
                       if (value == 'edit') {
                         await onEdit();
@@ -4042,7 +4046,7 @@ class PostCard extends StatelessWidget {
                   ),
               ],
             ),
-            const SizedBox(height: 5),
+            SizedBox(height: compact ? 3 : 4),
             InkWell(
               borderRadius: BorderRadius.circular(AppColors.radiusMedium),
               onTap: onOpenPost,
@@ -4050,7 +4054,7 @@ class PostCard extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
                   SizedBox(
-                    height: 96,
+                    height: imageHeight,
                     width: double.infinity,
                     child: ClipRRect(
                       borderRadius: BorderRadius.circular(
@@ -4059,17 +4063,18 @@ class PostCard extends StatelessWidget {
                       child: _PostImageGallery(post: post),
                     ),
                   ),
-                  const SizedBox(height: 5),
+                  SizedBox(height: compact ? 3 : 4),
                   SizedBox(
-                    height: 52,
+                    height: titleHeight,
                     child: ConvenienceProductTitle(
                       title: post.title,
                       contextText: '${post.title} ${post.content}',
                       maxLines: 1,
-                      labelTopPadding: 1,
-                      style: const TextStyle(
+                      labelTopPadding: 0,
+                      showLabels: !compact,
+                      style: TextStyle(
                         color: AppColors.ink,
-                        fontSize: 12.5,
+                        fontSize: titleFontSize,
                         fontWeight: FontWeight.w900,
                         letterSpacing: -0.2,
                         height: 1.2,
@@ -4082,7 +4087,7 @@ class PostCard extends StatelessWidget {
                       Container(
                         padding: const EdgeInsets.symmetric(
                           horizontal: 7,
-                          vertical: 3,
+                          vertical: 2,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.activeYellow,
@@ -4093,7 +4098,7 @@ class PostCard extends StatelessWidget {
                           style: const TextStyle(
                             color: Color(0xFF332800),
                             fontWeight: FontWeight.w900,
-                            fontSize: 11,
+                            fontSize: 10.5,
                           ),
                         ),
                       ),
@@ -4103,7 +4108,7 @@ class PostCard extends StatelessWidget {
                           '${post.calories}kcal',
                           style: const TextStyle(
                             color: AppColors.muted,
-                            fontSize: 10,
+                            fontSize: 9.5,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -4119,29 +4124,32 @@ class PostCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  const SizedBox(height: 3),
-                  SizedBox(
-                    height: 19,
-                    child: ListView.separated(
-                      scrollDirection: Axis.horizontal,
-                      itemCount: displayCategories.length,
-                      separatorBuilder: (_, _) => const SizedBox(width: 4),
-                      itemBuilder: (context, index) => _TagPill(
-                        label: '#${displayCategories[index]}',
-                        compact: true,
+                  if (!compact && displayCategories.isNotEmpty) ...[
+                    const SizedBox(height: 2),
+                    SizedBox(
+                      height: tagHeight,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: displayCategories.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 4),
+                        itemBuilder: (context, index) => _TagPill(
+                          label: '#${displayCategories[index]}',
+                          compact: true,
+                        ),
                       ),
                     ),
-                  ),
+                  ],
                 ],
               ),
             ),
-            const SizedBox(height: 5),
+            const Spacer(),
             Row(
               children: [
                 Expanded(
                   child: ActionChipButton(
                     label: '${post.likedByMe ? '♥' : '♡'} ${post.likes}',
                     active: post.likedByMe,
+                    compact: compact,
                     onTap: onToggleLike,
                   ),
                 ),
@@ -4152,6 +4160,7 @@ class PostCard extends StatelessWidget {
                     active: post.dislikedByMe,
                     activeColor: const Color(0xFFE8EDF3),
                     activeTextColor: const Color(0xFF38485A),
+                    compact: compact,
                     onTap: onToggleDislike,
                   ),
                 ),
@@ -4162,6 +4171,7 @@ class PostCard extends StatelessWidget {
                     active: isSaved,
                     activeColor: const Color(0xFFE8F4D0),
                     activeTextColor: const Color(0xFF6B8C15),
+                    compact: compact,
                     onTap: onToggleSave,
                   ),
                 ),
@@ -4407,6 +4417,7 @@ class ActionChipButton extends StatelessWidget {
     this.activeColor,
     this.activeTextColor,
     this.expanded = false,
+    this.compact = false,
     required this.onTap,
   });
 
@@ -4415,6 +4426,7 @@ class ActionChipButton extends StatelessWidget {
   final Color? activeColor;
   final Color? activeTextColor;
   final bool expanded;
+  final bool compact;
   final Future<void> Function() onTap;
 
   @override
@@ -4424,7 +4436,10 @@ class ActionChipButton extends StatelessWidget {
       onTap: onTap,
       child: Container(
         width: expanded ? double.infinity : null,
-        padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 5),
+        padding: EdgeInsets.symmetric(
+          horizontal: compact ? 5 : 6,
+          vertical: compact ? 3 : 5,
+        ),
         decoration: BoxDecoration(
           color: active
               ? (activeColor ?? const Color(0xFFFFE7EC))
@@ -4440,7 +4455,7 @@ class ActionChipButton extends StatelessWidget {
                 ? (activeTextColor ?? const Color(0xFFE44566))
                 : const Color(0xFF52697F),
             fontWeight: FontWeight.w800,
-            fontSize: 11,
+            fontSize: compact ? 10 : 11,
           ),
         ),
       ),
