@@ -2352,7 +2352,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                   style: TextStyle(
                                     color: AppColors.navy,
                                     fontWeight: FontWeight.w900,
-                                    fontSize: desktop ? 32 : 20,
+                                    fontSize: desktop ? 38 : 20,
                                     letterSpacing: -0.8,
                                   ),
                                 ),
@@ -2363,7 +2363,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ],
                           ),
-                          SizedBox(height: desktop ? 16 : 7),
+                          SizedBox(height: desktop ? 18 : 7),
                           FeatureTabs(
                             selectedTab: _selectedTab,
                             onChanged: (tab) =>
@@ -2602,9 +2602,10 @@ class CommunicationBody extends StatelessWidget {
       builder: (context, constraints) {
         final columns = constraints.maxWidth >= 1040
             ? 3
-            : constraints.maxWidth >= 620
+            : constraints.maxWidth >= 360
             ? 2
             : 1;
+        final compactCards = constraints.maxWidth < 620;
         final gap = constraints.maxWidth >= 900 ? 16.0 : 12.0;
         final horizontalPadding = constraints.maxWidth >= 900 ? 24.0 : 16.0;
         final rowCount = (posts.length / columns).ceil();
@@ -2700,7 +2701,7 @@ class CommunicationBody extends StatelessWidget {
                                 isSaved: currentUser.savedPostIds.contains(
                                   post.id,
                                 ),
-                                compact: columns == 1,
+                                compact: compactCards,
                                 onToggleLike: () => onToggleLike(post),
                                 onToggleDislike: () => onToggleDislike(post),
                                 onToggleSave: () => onToggleSave(post.id),
@@ -2805,7 +2806,7 @@ class FeatureTabs extends StatelessWidget {
                   alignment: Alignment.center,
                   padding: EdgeInsets.symmetric(
                     horizontal: desktop ? 16 : 3,
-                    vertical: desktop ? 15 : 7,
+                    vertical: desktop ? 18 : 7,
                   ),
                   decoration: BoxDecoration(
                     color: active
@@ -2823,7 +2824,7 @@ class FeatureTabs extends StatelessWidget {
                     maxLines: 1,
                     overflow: TextOverflow.ellipsis,
                     style: TextStyle(
-                      fontSize: desktop ? 16 : 11,
+                      fontSize: desktop ? 18 : 11,
                       fontWeight: active ? FontWeight.w900 : FontWeight.w700,
                       color: active ? AppColors.navy : const Color(0xFF68859A),
                     ),
@@ -3507,7 +3508,8 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
       ),
       body: LayoutBuilder(
         builder: (context, constraints) {
-          final columns = constraints.maxWidth >= 620 ? 2 : 1;
+          final columns = constraints.maxWidth >= 360 ? 2 : 1;
+          final compactCards = constraints.maxWidth < 620;
           final rowCount = (posts.length / columns).ceil();
           return ListView.builder(
             padding: const EdgeInsets.fromLTRB(16, 12, 16, 28),
@@ -3521,7 +3523,7 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
                       Expanded(
                         child: Text(
                           '${posts.length}개 조합',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.muted,
                             fontWeight: FontWeight.w700,
                           ),
@@ -3556,7 +3558,7 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
                             isSaved: widget.currentUser.savedPostIds.contains(
                               post.id,
                             ),
-                            compact: columns == 1,
+                            compact: compactCards,
                             onToggleLike: () => widget.onToggleLike(post),
                             onToggleDislike: () => widget.onToggleDislike(post),
                             onToggleSave: () => widget.onToggleSave(post.id),
@@ -3758,7 +3760,7 @@ class _CommunityTrendStrip extends StatelessWidget {
                           item.label,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             fontSize: 12,
                             fontWeight: FontWeight.w900,
@@ -3769,7 +3771,7 @@ class _CommunityTrendStrip extends StatelessWidget {
                           postTitle,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             fontSize: 11,
                             fontWeight: FontWeight.w800,
@@ -3969,12 +3971,12 @@ class PostCard extends StatelessWidget {
       post.categories,
       maxVisible: compact ? 1 : 2,
     );
-    final cardHeight = compact ? 238.0 : 304.0;
-    final cardPadding = compact ? 8.0 : 7.0;
-    final avatarRadius = compact ? 11.0 : 13.0;
-    final imageHeight = compact ? 82.0 : 132.0;
-    final titleHeight = compact ? 30.0 : 36.0;
-    final titleFontSize = compact ? 12.0 : 12.5;
+    final cardHeight = compact ? 218.0 : 336.0;
+    final cardPadding = compact ? 6.0 : 10.0;
+    final avatarRadius = compact ? 10.0 : 14.0;
+    final imageHeight = compact ? 76.0 : 148.0;
+    final titleHeight = compact ? 28.0 : 40.0;
+    final titleFontSize = compact ? 10.4 : 13.6;
     final tagHeight = compact ? 0.0 : 18.0;
     return SizedBox(
       height: cardHeight,
@@ -3997,7 +3999,7 @@ class PostCard extends StatelessWidget {
                     radius: avatarRadius,
                   ),
                 ),
-                SizedBox(width: compact ? 6 : 7),
+                SizedBox(width: compact ? 5 : 8),
                 Expanded(
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
@@ -4006,10 +4008,10 @@ class PostCard extends StatelessWidget {
                         onTap: onOpenAuthor,
                         child: Text(
                           post.authorNickname,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.ink,
                             fontWeight: FontWeight.w900,
-                            fontSize: 11.5,
+                            fontSize: compact ? 10.2 : 12.4,
                             decoration: TextDecoration.underline,
                             decorationColor: Color(0xFF85A0B7),
                           ),
@@ -4019,9 +4021,9 @@ class PostCard extends StatelessWidget {
                       ),
                       Text(
                         post.createdAtLabel,
-                        style: const TextStyle(
+                        style: TextStyle(
                           color: Color(0xFF8CA0B3),
-                          fontSize: 9,
+                          fontSize: compact ? 8.2 : 9.8,
                           fontWeight: FontWeight.w600,
                         ),
                       ),
@@ -4046,7 +4048,7 @@ class PostCard extends StatelessWidget {
                   ),
               ],
             ),
-            SizedBox(height: compact ? 3 : 4),
+            SizedBox(height: compact ? 2 : 6),
             InkWell(
               borderRadius: BorderRadius.circular(AppColors.radiusMedium),
               onTap: onOpenPost,
@@ -4063,7 +4065,7 @@ class PostCard extends StatelessWidget {
                       child: _PostImageGallery(post: post),
                     ),
                   ),
-                  SizedBox(height: compact ? 3 : 4),
+                  SizedBox(height: compact ? 2 : 6),
                   SizedBox(
                     height: titleHeight,
                     child: ConvenienceProductTitle(
@@ -4081,13 +4083,13 @@ class PostCard extends StatelessWidget {
                       ),
                     ),
                   ),
-                  const SizedBox(height: 3),
+                  SizedBox(height: compact ? 2 : 4),
                   Row(
                     children: [
                       Container(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 7,
-                          vertical: 2,
+                        padding: EdgeInsets.symmetric(
+                          horizontal: compact ? 5 : 8,
+                          vertical: compact ? 1 : 3,
                         ),
                         decoration: BoxDecoration(
                           color: AppColors.activeYellow,
@@ -4095,10 +4097,10 @@ class PostCard extends StatelessWidget {
                         ),
                         child: Text(
                           post.priceLabel,
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: Color(0xFF332800),
                             fontWeight: FontWeight.w900,
-                            fontSize: 10.5,
+                            fontSize: compact ? 9 : 11.2,
                           ),
                         ),
                       ),
@@ -4106,9 +4108,9 @@ class PostCard extends StatelessWidget {
                         const SizedBox(width: 5),
                         Text(
                           '${post.calories}kcal',
-                          style: const TextStyle(
+                          style: TextStyle(
                             color: AppColors.muted,
-                            fontSize: 9.5,
+                            fontSize: compact ? 8.6 : 10.2,
                             fontWeight: FontWeight.w800,
                           ),
                         ),
@@ -4120,6 +4122,7 @@ class PostCard extends StatelessWidget {
                           style: const TextStyle(
                             color: AppColors.priceRed,
                             fontWeight: FontWeight.w900,
+                            fontSize: 13,
                           ),
                         ),
                     ],
