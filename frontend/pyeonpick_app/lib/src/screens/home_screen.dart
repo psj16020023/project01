@@ -2600,7 +2600,7 @@ class CommunicationBody extends StatelessWidget {
 
     return LayoutBuilder(
       builder: (context, constraints) {
-        final columns = constraints.maxWidth >= 1040
+        final columns = constraints.maxWidth >= 1500
             ? 3
             : constraints.maxWidth >= 360
             ? 2
@@ -3971,13 +3971,13 @@ class PostCard extends StatelessWidget {
       post.categories,
       maxVisible: compact ? 1 : 2,
     );
-    final cardHeight = compact ? 218.0 : 336.0;
+    final cardHeight = compact ? 218.0 : 386.0;
     final cardPadding = compact ? 6.0 : 10.0;
     final avatarRadius = compact ? 10.0 : 14.0;
-    final imageHeight = compact ? 76.0 : 148.0;
+    final imageHeight = compact ? 76.0 : 190.0;
     final titleHeight = compact ? 28.0 : 40.0;
     final titleFontSize = compact ? 10.4 : 13.6;
-    final tagHeight = compact ? 0.0 : 18.0;
+    final tagHeight = compact ? 18.0 : 20.0;
     return SizedBox(
       height: cardHeight,
       child: Container(
@@ -4055,6 +4055,21 @@ class PostCard extends StatelessWidget {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  if (displayCategories.isNotEmpty) ...[
+                    SizedBox(
+                      height: tagHeight,
+                      child: ListView.separated(
+                        scrollDirection: Axis.horizontal,
+                        itemCount: displayCategories.length,
+                        separatorBuilder: (_, _) => const SizedBox(width: 4),
+                        itemBuilder: (context, index) => _TagPill(
+                          label: '#${displayCategories[index]}',
+                          compact: true,
+                        ),
+                      ),
+                    ),
+                    SizedBox(height: compact ? 2 : 5),
+                  ],
                   SizedBox(
                     height: imageHeight,
                     width: double.infinity,
@@ -4127,21 +4142,6 @@ class PostCard extends StatelessWidget {
                         ),
                     ],
                   ),
-                  if (!compact && displayCategories.isNotEmpty) ...[
-                    const SizedBox(height: 2),
-                    SizedBox(
-                      height: tagHeight,
-                      child: ListView.separated(
-                        scrollDirection: Axis.horizontal,
-                        itemCount: displayCategories.length,
-                        separatorBuilder: (_, _) => const SizedBox(width: 4),
-                        itemBuilder: (context, index) => _TagPill(
-                          label: '#${displayCategories[index]}',
-                          compact: true,
-                        ),
-                      ),
-                    ),
-                  ],
                 ],
               ),
             ),
