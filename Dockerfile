@@ -1,11 +1,12 @@
 FROM ghcr.io/cirruslabs/flutter:stable AS web_builder
 
-WORKDIR /app/frontend/pyeonpick_app
+WORKDIR /app
 
-COPY frontend/pyeonpick_app/pubspec.yaml frontend/pyeonpick_app/
+COPY frontend/pyeonpick_app/pubspec.yaml ./frontend/pyeonpick_app/pubspec.yaml
+WORKDIR /app/frontend/pyeonpick_app
 RUN flutter pub get
 
-COPY frontend/pyeonpick_app /app/frontend/pyeonpick_app
+COPY frontend/pyeonpick_app/ ./
 RUN flutter pub get && flutter build web --dart-define=DATA_MODE=remote --pwa-strategy=none
 
 FROM node:20-slim AS runtime
