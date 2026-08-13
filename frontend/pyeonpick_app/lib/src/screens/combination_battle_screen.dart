@@ -94,13 +94,11 @@ class CombinationBattleScreen extends StatefulWidget {
 
 class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   final TextEditingController _titleController = TextEditingController();
-  final TextEditingController _searchController = TextEditingController();
 
   late CombinationBattleState _state;
   Timer? _expiryTimer;
   List<Post> _allPosts = <Post>[];
   bool _loadingAllPosts = false;
-  bool _showingExpiredBattleDialog = false;
   Map<String, int> _shuffleRanks = const <String, int>{};
   final double _leftHue = 355;
   final double _rightHue = 218;
@@ -122,14 +120,12 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     if (oldWidget.currentUser.id != widget.currentUser.id) {
       _loadSharedBattleState();
     }
-    _scheduleExpiredBattleCheck();
   }
 
   @override
   void dispose() {
     _expiryTimer?.cancel();
     _titleController.dispose();
-    _searchController.dispose();
     super.dispose();
   }
 
@@ -169,7 +165,6 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
           _shuffleRanks = _buildShuffleRanks(merged.matches);
         }
       });
-      _scheduleExpiredBattleCheck();
     } catch (_) {
       // Keep preview data when local persistence is unavailable.
     }
@@ -183,6 +178,8 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     final normalized = CombinationBattleState(
       matches: [...state.matches]
         ..sort((a, b) => b.createdAt.compareTo(a.createdAt)),
+      notifiedExpiredMatchIds: state.notifiedExpiredMatchIds,
+      todayEndedSummarySeenMatchIds: state.todayEndedSummarySeenMatchIds,
     );
     setState(() {
       _state = normalized;
@@ -194,7 +191,6 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     await widget.onUserChanged(
       widget.currentUser.copyWith(battleState: normalized),
     );
-    _scheduleExpiredBattleCheck();
   }
 
   Future<void> _loadAllBattlePosts() async {
@@ -300,16 +296,9 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   }
 
   List<BattleMatchEntry> _filteredMatches() {
-    final query = _searchController.text.trim().toLowerCase();
     return _state.matches.where((match) {
       if (match.isExpired) return false;
-      if (query.isEmpty) return true;
-      final left = _resolvedSide(match, true);
-      final right = _resolvedSide(match, false);
-      return match.title.toLowerCase().contains(query) ||
-          match.authorNickname.toLowerCase().contains(query) ||
-          left.title.toLowerCase().contains(query) ||
-          right.title.toLowerCase().contains(query);
+      return true;
     }).toList();
   }
 
@@ -357,95 +346,9 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
 
   void _startExpiryWatcher() {
     _expiryTimer?.cancel();
-    _expiryTimer = Timer.periodic(
-      const Duration(seconds: 15),
-      (_) => _scheduleExpiredBattleCheck(),
-    );
-    _scheduleExpiredBattleCheck();
-  }
-
-  void _scheduleExpiredBattleCheck() {
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _checkExpiredBattleResults();
+    _expiryTimer = Timer.periodic(const Duration(seconds: 15), (_) {
+      if (mounted) setState(() {});
     });
-  }
-
-  Future<void> _checkExpiredBattleResults() async {
-    if (!mounted || _showingExpiredBattleDialog) return;
-    final notifiedIds = _state.notifiedExpiredMatchIds.toSet();
-    final pending =
-        _state.matches.where((match) {
-          return match.authorId == widget.currentUser.id &&
-              match.isExpired &&
-              !notifiedIds.contains(match.id);
-        }).toList()..sort((a, b) {
-          final aEndsAt = a.endsAt ?? a.createdAt;
-          final bEndsAt = b.endsAt ?? b.createdAt;
-          return aEndsAt.compareTo(bEndsAt);
-        });
-    if (pending.isEmpty) return;
-
-    final match = pending.first;
-    _showingExpiredBattleDialog = true;
-    await _showExpiredBattleDialog(match);
-    _showingExpiredBattleDialog = false;
-    if (!mounted) return;
-    await _markExpiredBattleNotified(match.id);
-    _scheduleExpiredBattleCheck();
-  }
-
-  Future<void> _markExpiredBattleNotified(String matchId) async {
-    final notifiedIds = _state.notifiedExpiredMatchIds.toSet()..add(matchId);
-    await _persist(
-      _state.copyWith(notifiedExpiredMatchIds: notifiedIds.toList()),
-    );
-  }
-
-  Future<void> _showExpiredBattleDialog(BattleMatchEntry match) async {
-    final left = _resolvedSide(match, true);
-    final right = _resolvedSide(match, false);
-    final winner = match.winnerSide;
-    final resultText = switch (winner) {
-      BattleVoteSide.left => '${left.title} 승리',
-      BattleVoteSide.right => '${right.title} 승리',
-      null => '무승부',
-    };
-
-    await showDialog<void>(
-      context: context,
-      barrierDismissible: true,
-      builder: (context) => AlertDialog(
-        title: const Text('픽 쇼츠 결과'),
-        content: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              match.title,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-            const SizedBox(height: 12),
-            Text(
-              '${left.title} ${match.leftVotes}대${match.rightVotes} ${right.title}',
-            ),
-            const SizedBox(height: 8),
-            Text(
-              resultText,
-              style: const TextStyle(fontWeight: FontWeight.w900),
-            ),
-          ],
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.of(context).pop(),
-            child: const Text('확인'),
-          ),
-        ],
-      ),
-    );
   }
 
   Future<String?> _pickCustomImage() async {
@@ -779,6 +682,18 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     return HSVColor.fromAHSV(1, hue, 0.82, 0.82).toColor();
   }
 
+  int get _todayWinCount {
+    final userId = widget.currentUser.id;
+    return _state.matches.where((match) {
+      if (!_hasEndedToday(match.endsAt)) return false;
+      final votedSide = match.voteSideOf(userId);
+      if (votedSide == null) return false;
+      final winner = match.winnerSide;
+      if (winner == null) return false;
+      return winner == votedSide;
+    }).length;
+  }
+
   @override
   Widget build(BuildContext context) {
     return DecoratedBox(
@@ -786,10 +701,9 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
       child: _BattleFeedPage(
         matches: _sortedMatches,
         currentUserId: widget.currentUser.id,
-        searchController: _searchController,
+        todayWinCount: _todayWinCount,
         onShuffle: _shuffleFeed,
         onOpenCreate: _openCreatePage,
-        onSearchChanged: (_) => setState(() {}),
         resolveSide: _resolvedSide,
         onVote: _vote,
         onOpenPost: widget.onOpenPost,
@@ -804,10 +718,9 @@ class _BattleFeedPage extends StatefulWidget {
   const _BattleFeedPage({
     required this.matches,
     required this.currentUserId,
-    required this.searchController,
+    required this.todayWinCount,
     required this.onShuffle,
     required this.onOpenCreate,
-    required this.onSearchChanged,
     required this.resolveSide,
     required this.onVote,
     required this.onOpenPost,
@@ -817,13 +730,15 @@ class _BattleFeedPage extends StatefulWidget {
 
   final List<BattleMatchEntry> matches;
   final String currentUserId;
-  final TextEditingController searchController;
+  final int todayWinCount;
   final VoidCallback onShuffle;
   final VoidCallback onOpenCreate;
-  final ValueChanged<String> onSearchChanged;
   final _BattleResolvedSide Function(BattleMatchEntry match, bool isLeft)
   resolveSide;
-  final Future<void> Function(BattleMatchEntry match, BattleVoteSide side)
+  final Future<BattleMatchEntry> Function(
+    BattleMatchEntry match,
+    BattleVoteSide side,
+  )
   onVote;
   final Future<void> Function(Post post) onOpenPost;
   final Future<void> Function(String authorId, String authorNickname)
@@ -837,6 +752,9 @@ class _BattleFeedPage extends StatefulWidget {
 class _BattleFeedPageState extends State<_BattleFeedPage> {
   late final PageController _pageController;
   int _pageIndex = 0;
+  String? _revealedMatchId;
+  BattleMatchEntry? _revealedMatch;
+  bool _processingVote = false;
 
   @override
   void initState() {
@@ -847,6 +765,12 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
   @override
   void didUpdateWidget(covariant _BattleFeedPage oldWidget) {
     super.didUpdateWidget(oldWidget);
+    if (_revealedMatchId != null &&
+        !widget.matches.any((match) => match.id == _revealedMatchId)) {
+      _revealedMatchId = null;
+      _revealedMatch = null;
+      _processingVote = false;
+    }
     if (widget.matches.isEmpty) {
       _pageIndex = 0;
       return;
@@ -865,20 +789,51 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
     super.dispose();
   }
 
-  Future<void> _goNext() async {
+  Future<void> _goNextFrom(String matchId) async {
     if (widget.matches.isEmpty || !_pageController.hasClients) return;
-    final nextIndex = (_pageIndex + 1) % widget.matches.length;
+    final resolvedIndex = widget.matches.indexWhere(
+      (match) => match.id == matchId,
+    );
+    final currentIndex = resolvedIndex >= 0 ? resolvedIndex : _pageIndex;
+    final nextIndex = (currentIndex + 1) % widget.matches.length;
+    if (nextIndex == currentIndex) return;
     await _pageController.animateToPage(
       nextIndex,
       duration: const Duration(milliseconds: 260),
       curve: Curves.easeOutCubic,
     );
+    if (!mounted) return;
+    setState(() => _pageIndex = nextIndex);
+  }
+
+  Future<BattleMatchEntry> _handleVote(
+    BattleMatchEntry match,
+    BattleVoteSide side,
+  ) async {
+    if (_processingVote) return match;
+    setState(() => _processingVote = true);
+    final updated = await widget.onVote(match, side);
+    if (!mounted) return updated;
+    setState(() {
+      _revealedMatchId = updated.id;
+      _revealedMatch = updated;
+    });
+    await Future<void>.delayed(const Duration(seconds: 1));
+    if (!mounted) return updated;
+    await _goNextFrom(updated.id);
+    if (!mounted) return updated;
+    setState(() {
+      _revealedMatchId = null;
+      _revealedMatch = null;
+      _processingVote = false;
+    });
+    return updated;
   }
 
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(10, 4, 10, 14),
+      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
       child: Column(
         children: [
           Row(
@@ -893,6 +848,38 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
                   ),
                 ),
               ),
+              const Text(
+                '오늘',
+                style: TextStyle(
+                  color: _battleSubtle,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              Text(
+                ' ${widget.todayWinCount}승',
+                style: const TextStyle(
+                  color: _battleInk,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(width: 10),
+              Tooltip(
+                message: '새로 섞기',
+                child: IconButton(
+                  onPressed: () {
+                    widget.onShuffle();
+                    if (_pageController.hasClients) {
+                      _pageController.jumpToPage(0);
+                    }
+                    setState(() => _pageIndex = 0);
+                  },
+                  icon: const Icon(Icons.shuffle_rounded),
+                  color: _battleInk,
+                ),
+              ),
+              const SizedBox(width: 4),
               FilledButton.icon(
                 onPressed: widget.onOpenCreate,
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -903,53 +890,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
               ),
             ],
           ),
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              Expanded(
-                child: TextField(
-                  controller: widget.searchController,
-                  onChanged: widget.onSearchChanged,
-                  decoration: InputDecoration(
-                    hintText: '대결 제목, 게시물 제목, 작성자 검색',
-                    prefixIcon: const Icon(Icons.search_rounded),
-                    suffixIcon: widget.searchController.text.isEmpty
-                        ? null
-                        : IconButton(
-                            onPressed: () {
-                              widget.searchController.clear();
-                              widget.onSearchChanged('');
-                            },
-                            icon: const Icon(Icons.close_rounded),
-                          ),
-                  ),
-                ),
-              ),
-              const SizedBox(width: 8),
-              Tooltip(
-                message: '다시 랜덤 섞기',
-                child: OutlinedButton(
-                  onPressed: () {
-                    widget.onShuffle();
-                    if (_pageController.hasClients) {
-                      _pageController.jumpToPage(0);
-                    }
-                    setState(() => _pageIndex = 0);
-                  },
-                  style: OutlinedButton.styleFrom(
-                    minimumSize: const Size(52, 56),
-                    padding: EdgeInsets.zero,
-                    side: const BorderSide(color: _battleLine),
-                    shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(16),
-                    ),
-                  ),
-                  child: const Icon(Icons.shuffle_rounded, color: _battleInk),
-                ),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
+          const SizedBox(height: 10),
           Expanded(
             child: widget.matches.isEmpty
                 ? const Center(
@@ -966,10 +907,16 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
                 : PageView.builder(
                     controller: _pageController,
                     itemCount: widget.matches.length,
+                    physics: _processingVote
+                        ? const NeverScrollableScrollPhysics()
+                        : null,
                     onPageChanged: (value) =>
                         setState(() => _pageIndex = value),
                     itemBuilder: (context, index) {
                       final match = widget.matches[index];
+                      final revealMatch = _revealedMatchId == match.id
+                          ? _revealedMatch
+                          : null;
                       final left = widget.resolveSide(match, true);
                       final right = widget.resolveSide(match, false);
                       return Padding(
@@ -983,10 +930,9 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
                           rightSide: right,
                           currentUserId: widget.currentUserId,
                           immersive: true,
-                          onVote: (match, side) async {
-                            unawaited(widget.onVote(match, side));
-                            await _goNext();
-                          },
+                          revealMatch: revealMatch,
+                          showVoteStats: match.isExpired || revealMatch != null,
+                          onVote: _handleVote,
                           onOpenLeft: left.post == null
                               ? null
                               : () {
@@ -1193,7 +1139,7 @@ class _BattleCreatePage extends StatelessWidget {
                     ),
                   ),
                   child: const Text(
-                    '픽 쇼츠 올리기',
+                    '올리기',
                     style: TextStyle(fontWeight: FontWeight.w900),
                   ),
                 ),
@@ -1747,7 +1693,7 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
                           child: FilledButton.icon(
                             onPressed: _startScanner,
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFFA6DF2B),
+                              backgroundColor: const Color(0xFF49ACE6),
                               foregroundColor: Colors.white,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 24,
@@ -1873,6 +1819,8 @@ class _BattleMatchCard extends StatelessWidget {
     required this.rightSide,
     required this.currentUserId,
     required this.onVote,
+    this.revealMatch,
+    this.showVoteStats = true,
     this.onOpenLeft,
     this.onOpenRight,
     required this.onOpenAuthor,
@@ -1885,8 +1833,13 @@ class _BattleMatchCard extends StatelessWidget {
   final _BattleResolvedSide leftSide;
   final _BattleResolvedSide rightSide;
   final String currentUserId;
-  final Future<void> Function(BattleMatchEntry match, BattleVoteSide side)
+  final Future<BattleMatchEntry> Function(
+    BattleMatchEntry match,
+    BattleVoteSide side,
+  )
   onVote;
+  final BattleMatchEntry? revealMatch;
+  final bool showVoteStats;
   final VoidCallback? onOpenLeft;
   final VoidCallback? onOpenRight;
   final VoidCallback onOpenAuthor;
@@ -1896,19 +1849,21 @@ class _BattleMatchCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final selectedSide = match.voteSideOf(currentUserId);
-    final totalVotes = math.max(1, match.totalVotes);
-    final leftColor = Color(match.leftColorValue);
-    final rightColor = Color(match.rightColorValue);
+    final displayMatch = revealMatch ?? match;
+    final selectedSide = displayMatch.voteSideOf(currentUserId);
+    final totalVotes = math.max(1, displayMatch.totalVotes);
+    final leftColor = Color(displayMatch.leftColorValue);
+    final rightColor = Color(displayMatch.rightColorValue);
     final voteArena = _BattleVoteArena(
-      match: match,
-      matchTitle: match.title,
+      match: displayMatch,
+      matchTitle: displayMatch.title,
       leftSide: leftSide,
       rightSide: rightSide,
       selectedSide: selectedSide,
       leftColor: leftColor,
       rightColor: rightColor,
       height: immersive ? null : 260,
+      showVoteStats: showVoteStats,
       onVote: onVote,
     );
     return Container(
@@ -1929,7 +1884,7 @@ class _BattleMatchCard extends StatelessWidget {
               children: [
                 Expanded(
                   child: Text(
-                    '${((match.leftVotes / totalVotes) * 100).toStringAsFixed(1)}%',
+                    '${((displayMatch.leftVotes / totalVotes) * 100).toStringAsFixed(1)}%',
                     style: TextStyle(
                       color: _darken(leftColor),
                       fontWeight: FontWeight.w900,
@@ -1937,7 +1892,7 @@ class _BattleMatchCard extends StatelessWidget {
                   ),
                 ),
                 Text(
-                  '총 ${_formatVotes(match.totalVotes)}표',
+                  '총 ${_formatVotes(displayMatch.totalVotes)}표',
                   style: const TextStyle(
                     color: _battleSubtle,
                     fontWeight: FontWeight.w800,
@@ -1945,7 +1900,7 @@ class _BattleMatchCard extends StatelessWidget {
                 ),
                 Expanded(
                   child: Text(
-                    '${((match.rightVotes / totalVotes) * 100).toStringAsFixed(1)}%',
+                    '${((displayMatch.rightVotes / totalVotes) * 100).toStringAsFixed(1)}%',
                     textAlign: TextAlign.right,
                     style: TextStyle(
                       color: _darken(rightColor),
@@ -2119,6 +2074,7 @@ class _BattleVoteArena extends StatelessWidget {
     required this.selectedSide,
     required this.leftColor,
     required this.rightColor,
+    required this.showVoteStats,
     required this.onVote,
     this.height = 204,
   });
@@ -2130,7 +2086,11 @@ class _BattleVoteArena extends StatelessWidget {
   final BattleVoteSide? selectedSide;
   final Color leftColor;
   final Color rightColor;
-  final Future<void> Function(BattleMatchEntry match, BattleVoteSide side)
+  final bool showVoteStats;
+  final Future<BattleMatchEntry> Function(
+    BattleMatchEntry match,
+    BattleVoteSide side,
+  )
   onVote;
   final double? height;
 
@@ -2158,6 +2118,7 @@ class _BattleVoteArena extends StatelessWidget {
                 active: selectedSide == BattleVoteSide.left,
                 disabled: match.isExpired,
                 fullBleed: height == null,
+                showVotes: showVoteStats,
                 alignLeft: true,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.circular(26),
@@ -2181,6 +2142,7 @@ class _BattleVoteArena extends StatelessWidget {
                 active: selectedSide == BattleVoteSide.right,
                 disabled: match.isExpired,
                 fullBleed: height == null,
+                showVotes: showVoteStats,
                 alignLeft: false,
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.zero,
@@ -2259,6 +2221,19 @@ class _BattleVoteArena extends StatelessWidget {
                 ),
               ),
             ),
+            if (height == null && showVoteStats)
+              Positioned(
+                left: 14,
+                right: 14,
+                bottom: 18,
+                child: IgnorePointer(
+                  child: _BattleVoteResultBanner(
+                    match: match,
+                    leftTitle: leftSide.title,
+                    rightTitle: rightSide.title,
+                  ),
+                ),
+              ),
           ],
         );
       },
@@ -2277,6 +2252,7 @@ class _BattleVoteSideCard extends StatelessWidget {
     required this.active,
     required this.disabled,
     required this.fullBleed,
+    required this.showVotes,
     required this.alignLeft,
     required this.borderRadius,
     required this.onTap,
@@ -2289,6 +2265,7 @@ class _BattleVoteSideCard extends StatelessWidget {
   final bool active;
   final bool disabled;
   final bool fullBleed;
+  final bool showVotes;
   final bool alignLeft;
   final BorderRadius borderRadius;
   final VoidCallback onTap;
@@ -2300,21 +2277,25 @@ class _BattleVoteSideCard extends StatelessWidget {
       borderRadius: borderRadius,
       child: AnimatedContainer(
         duration: const Duration(milliseconds: 220),
-        padding: EdgeInsets.all(fullBleed ? 2 : 5),
+        padding: EdgeInsets.all(fullBleed ? 0 : 5),
         decoration: BoxDecoration(
-          color: Colors.white,
+          color: fullBleed ? Colors.transparent : Colors.white,
           borderRadius: borderRadius,
-          border: Border.all(
-            color: color.withAlpha(fullBleed ? 210 : (active ? 255 : 170)),
-            width: fullBleed ? 2 : (active ? 2.6 : 1.4),
-          ),
-          boxShadow: [
-            BoxShadow(
-              color: color.withAlpha(disabled ? 12 : (active ? 52 : 18)),
-              blurRadius: active ? 24 : 14,
-              offset: const Offset(0, 10),
-            ),
-          ],
+          border: fullBleed
+              ? null
+              : Border.all(
+                  color: color.withAlpha(active ? 255 : 170),
+                  width: active ? 2.6 : 1.4,
+                ),
+          boxShadow: fullBleed
+              ? const []
+              : [
+                  BoxShadow(
+                    color: color.withAlpha(disabled ? 12 : (active ? 52 : 18)),
+                    blurRadius: active ? 24 : 14,
+                    offset: const Offset(0, 10),
+                  ),
+                ],
         ),
         child: fullBleed
             ? _BattleVoteHero(
@@ -2323,6 +2304,7 @@ class _BattleVoteSideCard extends StatelessWidget {
                 title: side.title,
                 votes: _formatVotes(votes),
                 color: color,
+                showVotes: showVotes,
                 alignLeft: alignLeft,
                 borderRadius: borderRadius,
               )
@@ -2334,6 +2316,7 @@ class _BattleVoteSideCard extends StatelessWidget {
                       fallbackImageUrls: side.fallbackImageUrls,
                       votes: _formatVotes(votes),
                       color: color,
+                      showVotes: true,
                       alignLeft: alignLeft,
                       borderRadius: BorderRadius.only(
                         topLeft: borderRadius.topLeft,
@@ -2512,6 +2495,7 @@ class _BattleVoteHero extends StatelessWidget {
     this.title,
     required this.votes,
     required this.color,
+    required this.showVotes,
     required this.alignLeft,
     required this.borderRadius,
   });
@@ -2521,6 +2505,7 @@ class _BattleVoteHero extends StatelessWidget {
   final String? title;
   final String votes;
   final Color color;
+  final bool showVotes;
   final bool alignLeft;
   final BorderRadius borderRadius;
 
@@ -2571,29 +2556,87 @@ class _BattleVoteHero extends StatelessWidget {
                 ),
               ),
             ),
-          Padding(
-            padding: const EdgeInsets.all(10),
-            child: Align(
-              alignment: alignLeft
-                  ? Alignment.bottomLeft
-                  : Alignment.bottomRight,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 6),
-                decoration: BoxDecoration(
-                  color: Colors.black.withAlpha(88),
-                  borderRadius: BorderRadius.circular(999),
-                ),
-                child: Text(
-                  votes,
-                  textAlign: textAlign,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 28,
-                    height: 1,
+          if (showVotes)
+            Padding(
+              padding: const EdgeInsets.all(10),
+              child: Align(
+                alignment: alignLeft
+                    ? Alignment.bottomLeft
+                    : Alignment.bottomRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 9,
+                    vertical: 6,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.black.withAlpha(88),
+                    borderRadius: BorderRadius.circular(999),
+                  ),
+                  child: Text(
+                    votes,
+                    textAlign: textAlign,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontWeight: FontWeight.w900,
+                      fontSize: 28,
+                      height: 1,
+                    ),
                   ),
                 ),
               ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BattleVoteResultBanner extends StatelessWidget {
+  const _BattleVoteResultBanner({
+    required this.match,
+    required this.leftTitle,
+    required this.rightTitle,
+  });
+
+  final BattleMatchEntry match;
+  final String leftTitle;
+  final String rightTitle;
+
+  @override
+  Widget build(BuildContext context) {
+    final winner = match.winnerSide;
+    final summary = switch (winner) {
+      BattleVoteSide.left => '$leftTitle 쪽이 더 많이 선택됐어요',
+      BattleVoteSide.right => '$rightTitle 쪽이 더 많이 선택됐어요',
+      null => '지금은 동률이에요',
+    };
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
+      decoration: BoxDecoration(
+        color: Colors.black.withAlpha(136),
+        borderRadius: BorderRadius.circular(18),
+      ),
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text(
+            summary,
+            maxLines: 1,
+            overflow: TextOverflow.ellipsis,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 13,
+              fontWeight: FontWeight.w900,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            '왼쪽 ${_formatVotes(match.leftVotes)}표 · 오른쪽 ${_formatVotes(match.rightVotes)}표',
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 12,
+              fontWeight: FontWeight.w700,
             ),
           ),
         ],
@@ -2969,10 +3012,11 @@ class _BattleMatchDetailPageState extends State<_BattleMatchDetailPage> {
     Navigator.of(context).pop(_BattleDetailUpdated(replaced));
   }
 
-  Future<void> _vote(BattleVoteSide side) async {
+  Future<BattleMatchEntry> _vote(BattleVoteSide side) async {
     final updated = await widget.onVote(_previewMatch, side);
-    if (!mounted) return;
+    if (!mounted) return updated;
     setState(() => _previewMatch = updated);
+    return updated;
   }
 
   Future<void> _delete() async {
@@ -3219,6 +3263,15 @@ String _formatBattleRemaining(DateTime endsAt) {
   if (hours >= 1) return '$hours시간';
   final minutes = math.max(1, remaining.inMinutes);
   return '$minutes분';
+}
+
+bool _hasEndedToday(DateTime? endsAt) {
+  if (endsAt == null) return false;
+  final now = DateTime.now();
+  if (endsAt.isAfter(now)) return false;
+  return endsAt.year == now.year &&
+      endsAt.month == now.month &&
+      endsAt.day == now.day;
 }
 
 String _formatVotes(int value) {

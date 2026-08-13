@@ -487,7 +487,7 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
                 child: FilledButton(
                   onPressed: _submit,
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.lime,
+                    backgroundColor: AppColors.skyBlue,
                     foregroundColor: AppColors.ink,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                   ),

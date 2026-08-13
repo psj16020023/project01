@@ -40,6 +40,38 @@ const List<String> _suggestedSearchCategories = <String>[
 
 enum HighlightCollectionType { newProduct, pbProduct }
 
+const List<String> _highlightStores = <String>[
+  'CU',
+  'GS25',
+  '7-Eleven',
+  'emart24',
+];
+
+String _storeDisplayName(String store) => switch (store) {
+  '7-Eleven' => '세븐일레븐',
+  'emart24' => 'emart24',
+  _ => store,
+};
+
+Color _storeColor(String store) => switch (store) {
+  'CU' => const Color(0xFF652F8F),
+  'GS25' => const Color(0xFF1C75BC),
+  '7-Eleven' => const Color(0xFF008061),
+  'emart24' => const Color(0xFFF05A28),
+  _ => AppColors.navy,
+};
+
+List<CuProductMatch> _productMatchesForPost(Post post) => <CuProductMatch>[
+  ...CuProductCatalog.matchesForText(post.title),
+  ...CuProductCatalog.contextMatchesForTitle(
+    post.title,
+    '${post.title} ${post.content}',
+  ),
+];
+
+bool _postMatchesStore(Post post, String store) =>
+    _productMatchesForPost(post).any((match) => match.store == store);
+
 String _cleanTagLabel(String value) {
   return value
       .replaceAll(RegExp(r'[\u{1F300}-\u{1FAFF}]', unicode: true), '')
@@ -84,9 +116,13 @@ bool _titleHasPbProduct(String title) {
   ).any((match) => match.labels.contains(CuProductLabel.pbProduct));
 }
 
-bool _postHasNewProduct(Post post) => _titleHasNewProduct(post.title);
+bool _postHasNewProduct(Post post) => _productMatchesForPost(
+  post,
+).any((match) => match.labels.contains(CuProductLabel.newProduct));
 
-bool _postHasPbProduct(Post post) => _titleHasPbProduct(post.title);
+bool _postHasPbProduct(Post post) => _productMatchesForPost(
+  post,
+).any((match) => match.labels.contains(CuProductLabel.pbProduct));
 
 bool _featureHasNewProduct(PostFeatureInfo post) =>
     _titleHasNewProduct(post.title);
@@ -2361,29 +2397,23 @@ class _HomeScreenState extends State<HomeScreen> {
             )
           : null,
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [Color(0xFFF1FBFF), Colors.white],
-          ),
-        ),
+        color: AppColors.paper,
         child: SafeArea(
           child: Column(
             children: [
-              Container(height: 5, color: AppColors.lime),
+              Container(height: 3, color: AppColors.skyBlue),
               Container(
                 width: double.infinity,
-                color: AppColors.sky,
+                color: Colors.white,
                 child: Center(
                   child: ConstrainedBox(
                     constraints: const BoxConstraints(maxWidth: 1760),
                     child: Padding(
                       padding: EdgeInsets.fromLTRB(
                         desktop ? 34 : 16,
-                        desktop ? 16 : 8,
+                        desktop ? 18 : 12,
                         desktop ? 34 : 12,
-                        desktop ? 16 : 8,
+                        desktop ? 14 : 10,
                       ),
                       child: Column(
                         crossAxisAlignment: CrossAxisAlignment.start,
@@ -2408,7 +2438,7 @@ class _HomeScreenState extends State<HomeScreen> {
                               ),
                             ],
                           ),
-                          SizedBox(height: desktop ? 18 : 7),
+                          SizedBox(height: desktop ? 14 : 8),
                           FeatureTabs(
                             selectedTab: _selectedTab,
                             onChanged: (tab) =>
@@ -2595,7 +2625,7 @@ class CommunicationBody extends StatelessWidget {
   Widget build(BuildContext context) {
     if (loading) {
       return const Center(
-        child: CircularProgressIndicator(color: AppColors.limeDeep),
+        child: CircularProgressIndicator(color: AppColors.skyBlueDeep),
       );
     }
 
@@ -2617,7 +2647,9 @@ class CommunicationBody extends StatelessWidget {
               const SizedBox(height: 12),
               FilledButton(
                 onPressed: onReload,
-                style: FilledButton.styleFrom(backgroundColor: AppColors.lime),
+                style: FilledButton.styleFrom(
+                  backgroundColor: AppColors.skyBlue,
+                ),
                 child: const Text('다시 시도'),
               ),
             ],
@@ -2646,7 +2678,7 @@ class CommunicationBody extends StatelessWidget {
         final rowCount = (posts.length / columns).ceil();
 
         return RefreshIndicator(
-          color: AppColors.limeDeep,
+          color: AppColors.skyBlueDeep,
           onRefresh: onReload,
           child: ListView(
             controller: scrollController,
@@ -2754,7 +2786,9 @@ class CommunicationBody extends StatelessWidget {
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 20),
                   child: Center(
-                    child: CircularProgressIndicator(color: AppColors.limeDeep),
+                    child: CircularProgressIndicator(
+                      color: AppColors.skyBlueDeep,
+                    ),
                   ),
                 ),
             ],
@@ -2780,7 +2814,11 @@ class EmptyState extends StatelessWidget {
       ),
       child: const Column(
         children: [
-          Icon(Icons.auto_awesome_rounded, color: AppColors.limeDeep, size: 34),
+          Icon(
+            Icons.auto_awesome_rounded,
+            color: AppColors.skyBlueDeep,
+            size: 34,
+          ),
           SizedBox(height: 12),
           Text(
             '아직 보여줄 조합이 없어요',
@@ -2827,45 +2865,49 @@ class FeatureTabs extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final desktop = constraints.maxWidth >= 760;
-        return Row(
-          children: tabs.map((item) {
-            final active = selectedTab == item.tab;
-            return Expanded(
-              child: InkWell(
-                onTap: () => onChanged(item.tab),
-                borderRadius: BorderRadius.circular(desktop ? 12 : 8),
-                child: AnimatedContainer(
-                  duration: const Duration(milliseconds: 160),
-                  alignment: Alignment.center,
-                  padding: EdgeInsets.symmetric(
-                    horizontal: desktop ? 16 : 3,
-                    vertical: desktop ? 18 : 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: active
-                        ? Colors.white.withAlpha(220)
-                        : Colors.transparent,
-                    borderRadius: BorderRadius.circular(desktop ? 12 : 8),
-                    border: Border.all(
-                      color: active
-                          ? const Color(0xFFCFE2EA)
-                          : Colors.transparent,
+        return Container(
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.divider)),
+          ),
+          child: Row(
+            children: tabs.map((item) {
+              final active = selectedTab == item.tab;
+              return Expanded(
+                child: InkWell(
+                  onTap: () => onChanged(item.tab),
+                  borderRadius: BorderRadius.zero,
+                  child: AnimatedContainer(
+                    duration: const Duration(milliseconds: 160),
+                    alignment: Alignment.center,
+                    padding: EdgeInsets.symmetric(
+                      horizontal: desktop ? 16 : 3,
+                      vertical: desktop ? 14 : 10,
                     ),
-                  ),
-                  child: Text(
-                    item.label,
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    style: TextStyle(
-                      fontSize: desktop ? 18 : 11,
-                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                      color: active ? AppColors.navy : const Color(0xFF68859A),
+                    decoration: BoxDecoration(
+                      border: Border(
+                        bottom: BorderSide(
+                          color: active ? AppColors.navy : Colors.transparent,
+                          width: 2,
+                        ),
+                      ),
+                    ),
+                    child: Text(
+                      item.label,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: TextStyle(
+                        fontSize: desktop ? 18 : 11,
+                        fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                        color: active
+                            ? AppColors.navy
+                            : const Color(0xFF68859A),
+                      ),
                     ),
                   ),
                 ),
-              ),
-            );
-          }).toList(),
+              );
+            }).toList(),
+          ),
         );
       },
     );
@@ -3005,7 +3047,7 @@ class _ToolbarState extends State<Toolbar> {
               child: IconButton.filled(
                 onPressed: widget.onSearch,
                 style: IconButton.styleFrom(
-                  backgroundColor: AppColors.lime,
+                  backgroundColor: AppColors.skyBlue,
                   foregroundColor: Colors.white,
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(38, 38),
@@ -3089,11 +3131,11 @@ class _ToolbarState extends State<Toolbar> {
                     alignment: Alignment.center,
                     padding: const EdgeInsets.symmetric(horizontal: 9),
                     decoration: BoxDecoration(
-                      color: selected ? const Color(0xFFEAF5D0) : Colors.white,
+                      color: selected ? const Color(0xFFE4F4FD) : Colors.white,
                       borderRadius: BorderRadius.circular(999),
                       border: Border.all(
                         color: selected
-                            ? const Color(0xFFB7D66D)
+                            ? const Color(0xFF93D1F1)
                             : AppColors.line,
                       ),
                     ),
@@ -3127,7 +3169,7 @@ class _ToolbarState extends State<Toolbar> {
               ),
               icon: const Icon(Icons.shuffle_rounded, size: 15),
               label: const Text(
-                '랜덤 셔플',
+                '새로 섞기',
                 style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10),
               ),
             ),
@@ -3191,19 +3233,19 @@ InputDecoration inputDecoration(String hint) {
       fontWeight: FontWeight.w600,
     ),
     filled: true,
-    fillColor: const Color(0xFFFBFEFF),
+    fillColor: Colors.white,
     contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
     border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(18),
-      borderSide: const BorderSide(color: Color(0xFFDDE7EF)),
+      borderRadius: BorderRadius.circular(AppColors.radiusSmall),
+      borderSide: const BorderSide(color: AppColors.line),
     ),
     enabledBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(18),
-      borderSide: const BorderSide(color: Color(0xFFDDE7EF)),
+      borderRadius: BorderRadius.circular(AppColors.radiusSmall),
+      borderSide: const BorderSide(color: AppColors.line),
     ),
     focusedBorder: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(18),
-      borderSide: const BorderSide(color: AppColors.lime, width: 1.5),
+      borderRadius: BorderRadius.circular(AppColors.radiusSmall),
+      borderSide: const BorderSide(color: AppColors.navy, width: 1.5),
     ),
   );
 }
@@ -3383,6 +3425,59 @@ class _HighlightNavigation extends StatelessWidget {
   }
 }
 
+class _HighlightStoreFilter extends StatelessWidget {
+  const _HighlightStoreFilter({
+    required this.selectedStore,
+    required this.onChanged,
+  });
+
+  final String? selectedStore;
+  final ValueChanged<String?> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    final stores = <String?>[null, ..._highlightStores];
+    return SizedBox(
+      height: 38,
+      child: ListView.separated(
+        scrollDirection: Axis.horizontal,
+        itemCount: stores.length,
+        separatorBuilder: (_, _) => const SizedBox(width: 7),
+        itemBuilder: (context, index) {
+          final store = stores[index];
+          final selected = selectedStore == store;
+          final color = store == null ? AppColors.navy : _storeColor(store);
+          final label = store == null ? '전체' : _storeDisplayName(store);
+          return InkWell(
+            onTap: () => onChanged(store),
+            borderRadius: BorderRadius.circular(999),
+            child: AnimatedContainer(
+              duration: const Duration(milliseconds: 160),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 13),
+              decoration: BoxDecoration(
+                color: selected ? color : color.withAlpha(18),
+                borderRadius: BorderRadius.circular(999),
+                border: Border.all(
+                  color: selected ? color : color.withAlpha(105),
+                ),
+              ),
+              child: Text(
+                label,
+                style: TextStyle(
+                  color: selected ? Colors.white : color,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ),
+          );
+        },
+      ),
+    );
+  }
+}
+
 class HighlightPostsPage extends StatefulWidget {
   const HighlightPostsPage({
     super.key,
@@ -3415,9 +3510,16 @@ class HighlightPostsPage extends StatefulWidget {
 
 class _HighlightPostsPageState extends State<HighlightPostsPage> {
   SortMode _sortMode = SortMode.latest;
+  String? _selectedStore;
 
   List<Post> get _sortedPosts {
-    final sorted = [...widget.posts];
+    final sorted = widget.posts
+        .where(
+          (post) =>
+              _selectedStore == null ||
+              _postMatchesStore(post, _selectedStore!),
+        )
+        .toList();
     sorted.sort((a, b) {
       return switch (_sortMode) {
         SortMode.latest => b.createdAt.compareTo(a.createdAt),
@@ -3460,20 +3562,34 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
               if (index == 0) {
                 return Padding(
                   padding: const EdgeInsets.only(bottom: 14),
-                  child: Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: Text(
-                          '${posts.length}개 조합',
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
+                      _HighlightStoreFilter(
+                        selectedStore: _selectedStore,
+                        onChanged: (store) =>
+                            setState(() => _selectedStore = store),
                       ),
-                      SortSelector(
-                        sortMode: _sortMode,
-                        onChanged: (value) => setState(() => _sortMode = value),
+                      const SizedBox(height: 14),
+                      Row(
+                        children: [
+                          Expanded(
+                            child: Text(
+                              _selectedStore == null
+                                  ? '${posts.length}개 조합'
+                                  : '${_storeDisplayName(_selectedStore!)} ${posts.length}개 조합',
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontWeight: FontWeight.w700,
+                              ),
+                            ),
+                          ),
+                          SortSelector(
+                            sortMode: _sortMode,
+                            onChanged: (value) =>
+                                setState(() => _sortMode = value),
+                          ),
+                        ],
                       ),
                     ],
                   ),
@@ -3787,7 +3903,6 @@ class _HighlightPostCardState extends State<_HighlightPostCard> {
         decoration: BoxDecoration(
           color: AppColors.receipt,
           borderRadius: BorderRadius.circular(AppColors.radiusMedium),
-          border: Border.all(color: AppColors.line),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3913,11 +4028,11 @@ class PostCard extends StatelessWidget {
       post.categories,
       maxVisible: compact ? 1 : 2,
     );
-    final cardHeight = compact ? 218.0 : 386.0;
+    final cardHeight = compact ? 258.0 : 426.0;
     final cardPadding = compact ? 6.0 : 10.0;
     final avatarRadius = compact ? 10.0 : 14.0;
-    final imageHeight = compact ? 76.0 : 190.0;
-    final titleHeight = compact ? 28.0 : 40.0;
+    final imageHeight = compact ? 98.0 : 212.0;
+    final titleHeight = compact ? 24.0 : 30.0;
     final titleFontSize = compact ? 10.4 : 13.6;
     final tagHeight = compact ? 18.0 : 20.0;
     return SizedBox(
@@ -4022,7 +4137,13 @@ class PostCard extends StatelessWidget {
                       child: _PostImageGallery(post: post),
                     ),
                   ),
-                  SizedBox(height: compact ? 2 : 6),
+                  CuProductBadgeStrip(
+                    text: post.title,
+                    contextText: '${post.title} ${post.content}',
+                    compact: true,
+                    topPadding: compact ? 4 : 6,
+                  ),
+                  SizedBox(height: compact ? 3 : 6),
                   SizedBox(
                     height: titleHeight,
                     child: ConvenienceProductTitle(
@@ -4030,7 +4151,7 @@ class PostCard extends StatelessWidget {
                       contextText: '${post.title} ${post.content}',
                       maxLines: 1,
                       labelTopPadding: 0,
-                      showLabels: !compact,
+                      showLabels: false,
                       style: TextStyle(
                         color: AppColors.ink,
                         fontSize: titleFontSize,
@@ -4112,10 +4233,10 @@ class PostCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: ActionChipButton(
-                    label: isSaved ? '✓ 저장' : '+ 저장',
+                    label: isSaved ? '저장됨' : '저장',
                     active: isSaved,
-                    activeColor: const Color(0xFFE8F4D0),
-                    activeTextColor: const Color(0xFF6B8C15),
+                    activeColor: const Color(0xFFE2F3FC),
+                    activeTextColor: const Color(0xFF176EAA),
                     compact: compact,
                     onTap: onToggleSave,
                   ),
@@ -4315,7 +4436,7 @@ List<Widget> _buildPostImages(Post post) {
             children: [
               GradientPhoto(title: post.title),
               const Center(
-                child: CircularProgressIndicator(color: AppColors.limeDeep),
+                child: CircularProgressIndicator(color: AppColors.skyBlueDeep),
               ),
             ],
           );
@@ -4731,7 +4852,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
                         crossAxisAlignment: CrossAxisAlignment.start,
                         children: [
                           Text(
-                            isEditing ? '게시글 수정' : '게시물 올리기',
+                            isEditing ? '게시글 수정' : '게시글 올리기',
                             style: const TextStyle(
                               color: AppColors.ink,
                               fontWeight: FontWeight.w900,
@@ -4758,89 +4879,86 @@ class _ComposerSheetState extends State<ComposerSheet> {
                   ],
                 ),
                 const SizedBox(height: 18),
-                Container(
-                  height: 240,
-                  width: double.infinity,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFF4F8FB),
-                    borderRadius: BorderRadius.circular(24),
-                    border: Border.all(color: const Color(0xFFCEDBE6)),
-                  ),
-                  child: selectedImageBytes.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
-                          child: GridView.builder(
-                            padding: const EdgeInsets.all(8),
-                            physics: const NeverScrollableScrollPhysics(),
-                            gridDelegate:
-                                const SliverGridDelegateWithFixedCrossAxisCount(
-                                  crossAxisCount: 2,
-                                  crossAxisSpacing: 8,
-                                  mainAxisSpacing: 8,
+                InkWell(
+                  onTap: pickImage,
+                  borderRadius: BorderRadius.circular(AppColors.radiusMedium),
+                  child: Container(
+                    height: 240,
+                    width: double.infinity,
+                    decoration: BoxDecoration(
+                      color: AppColors.surfaceMuted,
+                      borderRadius: BorderRadius.circular(
+                        AppColors.radiusMedium,
+                      ),
+                      border: Border.all(color: AppColors.line),
+                    ),
+                    child: selectedImageBytes.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: GridView.builder(
+                              padding: const EdgeInsets.all(8),
+                              physics: const NeverScrollableScrollPhysics(),
+                              gridDelegate:
+                                  const SliverGridDelegateWithFixedCrossAxisCount(
+                                    crossAxisCount: 2,
+                                    crossAxisSpacing: 8,
+                                    mainAxisSpacing: 8,
+                                  ),
+                              itemCount: selectedImageBytes.length.clamp(1, 4),
+                              itemBuilder: (context, index) => ClipRRect(
+                                borderRadius: BorderRadius.circular(16),
+                                child: Image.memory(
+                                  selectedImageBytes[index],
+                                  fit: BoxFit.cover,
                                 ),
-                            itemCount: selectedImageBytes.length.clamp(1, 4),
-                            itemBuilder: (context, index) => ClipRRect(
-                              borderRadius: BorderRadius.circular(16),
-                              child: Image.memory(
-                                selectedImageBytes[index],
-                                fit: BoxFit.cover,
+                              ),
+                            ),
+                          )
+                        : widget.initialPost != null
+                        ? selectedImageUrls.isNotEmpty
+                              ? ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: Image.network(
+                                    _displayImageUrl(selectedImageUrls.first),
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) =>
+                                        const _ImageErrorPlaceholder(),
+                                  ),
+                                )
+                              : ClipRRect(
+                                  borderRadius: BorderRadius.circular(24),
+                                  child: _PostImageGallery(
+                                    post: widget.initialPost!,
+                                  ),
+                                )
+                        : selectedImageUrls.isNotEmpty
+                        ? ClipRRect(
+                            borderRadius: BorderRadius.circular(24),
+                            child: Image.network(
+                              _displayImageUrl(selectedImageUrls.first),
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) =>
+                                  const _ImageErrorPlaceholder(),
+                            ),
+                          )
+                        : const Center(
+                            child: Text(
+                              '사진을 추가해주세요',
+                              textAlign: TextAlign.center,
+                              style: TextStyle(
+                                color: Color(0xFF9DB0C0),
+                                fontWeight: FontWeight.w700,
+                                height: 1.6,
                               ),
                             ),
                           ),
-                        )
-                      : widget.initialPost != null
-                      ? selectedImageUrls.isNotEmpty
-                            ? ClipRRect(
-                                borderRadius: BorderRadius.circular(24),
-                                child: Image.network(
-                                  _displayImageUrl(selectedImageUrls.first),
-                                  fit: BoxFit.cover,
-                                  errorBuilder: (_, _, _) =>
-                                      const _ImageErrorPlaceholder(),
-                                ),
-                              )
-                            : ClipRRect(
-                                borderRadius: BorderRadius.circular(24),
-                                child: _PostImageGallery(
-                                  post: widget.initialPost!,
-                                ),
-                              )
-                      : selectedImageUrls.isNotEmpty
-                      ? ClipRRect(
-                          borderRadius: BorderRadius.circular(24),
-                          child: Image.network(
-                            _displayImageUrl(selectedImageUrls.first),
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) =>
-                                const _ImageErrorPlaceholder(),
-                          ),
-                        )
-                      : const Center(
-                          child: Text(
-                            '사진이 아직 없어요',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFF9DB0C0),
-                              fontWeight: FontWeight.w700,
-                              height: 1.6,
-                            ),
-                          ),
-                        ),
+                  ),
                 ),
                 const SizedBox(height: 14),
                 Wrap(
                   spacing: 10,
                   runSpacing: 10,
                   children: [
-                    FilledButton.icon(
-                      onPressed: () => pickImage(),
-                      style: FilledButton.styleFrom(
-                        backgroundColor: const Color(0xFF7E8994),
-                        foregroundColor: Colors.white,
-                      ),
-                      icon: const Icon(Icons.add_photo_alternate_outlined),
-                      label: const Text('사진 올리기'),
-                    ),
                     if (selectedImageBytes.isNotEmpty ||
                         selectedImageUrls.isNotEmpty)
                       TextButton(
@@ -4974,7 +5092,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
                   child: FilledButton(
                     onPressed: submitting ? null : submit,
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.lime,
+                      backgroundColor: AppColors.skyBlue,
                       foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
@@ -4984,7 +5102,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
                     child: Text(
                       submitting
                           ? (isEditing ? '수정 중...' : '게시 중...')
-                          : (isEditing ? '수정 완료' : '게시'),
+                          : (isEditing ? '수정 완료' : '올리기'),
                     ),
                   ),
                 ),
@@ -5431,7 +5549,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                         key: const Key('bot-send-button'),
                         onPressed: _sending ? null : _submit,
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.lime,
+                          backgroundColor: AppColors.skyBlue,
                           foregroundColor: Colors.white,
                           padding: EdgeInsets.zero,
                           shape: RoundedRectangleBorder(
@@ -5478,7 +5596,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
                               color: _useAgeCalorieGuide
-                                  ? AppColors.lime
+                                  ? AppColors.skyBlue
                                   : AppColors.line,
                             ),
                           ),
@@ -5632,7 +5750,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
             decoration: BoxDecoration(
               color: const Color(0xFFF4F8E9),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.lime),
+              border: Border.all(color: AppColors.skyBlue),
             ),
             child: Text(
               '${range.ageLabel} 한 끼 참고 범위 · ${range.label}',
@@ -5800,7 +5918,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
                     child: FilledButton(
                       onPressed: _saving ? null : _submit,
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.lime,
+                        backgroundColor: AppColors.skyBlue,
                         foregroundColor: Colors.white,
                         padding: EdgeInsets.symmetric(
                           vertical: desktop ? 22 : 16,
@@ -6012,8 +6130,18 @@ class _ProfilePageState extends State<ProfilePage> {
     final authoredBattleMatches = battleMatches
         .where((match) => match.authorId == currentUser.id)
         .toList();
+    final endedAuthoredBattleMatches = authoredBattleMatches
+        .where((match) => match.isExpired)
+        .toList();
+    final activeAuthoredBattleMatches = authoredBattleMatches
+        .where((match) => !match.isExpired)
+        .toList();
     final votedBattleMatches = battleMatches
-        .where((match) => match.voteSideOf(currentUser.id) != null)
+        .where(
+          (match) =>
+              match.authorId != currentUser.id &&
+              match.voteSideOf(currentUser.id) != null,
+        )
         .toList();
     final myPosts = _sortPosts(
       widget.posts.where((post) => post.authorId == currentUser.id).toList(),
@@ -6169,7 +6297,8 @@ class _ProfilePageState extends State<ProfilePage> {
               ),
               const SizedBox(width: 8),
               _ProfileModeChip(
-                label: '픽 쇼츠 ${votedBattleMatches.length}',
+                label:
+                    '픽 쇼츠 ${authoredBattleMatches.length + votedBattleMatches.length}',
                 active: _mode == _ProfileViewMode.votes,
                 onTap: () => setState(() => _mode = _ProfileViewMode.votes),
               ),
@@ -6641,23 +6770,58 @@ class _ProfilePageState extends State<ProfilePage> {
                 ),
                 const SizedBox(height: 12),
                 const Text(
-                  '내가 올린 것',
+                  '내가 올린 픽 쇼츠 결과',
                   style: TextStyle(
                     color: AppColors.ink,
                     fontWeight: FontWeight.w800,
                   ),
                 ),
+                const SizedBox(height: 4),
+                const Text(
+                  '종료 결과는 대결을 올린 사람에게만 보여요.',
+                  style: TextStyle(
+                    color: Color(0xFF7D90A0),
+                    fontWeight: FontWeight.w600,
+                    fontSize: 12,
+                  ),
+                ),
                 const SizedBox(height: 10),
-                if (authoredBattleMatches.isEmpty)
+                if (endedAuthoredBattleMatches.isEmpty)
                   const Text(
-                    '아직 올린 픽 쇼츠가 없어요.',
+                    '아직 종료된 내가 올린 픽 쇼츠가 없어요.',
                     style: TextStyle(
                       color: Color(0xFF7D90A0),
                       fontWeight: FontWeight.w600,
                     ),
                   )
                 else
-                  ...authoredBattleMatches.map(
+                  ...endedAuthoredBattleMatches.map(
+                    (match) => _CompactBattleVoteTile(
+                      match: match,
+                      currentUserId: currentUser.id,
+                      showResult: true,
+                      leftPost: widget.posts
+                          .where((post) => post.id == match.leftPostId)
+                          .firstOrNull,
+                      rightPost: widget.posts
+                          .where((post) => post.id == match.rightPostId)
+                          .firstOrNull,
+                    ),
+                  ),
+                if (activeAuthoredBattleMatches.isNotEmpty) ...[
+                  const Padding(
+                    padding: EdgeInsets.symmetric(vertical: 16),
+                    child: Divider(height: 1, color: Color(0xFFE8EFF4)),
+                  ),
+                  const Text(
+                    '진행 중인 내가 올린 픽 쇼츠',
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 10),
+                  ...activeAuthoredBattleMatches.map(
                     (match) => _CompactBattleVoteTile(
                       match: match,
                       currentUserId: currentUser.id,
@@ -6669,6 +6833,7 @@ class _ProfilePageState extends State<ProfilePage> {
                           .firstOrNull,
                     ),
                   ),
+                ],
                 const Padding(
                   padding: EdgeInsets.symmetric(vertical: 16),
                   child: Divider(height: 1, color: Color(0xFFE8EFF4)),
@@ -6694,6 +6859,7 @@ class _ProfilePageState extends State<ProfilePage> {
                     (match) => _CompactBattleVoteTile(
                       match: match,
                       currentUserId: currentUser.id,
+                      showResult: false,
                       leftPost: widget.posts
                           .where((post) => post.id == match.leftPostId)
                           .firstOrNull,
@@ -6709,7 +6875,7 @@ class _ProfilePageState extends State<ProfilePage> {
         FilledButton(
           onPressed: widget.onResetBotSetup,
           style: FilledButton.styleFrom(
-            backgroundColor: AppColors.lime,
+            backgroundColor: AppColors.skyBlue,
             foregroundColor: Colors.white,
             padding: const EdgeInsets.symmetric(vertical: 15),
           ),
@@ -6890,12 +7056,14 @@ class _CompactBattleVoteTile extends StatelessWidget {
     required this.currentUserId,
     required this.leftPost,
     required this.rightPost,
+    this.showResult = false,
   });
 
   final BattleMatchEntry match;
   final String currentUserId;
   final Post? leftPost;
   final Post? rightPost;
+  final bool showResult;
 
   @override
   Widget build(BuildContext context) {
@@ -6912,13 +7080,19 @@ class _CompactBattleVoteTile extends StatelessWidget {
       BattleVoteSide.right => '$rightTitle 승',
       null => match.totalVotes == 0 ? '투표 없음' : '무승부',
     };
+    final canShowResult = showResult && match.isExpired;
     return Container(
       width: double.infinity,
       margin: const EdgeInsets.only(bottom: 8),
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(
-        color: const Color(0xFFF5FAFD),
+        color: canShowResult
+            ? const Color(0xFFFFF8E7)
+            : const Color(0xFFF5FAFD),
         borderRadius: BorderRadius.circular(14),
+        border: canShowResult
+            ? Border.all(color: const Color(0xFFF1D58B))
+            : null,
       ),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
@@ -6932,7 +7106,11 @@ class _CompactBattleVoteTile extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            match.isExpired ? '결과: $resultText' : '내 선택: $pickedTitle',
+            canShowResult
+                ? '결과: $resultText'
+                : match.isExpired
+                ? '투표 종료'
+                : '내 선택: $pickedTitle',
             maxLines: 1,
             overflow: TextOverflow.ellipsis,
             style: const TextStyle(
@@ -6943,7 +7121,9 @@ class _CompactBattleVoteTile extends StatelessWidget {
           ),
           const SizedBox(height: 5),
           Text(
-            '${match.isExpired ? '종료됨' : '진행 중'} · 총 ${match.totalVotes}표 · ${match.createdAtLabel}',
+            canShowResult
+                ? '$leftTitle ${match.leftVotes}표 · $rightTitle ${match.rightVotes}표'
+                : '${match.isExpired ? '종료됨' : '진행 중'} · 총 ${match.totalVotes}표 · ${match.createdAtLabel}',
             style: const TextStyle(
               color: Color(0xFF7A8793),
               fontWeight: FontWeight.w700,
@@ -7592,10 +7772,10 @@ class _PostDetailPageState extends State<PostDetailPage> {
                       },
                       style: FilledButton.styleFrom(
                         backgroundColor: _saved
-                            ? const Color(0xFFE8F4D0)
+                            ? const Color(0xFFE2F3FC)
                             : const Color(0xFFF4F8FB),
                         foregroundColor: _saved
-                            ? const Color(0xFF6B8C15)
+                            ? const Color(0xFF176EAA)
                             : AppColors.navy,
                       ),
                       child: Text(_saved ? '보관 중' : '보관함 이동'),
@@ -7619,13 +7799,18 @@ class _PostDetailPageState extends State<PostDetailPage> {
                   title: _post.title,
                   contextText: '${_post.title} ${_post.content}',
                   maxLines: 3,
-                  labelTopPadding: 5,
+                  showLabels: false,
                   style: const TextStyle(
                     color: AppColors.ink,
                     fontWeight: FontWeight.w900,
                     fontSize: 28,
                     height: 1.2,
                   ),
+                ),
+                const SizedBox(height: 12),
+                CuProductBadgeStrip(
+                  text: _post.title,
+                  contextText: '${_post.title} ${_post.content}',
                 ),
                 const SizedBox(height: 12),
                 Wrap(
@@ -7954,7 +8139,7 @@ class _ReviewTasteStatsCard extends StatelessWidget {
             )
           else
             ...scores.entries.map((entry) {
-              final color = colors[entry.key] ?? AppColors.limeDeep;
+              final color = colors[entry.key] ?? AppColors.skyBlueDeep;
               return Padding(
                 padding: const EdgeInsets.only(bottom: 10),
                 child: Row(
@@ -8224,7 +8409,7 @@ class _DetailBlock extends StatelessWidget {
                   child: Icon(
                     Icons.fiber_manual_record_rounded,
                     size: 10,
-                    color: AppColors.limeDeep,
+                    color: AppColors.skyBlueDeep,
                   ),
                 ),
                 const SizedBox(width: 8),
@@ -9123,7 +9308,7 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
                                   child: FilledButton.icon(
                                     onPressed: _startScanner,
                                     style: FilledButton.styleFrom(
-                                      backgroundColor: AppColors.lime,
+                                      backgroundColor: AppColors.skyBlue,
                                       foregroundColor: Colors.white,
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 22,
@@ -9228,7 +9413,7 @@ class _ScannerLoadingCard extends StatelessWidget {
             height: 18,
             child: CircularProgressIndicator(
               strokeWidth: 2.4,
-              color: AppColors.limeDeep,
+              color: AppColors.skyBlueDeep,
             ),
           ),
           SizedBox(width: 12),
@@ -9496,7 +9681,7 @@ class _BotConditionChip extends StatelessWidget {
       decoration: BoxDecoration(
         color: const Color(0xFFF2F7EA),
         borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: const Color(0xFFD8E8B8)),
+        border: Border.all(color: const Color(0xFFCBE8F8)),
       ),
       child: Text(
         label,

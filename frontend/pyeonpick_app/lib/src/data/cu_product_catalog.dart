@@ -418,6 +418,43 @@ class CuProductCatalog {
     return matches.values.toList();
   }
 
+  static List<CuProductMatch> contextMatchesForTitle(
+    String title,
+    String? contextText,
+  ) {
+    final context = (contextText ?? '').toLowerCase();
+    if (title.trim().isEmpty || context.isEmpty) {
+      return const <CuProductMatch>[];
+    }
+
+    final labels = <CuProductLabel>{};
+    if (context.contains('신상품') || context.contains(' 신상')) {
+      labels.add(CuProductLabel.newProduct);
+    }
+    if (context.contains('pb')) labels.add(CuProductLabel.pbProduct);
+    if (labels.isEmpty) return const <CuProductMatch>[];
+
+    final store = switch (true) {
+      _ when context.contains('이마트24') || context.contains('emart24') =>
+        'emart24',
+      _ when context.contains('gs25') => 'GS25',
+      _ when context.contains('세븐일레븐') || context.contains('7-eleven') =>
+        '7-Eleven',
+      _ when context.contains('cu') || context.contains('씨유') => 'CU',
+      _ => null,
+    };
+    if (store == null) return const <CuProductMatch>[];
+
+    return <CuProductMatch>[
+      CuProductMatch(
+        store: store,
+        productName: title,
+        labels: labels,
+        aliases: <String>[title],
+      ),
+    ];
+  }
+
   static void _addCrawlerPostMatch(
     String text,
     Map<String, CuProductMatch> matches,

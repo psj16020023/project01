@@ -2368,6 +2368,9 @@ function scheduleCuProductRefresh() {
 
 const CONVENIENCE_BROWSER_UA = CU_BROWSER_UA;
 const CONVENIENCE_MAX_PAGES_PER_SOURCE = Number(process.env.CONVENIENCE_MAX_PAGES_PER_SOURCE || 20);
+const CONVENIENCE_AUTO_CRAWL_ENABLED = process.env.CONVENIENCE_AUTO_CRAWL_ENABLED !== "false";
+const CONVENIENCE_CRAWL_INTERVAL_HOURS = Math.max(Number(process.env.CONVENIENCE_CRAWL_INTERVAL_HOURS || 336), 1);
+const CONVENIENCE_NEW_WINDOW_DAYS = Math.max(Number(process.env.CONVENIENCE_NEW_WINDOW_DAYS || 14), 1);
 const STORE_COLORS = {
   CU: "#652F8F",
   emart24: "#F05A28",
@@ -2403,13 +2406,68 @@ function normalizePriceText(value) {
   return decodeHtmlText(String(value || "").replace(/<[^>]+>/g, " "));
 }
 
-async function fetchPublicHtml(url, { method = "GET", body = null, referer = null } = {}) {
+function formatConveniencePrice(value) {
+  if (value == null || value === "") return "";
+  const numericValue = Number(value);
+  if (Number.isFinite(numericValue) && numericValue > 0) {
+    return `${numericValue.toLocaleString("ko-KR")}원`;
+  }
+  return normalizePriceText(value);
+}
+
+function readSetCookieHeaders(headers) {
+  if (!headers) return [];
+  if (typeof headers.getSetCookie === "function") {
+    return headers.getSetCookie();
+  }
+  const singleValue = headers.get("set-cookie");
+  return singleValue ? [singleValue] : [];
+}
+
+function mergeCookieHeader(cookieHeader, setCookieValues = []) {
+  const cookieMap = new Map();
+  for (const part of String(cookieHeader || "").split(/;\s*/)) {
+    if (!part || !part.includes("=")) continue;
+    const [name, ...rest] = part.split("=");
+    cookieMap.set(name, rest.join("="));
+  }
+  for (const value of setCookieValues) {
+    const cookie = String(value || "").split(";")[0];
+    if (!cookie || !cookie.includes("=")) continue;
+    const [name, ...rest] = cookie.split("=");
+    cookieMap.set(name, rest.join("="));
+  }
+  return Array.from(cookieMap.entries())
+    .map(([name, value]) => `${name}=${value}`)
+    .join("; ");
+}
+
+function parseGs25Payload(raw) {
+  const trimmed = String(raw || "").trim();
+  if (!trimmed) return null;
+  const parsed = JSON.parse(trimmed);
+  return typeof parsed === "string" ? JSON.parse(parsed) : parsed;
+}
+
+function extractGs25CsrfToken(html) {
+  return (
+    String(html || "").match(/name=["']CSRFToken["']\s+value=["']([^"']+)["']/i)?.[1] ||
+    String(html || "").match(/setCSRFToken\(["']([^"']+)["']\)/i)?.[1] ||
+    ""
+  );
+}
+
+async function fetchPublicHtml(
+  url,
+  { method = "GET", body = null, referer = null, cookieHeader = "", accept = null } = {}
+) {
   const response = await fetch(url, {
     method,
     headers: {
       "User-Agent": CONVENIENCE_BROWSER_UA,
-      Accept: "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+      Accept: accept || "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
       ...(referer ? { Referer: referer } : {}),
+      ...(cookieHeader ? { Cookie: cookieHeader } : {}),
       ...(method === "POST" ? { "Content-Type": "application/x-www-form-urlencoded; charset=UTF-8" } : {}),
     },
     body,
@@ -2418,7 +2476,72 @@ async function fetchPublicHtml(url, { method = "GET", body = null, referer = nul
   if (!response.ok) {
     throw new Error(`${url} failed with status ${response.status}`);
   }
-  return response.text();
+  return {
+    body: await response.text(),
+    cookieHeader: mergeCookieHeader(cookieHeader, readSetCookieHeaders(response.headers)),
+  };
+}
+
+async function createGs25Session(pagePath) {
+  const pageUrl = absoluteUrl("https://gs25.gsretail.com", pagePath);
+  const { body, cookieHeader } = await fetchPublicHtml(pageUrl);
+  const csrfToken = extractGs25CsrfToken(body);
+  if (!csrfToken) {
+    throw new Error(`GS25 CSRF token not found for ${pagePath}`);
+  }
+  return { pageUrl, cookieHeader, csrfToken, html: body };
+}
+
+async function fetchGs25Json(session, endpointPath, formData = {}) {
+  const endpointUrl = absoluteUrl("https://gs25.gsretail.com", endpointPath);
+  const separator = endpointUrl.includes("?") ? "&" : "?";
+  const urlWithToken = endpointUrl.includes("CSRFToken=")
+    ? endpointUrl
+    : `${endpointUrl}${separator}CSRFToken=${encodeURIComponent(session.csrfToken)}`;
+  const { body, cookieHeader } = await fetchPublicHtml(urlWithToken, {
+    method: "POST",
+    body: new URLSearchParams(formData).toString(),
+    referer: session.pageUrl,
+    cookieHeader: session.cookieHeader,
+    accept: "application/json, text/plain, */*",
+  });
+  session.cookieHeader = cookieHeader;
+  return parseGs25Payload(body);
+}
+
+function isConvenienceNewProduct(product, now = new Date()) {
+  if (!(product?.isNewFlag || product?.isNewByDiff)) return false;
+  const firstSeenAt = product?.firstSeenAt ? new Date(product.firstSeenAt) : null;
+  if (!firstSeenAt || Number.isNaN(firstSeenAt.getTime())) return true;
+  return now.getTime() - firstSeenAt.getTime() <= CONVENIENCE_NEW_WINDOW_DAYS * 24 * 60 * 60 * 1000;
+}
+
+function parseGs25StructuredProducts(items, { sourcePage, isPb = false, extraTags = [] } = {}) {
+  const products = [];
+  for (const item of Array.isArray(items) ? items : []) {
+    const imageUrl = absoluteUrl("https://gs25.gsretail.com", item?.attFileNm || item?.attFileNmOld || "");
+    const name = decodeHtmlText(item?.goodsNm || item?.abrGoodsNm || item?.giftGoodsNm || "");
+    if (!name) continue;
+    const barcode = normalizeBarcode(item?.code || item?.organizeRepCd || extractBarcodeFromImageUrl(imageUrl) || "");
+    const pbFlag = Boolean(isPb || String(item?.pbGoodsSp?.code || "").toUpperCase() === "PB" || extraTags.includes("PB"));
+    const isNewFlag = String(item?.isNew || "").toUpperCase() === "T";
+    const eventTag = decodeHtmlText(item?.eventTypeNm || "");
+    products.push({
+      store: "GS25",
+      productId: barcode || item?.code || item?.organizeRepCd || item?.attFileId || null,
+      name,
+      normalizedName: normalizeName(name),
+      price: formatConveniencePrice(item?.price ?? item?.priceOld ?? item?.giftPrice ?? ""),
+      imageUrl,
+      barcode: barcode || null,
+      isNewFlag,
+      isPb: pbFlag,
+      tags: [...new Set([...extraTags, ...(eventTag ? [eventTag] : []), ...(isNewFlag ? ["신상품"] : []), ...(pbFlag ? ["PB"] : [])])],
+      sourcePage,
+      rawText: decodeHtmlText(JSON.stringify(item)),
+    });
+  }
+  return products;
 }
 
 function parseEmart24Products(html, { pathName, isPb = false }) {
@@ -2550,7 +2673,7 @@ async function crawlEmart24Products() {
     { pathName: "ff", isPb: false },
   ]) {
     for (let page = 1; page <= CONVENIENCE_MAX_PAGES_PER_SOURCE; page += 1) {
-      const html = await fetchPublicHtml(
+      const { body: html } = await fetchPublicHtml(
         `https://emart24.co.kr/goods/${source.pathName}?search=&page=${page}&category_seq=&align=`
       );
       const pageProducts = parseEmart24Products(html, source);
@@ -2563,28 +2686,34 @@ async function crawlEmart24Products() {
 
 async function crawlSevenElevenProducts() {
   const products = [];
-  const mainHtml = await fetchPublicHtml("https://m.7-eleven.co.kr/product/productList.asp");
-  products.push(...parseSevenElevenProducts(mainHtml, { tabLabel: "1+1" }));
   const tabs = [
+    ["1", "1+1", false],
+    ["2", "2+1", false],
+    ["3", "증정행사", false],
     ["4", "할인행사", false],
     ["5", "PB상품", true],
     ["6", "인기상품", false],
   ];
   for (const [pTab, tabLabel, isPb] of tabs) {
-    for (let page = 1; page <= Math.min(CONVENIENCE_MAX_PAGES_PER_SOURCE, 12); page += 1) {
-      const body = new URLSearchParams({
-        intPageSize: "20",
-        intCurrPage: String(page),
-        pTab,
-      }).toString();
-      const html = await fetchPublicHtml("https://m.7-eleven.co.kr/product/plistMoreAjax.asp", {
-        method: "POST",
-        referer: "https://m.7-eleven.co.kr/product/productList.asp",
-        body,
-      });
-      const pageProducts = parseSevenElevenProducts(html, { tabLabel, isPb });
-      if (pageProducts.length === 0) break;
-      products.push(...pageProducts);
+    for (let page = 1; page <= CONVENIENCE_MAX_PAGES_PER_SOURCE; page += 1) {
+      try {
+        const body = new URLSearchParams({
+          intPageSize: "100",
+          intCurrPage: String(page),
+          pTab,
+        }).toString();
+        const { body: html } = await fetchPublicHtml("https://m.7-eleven.co.kr/product/plistMoreAjax.asp", {
+          method: "POST",
+          referer: "https://m.7-eleven.co.kr/product/productList.asp",
+          body,
+        });
+        const pageProducts = parseSevenElevenProducts(html, { tabLabel, isPb });
+        if (pageProducts.length === 0) break;
+        products.push(...pageProducts);
+      } catch (error) {
+        console.warn(`7-Eleven crawl warning on tab ${pTab} page ${page}:`, error.message || error);
+        break;
+      }
     }
   }
   return products;
@@ -2592,14 +2721,98 @@ async function crawlSevenElevenProducts() {
 
 async function crawlGs25Products() {
   const products = [];
-  const sources = [
-    { url: "https://gs25.gsretail.com/gscvs/ko/products/event-goods", isPb: false },
-    { url: "https://gs25.gsretail.com/gscvs/ko/products/youus-main", isPb: true },
-    { url: "https://gs25.gsretail.com/gscvs/ko/products/youus-freshfood", isPb: true },
-  ];
-  for (const source of sources) {
-    const html = await fetchPublicHtml(source.url);
-    products.push(...parseGs25Products(html, { sourcePage: source.url, isPb: source.isPb }));
+  const eventSession = await createGs25Session("/gscvs/ko/products/event-goods");
+  for (let page = 1; page <= CONVENIENCE_MAX_PAGES_PER_SOURCE; page += 1) {
+    const data = await fetchGs25Json(eventSession, "/gscvs/ko/products/event-goods-search", {
+      pageNum: String(page),
+      pageSize: "100",
+      searchType: "",
+      searchWord: "",
+      parameterList: "TOTAL",
+      pageId: "event-goods-Page",
+    });
+    const pageProducts = parseGs25StructuredProducts(data?.results, {
+      sourcePage: eventSession.pageUrl,
+      extraTags: ["행사상품"],
+    });
+    if (pageProducts.length === 0) break;
+    products.push(...pageProducts);
+    if (page >= Math.ceil(Number(data?.pagination?.totalNumberOfResults || 0) / 100)) break;
+  }
+
+  const youusMainSession = await createGs25Session("/gscvs/ko/products/youus-main");
+  const youusMainData = await fetchGs25Json(youusMainSession, "/gscvs/ko/products/youus-main-search", {
+    searchWord: "",
+    searchHPrice: "",
+    searchTPrice: "",
+    searchFoodCK: "FreshFood",
+    searchNonFoodCK: "NonFreshFood",
+    searchSort: "",
+  });
+  products.push(
+    ...parseGs25StructuredProducts(youusMainData?.FreshFoodData, {
+      sourcePage: youusMainSession.pageUrl,
+      extraTags: ["차별화상품", "Fresh Food"],
+    }),
+    ...parseGs25StructuredProducts(youusMainData?.NonFreshFoodData, {
+      sourcePage: youusMainSession.pageUrl,
+      extraTags: ["차별화상품"],
+    }),
+    ...parseGs25StructuredProducts(youusMainData?.eventYouUsProductList, {
+      sourcePage: youusMainSession.pageUrl,
+      extraTags: ["차별화상품", "행사상품"],
+    }),
+    ...parseGs25StructuredProducts(youusMainData?.bestYouUsProductList, {
+      sourcePage: youusMainSession.pageUrl,
+      extraTags: ["차별화상품", "BEST"],
+    }),
+    ...parseGs25StructuredProducts(
+      (Array.isArray(youusMainData?.MainManagementList) ? youusMainData.MainManagementList : []).flatMap((item) =>
+        [item?.newYouUsProduct, item?.eventYouUsProduct].filter(Boolean)
+      ),
+      {
+        sourcePage: youusMainSession.pageUrl,
+        extraTags: ["차별화상품"],
+      }
+    )
+  );
+
+  for (const detailSource of [
+    {
+      pagePath: "/gscvs/ko/products/youus-different-service",
+      endpointPath: "/gscvs/ko/products/youus-freshfoodDetail-search",
+      searchSrvFoodCK: "DifferentServiceKey",
+      searchProduct: "productALL",
+      extraTags: ["차별화상품"],
+    },
+    {
+      pagePath: "/gscvs/ko/products/youus-freshfood",
+      endpointPath: "/gscvs/ko/products/youus-freshfoodDetail-search",
+      searchSrvFoodCK: "FreshFoodKey",
+      searchProduct: "productALL",
+      extraTags: ["Fresh Food"],
+    },
+  ]) {
+    const session = await createGs25Session(detailSource.pagePath);
+    for (let page = 1; page <= CONVENIENCE_MAX_PAGES_PER_SOURCE; page += 1) {
+      const data = await fetchGs25Json(session, detailSource.endpointPath, {
+        pageNum: String(page),
+        pageSize: "100",
+        searchWord: "",
+        searchHPrice: "",
+        searchTPrice: "",
+        searchSrvFoodCK: detailSource.searchSrvFoodCK,
+        searchSort: "searchALLSort",
+        searchProduct: detailSource.searchProduct,
+      });
+      const pageProducts = parseGs25StructuredProducts(data?.SubPageListData, {
+        sourcePage: session.pageUrl,
+        extraTags: detailSource.extraTags,
+      });
+      if (pageProducts.length === 0) break;
+      products.push(...pageProducts);
+      if (page >= Math.ceil(Number(data?.SubPageListPagination?.totalNumberOfResults || 0) / 100)) break;
+    }
   }
   return products;
 }
@@ -2631,7 +2844,7 @@ function serializeConvenienceProduct(product) {
     price: product.price || "",
     imageUrl: product.imageUrl || null,
     barcode: product.barcode || null,
-    isNewFlag: Boolean(product.isNewFlag || product.isNewByDiff),
+    isNewFlag: isConvenienceNewProduct(product),
     siteNewFlag: Boolean(product.isNewFlag),
     diffNewFlag: Boolean(product.isNewByDiff),
     isPb: Boolean(product.isPb),
@@ -2705,7 +2918,7 @@ async function refreshConvenienceProducts() {
 
 function convenienceProductPostContent(product) {
   const labels = [
-    ...(product.isNewFlag || product.isNewByDiff ? ["신상품"] : []),
+    ...(isConvenienceNewProduct(product) ? ["신상품"] : []),
     ...(product.isPb ? ["PB 상품"] : []),
   ];
   const barcodeText = product.barcode ? `, 바코드 ${product.barcode}` : "";
@@ -2727,7 +2940,10 @@ async function seedConvenienceProductCommunityPosts(crawledAt) {
     .lean();
 
   let created = 0;
-  for (const [index, product] of products.entries()) {
+  let visibleIndex = 0;
+  for (const product of products) {
+    const isNew = isConvenienceNewProduct(product);
+    if (!isNew && !product.isPb) continue;
     const author = storeAuthors[product.store] || storeAuthors.emart24;
     const existing = await Post.findOne({ authorId: author.id, title: product.name });
     if (existing) continue;
@@ -2741,12 +2957,12 @@ async function seedConvenienceProductCommunityPosts(crawledAt) {
       priceMin: price,
       priceMax: price,
       categories: [
-        ...(product.isNewFlag || product.isNewByDiff ? ["트렌드"] : []),
+        ...(isNew ? ["트렌드"] : []),
         ...(product.isPb ? ["가성비"] : []),
         "시간절약",
       ],
-      likes: Math.max(0, 7 - (index % 8)),
-      dislikes: index % 6 === 0 ? 1 : 0,
+      likes: Math.max(0, 7 - (visibleIndex % 8)),
+      dislikes: visibleIndex % 6 === 0 ? 1 : 0,
       comments: [],
       reviews: [],
       calories: null,
@@ -2760,18 +2976,37 @@ async function seedConvenienceProductCommunityPosts(crawledAt) {
         tips: ["신상품/PB 표시는 편의점 상품 DB에 있는 상품명과 매칭될 때만 붙어요."],
         cautions: [],
         situationTags: [
-          ...(product.isNewFlag || product.isNewByDiff ? [`${product.store} 신상품`] : []),
+          ...(isNew ? [`${product.store} 신상품`] : []),
           ...(product.isPb ? [`${product.store} PB`] : []),
         ],
         reviewPoints: [],
         prepTimeTag: "",
       },
-      createdAt: new Date(crawledAt.getTime() - index * 70 * 1000),
+      createdAt: new Date(crawledAt.getTime() - visibleIndex * 70 * 1000),
       updatedAt: crawledAt,
     });
     created += 1;
+    visibleIndex += 1;
   }
   return created;
+}
+
+function scheduleConvenienceProductRefresh() {
+  if (!CONVENIENCE_AUTO_CRAWL_ENABLED) return;
+
+  const run = async () => {
+    try {
+      const result = await refreshConvenienceProducts();
+      console.log(
+        `Convenience product crawl complete: ${result.total} products, ${result.newCount} new, ${result.pbCount} PB`
+      );
+    } catch (error) {
+      console.error("Convenience product crawl failed:", error);
+    }
+  };
+
+  setTimeout(run, 5000);
+  setInterval(run, CONVENIENCE_CRAWL_INTERVAL_HOURS * 60 * 60 * 1000);
 }
 
 async function refreshTopFiveBadges() {
@@ -3777,13 +4012,15 @@ app.get("/api/products/convenience", async (req, res) => {
       { barcode: String(query).replace(/[^0-9A-Za-z]/g, "") },
     ];
   }
-  if (label === "new") filter.isNewFlag = true;
   if (label === "pb") filter.isPb = true;
 
-  const products = await ConvenienceProduct.find(filter)
+  let products = await ConvenienceProduct.find(filter)
     .sort({ isNewFlag: -1, isPb: -1, lastSeenAt: -1, name: 1 })
     .limit(pageLimit)
     .lean();
+  if (label === "new") {
+    products = products.filter((product) => isConvenienceNewProduct(product));
+  }
   return res.json({ products: products.map(serializeConvenienceProduct) });
 });
 
@@ -3809,7 +4046,7 @@ app.get("/api/products/convenience/labels", async (req, res) => {
   const products = await ConvenienceProduct.find({ $or: filters }).limit(20).lean();
   const labels = [];
   for (const product of products) {
-    if (product.isNewFlag || product.isNewByDiff) labels.push(`${product.store}:new`);
+    if (isConvenienceNewProduct(product)) labels.push(`${product.store}:new`);
     if (product.isPb) labels.push(`${product.store}:pb`);
   }
   return res.json({
@@ -3886,8 +4123,8 @@ app.get("/api/products/lookup/:barcode", async (req, res) => {
           price: parseCuPriceToNumber(convenienceProduct.price),
           calories: null,
           aliases: [],
-          categories: [
-            ...(convenienceProduct.isNewFlag || convenienceProduct.isNewByDiff ? [`${convenienceProduct.store} 신상품`] : []),
+            categories: [
+            ...(isConvenienceNewProduct(convenienceProduct) ? [`${convenienceProduct.store} 신상품`] : []),
             ...(convenienceProduct.isPb ? [`${convenienceProduct.store} PB`] : []),
           ],
           images: { product: convenienceProduct.imageUrl || null, meta: null },
@@ -3985,6 +4222,7 @@ async function start() {
   await Product.deleteMany({ source: "local-fallback-catalog" });
   await refreshTopFiveBadges();
   scheduleCuProductRefresh();
+  scheduleConvenienceProductRefresh();
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`PyeonPick full-stack server running at http://0.0.0.0:${PORT} using ${mongoLabel}`);

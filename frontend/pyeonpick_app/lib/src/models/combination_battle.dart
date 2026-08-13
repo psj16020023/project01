@@ -155,6 +155,7 @@ class CombinationBattleState {
   const CombinationBattleState({
     this.matches = const <BattleMatchEntry>[],
     this.notifiedExpiredMatchIds = const <String>[],
+    this.todayEndedSummarySeenMatchIds = const <String>[],
   });
 
   factory CombinationBattleState.fromJson(Map<String, dynamic>? json) {
@@ -170,27 +171,37 @@ class CombinationBattleState {
                   const <dynamic>[])
               .map((item) => item.toString())
               .toList(),
+      todayEndedSummarySeenMatchIds:
+          (json['todayEndedSummarySeenMatchIds'] as List<dynamic>? ??
+                  const <dynamic>[])
+              .map((item) => item.toString())
+              .toList(),
     );
   }
 
   final List<BattleMatchEntry> matches;
   final List<String> notifiedExpiredMatchIds;
+  final List<String> todayEndedSummarySeenMatchIds;
 
   bool get isEmpty => matches.isEmpty;
 
   CombinationBattleState copyWith({
     List<BattleMatchEntry>? matches,
     List<String>? notifiedExpiredMatchIds,
+    List<String>? todayEndedSummarySeenMatchIds,
   }) {
     return CombinationBattleState(
       matches: matches ?? this.matches,
       notifiedExpiredMatchIds:
           notifiedExpiredMatchIds ?? this.notifiedExpiredMatchIds,
+      todayEndedSummarySeenMatchIds:
+          todayEndedSummarySeenMatchIds ?? this.todayEndedSummarySeenMatchIds,
     );
   }
 
   Map<String, dynamic> toJson() => <String, dynamic>{
     'matches': matches.map((match) => match.toJson()).toList(),
     'notifiedExpiredMatchIds': notifiedExpiredMatchIds,
+    'todayEndedSummarySeenMatchIds': todayEndedSummarySeenMatchIds,
   };
 }

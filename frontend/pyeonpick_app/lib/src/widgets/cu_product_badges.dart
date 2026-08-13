@@ -2,8 +2,6 @@ import 'package:flutter/material.dart';
 
 import '../data/cu_product_catalog.dart';
 
-const Color _newProductGreen = Color(0xFF149857);
-
 class ConvenienceProductTitle extends StatelessWidget {
   const ConvenienceProductTitle({
     super.key,
@@ -28,7 +26,10 @@ class ConvenienceProductTitle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final matches = CuProductCatalog.matchesForText(title);
+    final matches = <CuProductMatch>[
+      ...CuProductCatalog.matchesForText(title),
+      ...CuProductCatalog.contextMatchesForTitle(title, contextText),
+    ];
     final highlights = _highlightsFor(title, matches);
     final titleWidget = RichText(
       maxLines: maxLines,
@@ -64,19 +65,24 @@ class CuProductBadgeStrip extends StatelessWidget {
   const CuProductBadgeStrip({
     super.key,
     required this.text,
+    this.contextText,
     this.compact = false,
     this.onDark = false,
     this.topPadding = 0,
   });
 
   final String text;
+  final String? contextText;
   final bool compact;
   final bool onDark;
   final double topPadding;
 
   @override
   Widget build(BuildContext context) {
-    final matches = CuProductCatalog.matchesForText(text);
+    final matches = <CuProductMatch>[
+      ...CuProductCatalog.matchesForText(text),
+      ...CuProductCatalog.contextMatchesForTitle(text, contextText),
+    ];
     if (matches.isEmpty) return const SizedBox.shrink();
 
     return Padding(
@@ -111,15 +117,28 @@ class _TinyProductLabels extends StatelessWidget {
       runSpacing: compact ? 2 : 3,
       children: labels
           .map(
-            (label) => Text(
-              label.text,
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              style: TextStyle(
-                color: onDark ? Colors.white.withAlpha(230) : label.color,
-                fontSize: compact ? 9 : 10.5,
-                fontWeight: FontWeight.w900,
-                letterSpacing: -0.25,
+            (label) => Container(
+              padding: EdgeInsets.symmetric(
+                horizontal: compact ? 6 : 8,
+                vertical: compact ? 3 : 4,
+              ),
+              decoration: BoxDecoration(
+                color: onDark ? label.color : label.color.withAlpha(20),
+                borderRadius: BorderRadius.circular(999),
+                border: onDark
+                    ? null
+                    : Border.all(color: label.color.withAlpha(90)),
+              ),
+              child: Text(
+                label.text,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: TextStyle(
+                  color: onDark ? Colors.white : label.color,
+                  fontSize: compact ? 9 : 10.5,
+                  fontWeight: FontWeight.w900,
+                  letterSpacing: -0.25,
+                ),
               ),
             ),
           )
@@ -153,6 +172,7 @@ List<InlineSpan> _spansFor(
           style: style,
           isPb: isPb,
           isNew: isNew,
+          markerColor: highlight.match.color,
         ),
       ),
     );
@@ -219,7 +239,7 @@ List<_ProductLabel> _labelItems(Iterable<CuProductMatch> matches) {
     if (match.labels.contains(CuProductLabel.newProduct)) {
       labels['${match.store}|new'] = _ProductLabel(
         text: '${match.store} 신상',
-        color: _newProductGreen,
+        color: match.color,
       );
     }
   }
@@ -281,17 +301,23 @@ class _ProductMarkedText extends StatelessWidget {
     required this.style,
     required this.isPb,
     required this.isNew,
+    required this.markerColor,
   });
 
   final String text;
   final TextStyle style;
   final bool isPb;
   final bool isNew;
+  final Color markerColor;
 
   @override
   Widget build(BuildContext context) {
     return CustomPaint(
-      painter: _ProductMarkPainter(isPb: isPb, isNew: isNew),
+      painter: _ProductMarkPainter(
+        isPb: isPb,
+        isNew: isNew,
+        markerColor: markerColor,
+      ),
       child: Padding(
         padding: EdgeInsets.only(bottom: isNew ? 4 : 0),
         child: Text(text, style: style),
@@ -301,16 +327,21 @@ class _ProductMarkedText extends StatelessWidget {
 }
 
 class _ProductMarkPainter extends CustomPainter {
-  const _ProductMarkPainter({required this.isPb, required this.isNew});
+  const _ProductMarkPainter({
+    required this.isPb,
+    required this.isNew,
+    required this.markerColor,
+  });
 
   final bool isPb;
   final bool isNew;
+  final Color markerColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     if (isPb) {
       final marker = Paint()
-        ..color = const Color(0xFF9B59B6).withAlpha(78)
+        ..color = markerColor.withAlpha(78)
         ..strokeWidth = size.height * 0.56
         ..strokeCap = StrokeCap.round;
       final y = size.height * 0.57;
@@ -319,7 +350,7 @@ class _ProductMarkPainter extends CustomPainter {
 
     if (isNew) {
       final wave = Paint()
-        ..color = const Color(0xFF9EDB35)
+        ..color = markerColor
         ..style = PaintingStyle.stroke
         ..strokeWidth = 2
         ..strokeCap = StrokeCap.round;
@@ -343,6 +374,8 @@ class _ProductMarkPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _ProductMarkPainter oldDelegate) {
-    return oldDelegate.isPb != isPb || oldDelegate.isNew != isNew;
+    return oldDelegate.isPb != isPb ||
+        oldDelegate.isNew != isNew ||
+        oldDelegate.markerColor != markerColor;
   }
 }

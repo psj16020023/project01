@@ -113,8 +113,8 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
         useMaterial3: true,
         scaffoldBackgroundColor: AppColors.paper,
         colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.lime,
-          primary: AppColors.lime,
+          seedColor: AppColors.skyBlue,
+          primary: AppColors.skyBlue,
           secondary: AppColors.navy,
           surface: AppColors.receipt,
         ),
@@ -130,22 +130,21 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
           margin: EdgeInsets.zero,
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(AppColors.radiusMedium),
-            side: const BorderSide(color: AppColors.line),
           ),
         ),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: AppColors.receipt,
           border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusMedium),
+            borderRadius: BorderRadius.circular(AppColors.radiusSmall),
             borderSide: const BorderSide(color: AppColors.line),
           ),
           enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusMedium),
+            borderRadius: BorderRadius.circular(AppColors.radiusSmall),
             borderSide: const BorderSide(color: AppColors.line),
           ),
           focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusMedium),
+            borderRadius: BorderRadius.circular(AppColors.radiusSmall),
             borderSide: const BorderSide(color: AppColors.navy, width: 1.5),
           ),
         ),
@@ -154,15 +153,15 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
             backgroundColor: AppColors.navy,
             foregroundColor: Colors.white,
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppColors.radiusMedium),
+              borderRadius: BorderRadius.circular(AppColors.radiusSmall),
             ),
           ),
         ),
         chipTheme: ChipThemeData(
           shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusSmall),
+            borderRadius: BorderRadius.circular(999),
           ),
-          side: const BorderSide(color: AppColors.line),
+          side: BorderSide.none,
         ),
       ),
       builder: (context, child) {
@@ -324,7 +323,9 @@ class _SplashScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return const Scaffold(
-      body: Center(child: CircularProgressIndicator(color: AppColors.limeDeep)),
+      body: Center(
+        child: CircularProgressIndicator(color: AppColors.skyBlueDeep),
+      ),
     );
   }
 }
