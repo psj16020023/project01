@@ -30,18 +30,20 @@ class ConvenienceProductTitle extends StatelessWidget {
       ...CuProductCatalog.matchesForText(title),
       ...CuProductCatalog.contextMatchesForTitle(title, contextText),
     ];
-    final highlights = _highlightsFor(title, matches);
-    final titleWidget = RichText(
+    final hasLabels = matches.any(
+      (match) =>
+          match.labels.contains(CuProductLabel.pbProduct) ||
+          match.labels.contains(CuProductLabel.newProduct),
+    );
+    final titleWidget = Text(
+      title,
       maxLines: maxLines,
       overflow: overflow,
       textAlign: textAlign,
-      text: TextSpan(
-        style: style,
-        children: _spansFor(title, highlights, style),
-      ),
+      style: style,
     );
 
-    if (highlights.isEmpty || !showLabels) return titleWidget;
+    if (!hasLabels || !showLabels) return titleWidget;
 
     return Column(
       crossAxisAlignment: textAlign == TextAlign.right
@@ -51,10 +53,7 @@ class ConvenienceProductTitle extends StatelessWidget {
         titleWidget,
         Padding(
           padding: EdgeInsets.only(top: labelTopPadding),
-          child: _TinyProductLabels(
-            matches: highlights.map((item) => item.match),
-            compact: true,
-          ),
+          child: _TinyProductLabels(matches: matches, compact: true),
         ),
       ],
     );
@@ -147,98 +146,18 @@ class _TinyProductLabels extends StatelessWidget {
   }
 }
 
-List<InlineSpan> _spansFor(
-  String title,
-  List<_ProductHighlight> highlights,
-  TextStyle style,
-) {
-  if (highlights.isEmpty) return <InlineSpan>[TextSpan(text: title)];
-
-  final spans = <InlineSpan>[];
-  var cursor = 0;
-  for (final highlight in highlights) {
-    if (highlight.start > cursor) {
-      spans.add(TextSpan(text: title.substring(cursor, highlight.start)));
-    }
-    final highlightedText = title.substring(highlight.start, highlight.end);
-    final isPb = highlight.match.labels.contains(CuProductLabel.pbProduct);
-    final isNew = highlight.match.labels.contains(CuProductLabel.newProduct);
-    spans.add(
-      WidgetSpan(
-        alignment: PlaceholderAlignment.baseline,
-        baseline: TextBaseline.alphabetic,
-        child: _ProductMarkedText(
-          text: highlightedText,
-          style: style,
-          isPb: isPb,
-          isNew: isNew,
-          markerColor: highlight.match.color,
-        ),
-      ),
-    );
-    cursor = highlight.end;
-  }
-  if (cursor < title.length) {
-    spans.add(TextSpan(text: title.substring(cursor)));
-  }
-  return spans;
-}
-
-List<_ProductHighlight> _highlightsFor(
-  String title,
-  List<CuProductMatch> matches,
-) {
-  final normalized = _NormalizedText.from(title);
-  final highlights = <_ProductHighlight>[];
-
-  for (final match in matches) {
-    if (!_hasDisplayLabel(match)) continue;
-    final candidates =
-        <String>{
-            ...match.aliases,
-            _cleanProductName(match.productName),
-            match.productName,
-          }.where((item) => item.trim().isNotEmpty).toList()
-          ..sort((a, b) => b.length.compareTo(a.length));
-
-    for (final candidate in candidates) {
-      final target = _normalize(candidate);
-      if (target.isEmpty) continue;
-      final index = normalized.value.indexOf(target);
-      if (index < 0) continue;
-      final start = normalized.sourceIndexes[index];
-      final end = normalized.sourceIndexes[index + target.length - 1] + 1;
-      if (_overlaps(highlights, start, end)) continue;
-      highlights.add(_ProductHighlight(match: match, start: start, end: end));
-      break;
-    }
-  }
-
-  highlights.sort((a, b) => a.start.compareTo(b.start));
-  return highlights;
-}
-
-bool _overlaps(List<_ProductHighlight> highlights, int start, int end) {
-  return highlights.any((item) => start < item.end && end > item.start);
-}
-
-bool _hasDisplayLabel(CuProductMatch match) {
-  return match.labels.contains(CuProductLabel.pbProduct) ||
-      match.labels.contains(CuProductLabel.newProduct);
-}
-
 List<_ProductLabel> _labelItems(Iterable<CuProductMatch> matches) {
   final labels = <String, _ProductLabel>{};
   for (final match in matches) {
     if (match.labels.contains(CuProductLabel.pbProduct)) {
       labels['${match.store}|PB'] = _ProductLabel(
-        text: '${match.store} PB',
+        text: '${match.store} · PB 상품',
         color: match.color,
       );
     }
     if (match.labels.contains(CuProductLabel.newProduct)) {
       labels['${match.store}|new'] = _ProductLabel(
-        text: '${match.store} 신상',
+        text: '${match.store} · 신상',
         color: match.color,
       );
     }
@@ -246,136 +165,9 @@ List<_ProductLabel> _labelItems(Iterable<CuProductMatch> matches) {
   return labels.values.toList();
 }
 
-String _cleanProductName(String value) {
-  return value
-      .replaceAll(RegExp(r'\d+(g|ml|p|입|개)$', caseSensitive: false), '')
-      .trim();
-}
-
-String _normalize(String value) {
-  return value.toLowerCase().replaceAll(RegExp(r'[^0-9a-z가-힣]'), '').trim();
-}
-
-class _NormalizedText {
-  const _NormalizedText({required this.value, required this.sourceIndexes});
-
-  factory _NormalizedText.from(String source) {
-    final buffer = StringBuffer();
-    final indexes = <int>[];
-    for (var i = 0; i < source.length; i += 1) {
-      final char = source[i].toLowerCase();
-      if (RegExp(r'[0-9a-z가-힣]').hasMatch(char)) {
-        buffer.write(char);
-        indexes.add(i);
-      }
-    }
-    return _NormalizedText(value: buffer.toString(), sourceIndexes: indexes);
-  }
-
-  final String value;
-  final List<int> sourceIndexes;
-}
-
-class _ProductHighlight {
-  const _ProductHighlight({
-    required this.match,
-    required this.start,
-    required this.end,
-  });
-
-  final CuProductMatch match;
-  final int start;
-  final int end;
-}
-
 class _ProductLabel {
   const _ProductLabel({required this.text, required this.color});
 
   final String text;
   final Color color;
-}
-
-class _ProductMarkedText extends StatelessWidget {
-  const _ProductMarkedText({
-    required this.text,
-    required this.style,
-    required this.isPb,
-    required this.isNew,
-    required this.markerColor,
-  });
-
-  final String text;
-  final TextStyle style;
-  final bool isPb;
-  final bool isNew;
-  final Color markerColor;
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      painter: _ProductMarkPainter(
-        isPb: isPb,
-        isNew: isNew,
-        markerColor: markerColor,
-      ),
-      child: Padding(
-        padding: EdgeInsets.only(bottom: isNew ? 4 : 0),
-        child: Text(text, style: style),
-      ),
-    );
-  }
-}
-
-class _ProductMarkPainter extends CustomPainter {
-  const _ProductMarkPainter({
-    required this.isPb,
-    required this.isNew,
-    required this.markerColor,
-  });
-
-  final bool isPb;
-  final bool isNew;
-  final Color markerColor;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    if (isPb) {
-      final marker = Paint()
-        ..color = markerColor.withAlpha(78)
-        ..strokeWidth = size.height * 0.56
-        ..strokeCap = StrokeCap.round;
-      final y = size.height * 0.57;
-      canvas.drawLine(Offset(1, y), Offset(size.width - 1, y + 0.5), marker);
-    }
-
-    if (isNew) {
-      final wave = Paint()
-        ..color = markerColor
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 2
-        ..strokeCap = StrokeCap.round;
-      final path = Path()..moveTo(0, size.height - 1.5);
-      var x = 0.0;
-      var rising = true;
-      while (x < size.width) {
-        final next = (x + 6).clamp(0, size.width).toDouble();
-        path.quadraticBezierTo(
-          x + 3,
-          size.height - (rising ? 4 : 0.5),
-          next,
-          size.height - 1.5,
-        );
-        rising = !rising;
-        x = next;
-      }
-      canvas.drawPath(path, wave);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _ProductMarkPainter oldDelegate) {
-    return oldDelegate.isPb != isPb ||
-        oldDelegate.isNew != isNew ||
-        oldDelegate.markerColor != markerColor;
-  }
 }

@@ -2389,11 +2389,15 @@ class _HomeScreenState extends State<HomeScreen> {
     final desktop = screenWidth >= 900;
     return Scaffold(
       floatingActionButton: _selectedTab == AppTab.communication
-          ? FloatingActionButton(
+          ? FloatingActionButton.extended(
               onPressed: () => _openComposer(),
               backgroundColor: AppColors.navy,
               foregroundColor: Colors.white,
-              child: const Icon(Icons.add, size: 34),
+              icon: const Icon(Icons.add_rounded),
+              label: const Text(
+                '올리기',
+                style: TextStyle(fontWeight: FontWeight.w900),
+              ),
             )
           : null,
       body: Container(
@@ -2422,14 +2426,29 @@ class _HomeScreenState extends State<HomeScreen> {
                             crossAxisAlignment: CrossAxisAlignment.center,
                             children: [
                               Expanded(
-                                child: Text(
-                                  '편pick!',
-                                  style: TextStyle(
-                                    color: AppColors.navy,
-                                    fontWeight: FontWeight.w900,
-                                    fontSize: desktop ? 38 : 20,
-                                    letterSpacing: -0.8,
-                                  ),
+                                child: Column(
+                                  crossAxisAlignment: CrossAxisAlignment.start,
+                                  children: [
+                                    Text(
+                                      '편pick!',
+                                      style: TextStyle(
+                                        color: AppColors.navy,
+                                        fontWeight: FontWeight.w900,
+                                        fontSize: desktop ? 38 : 22,
+                                        letterSpacing: -0.8,
+                                      ),
+                                    ),
+                                    const SizedBox(height: 2),
+                                    Text(
+                                      '24H CONVENIENCE PICKS',
+                                      style: TextStyle(
+                                        color: AppColors.skyBlueDeep,
+                                        fontSize: desktop ? 10 : 8.5,
+                                        fontWeight: FontWeight.w900,
+                                        letterSpacing: desktop ? 1.1 : 0.7,
+                                      ),
+                                    ),
+                                  ],
                                 ),
                               ),
                               _UserPill(
@@ -3346,13 +3365,13 @@ class _HighlightNavigation extends StatelessWidget {
       return Expanded(
         child: InkWell(
           onTap: onTap,
-          borderRadius: BorderRadius.circular(14),
+          borderRadius: BorderRadius.circular(AppColors.radiusSmall),
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
             decoration: BoxDecoration(
-              color: AppColors.receipt,
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.line),
+              color: color.withAlpha(16),
+              borderRadius: BorderRadius.circular(AppColors.radiusSmall),
+              border: Border(left: BorderSide(color: color, width: 4)),
             ),
             child: Row(
               children: [
@@ -3409,7 +3428,7 @@ class _HighlightNavigation extends StatelessWidget {
           label: '신상',
           caption: '$newProductCount개',
           icon: Icons.auto_awesome_rounded,
-          color: const Color(0xFF149857),
+          color: AppColors.skyBlueDeep,
           onTap: onOpenNew,
         ),
         const SizedBox(width: 8),
@@ -3417,7 +3436,7 @@ class _HighlightNavigation extends StatelessWidget {
           label: 'PB',
           caption: '$pbProductCount개',
           icon: Icons.local_offer_rounded,
-          color: const Color(0xFF652F8F),
+          color: AppColors.navy,
           onTap: onOpenPb,
         ),
       ],
@@ -4028,11 +4047,11 @@ class PostCard extends StatelessWidget {
       post.categories,
       maxVisible: compact ? 1 : 2,
     );
-    final cardHeight = compact ? 258.0 : 426.0;
-    final cardPadding = compact ? 6.0 : 10.0;
+    final cardHeight = compact ? 276.0 : 448.0;
+    final cardPadding = compact ? 5.0 : 8.0;
     final avatarRadius = compact ? 10.0 : 14.0;
-    final imageHeight = compact ? 98.0 : 212.0;
-    final titleHeight = compact ? 24.0 : 30.0;
+    final imageHeight = compact ? 112.0 : 230.0;
+    final titleHeight = compact ? 24.0 : 32.0;
     final titleFontSize = compact ? 10.4 : 13.6;
     final tagHeight = compact ? 18.0 : 20.0;
     return SizedBox(
@@ -4041,7 +4060,13 @@ class PostCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: AppColors.receipt,
           borderRadius: BorderRadius.circular(AppColors.radiusMedium),
-          border: Border.all(color: AppColors.line),
+          boxShadow: [
+            BoxShadow(
+              color: AppColors.navy.withAlpha(10),
+              blurRadius: 14,
+              offset: const Offset(0, 5),
+            ),
+          ],
         ),
         padding: EdgeInsets.all(cardPadding),
         child: Column(
@@ -4070,7 +4095,7 @@ class PostCard extends StatelessWidget {
                             fontWeight: FontWeight.w900,
                             fontSize: compact ? 10.2 : 12.4,
                             decoration: TextDecoration.underline,
-                            decorationColor: Color(0xFF85A0B7),
+                            decorationColor: Colors.transparent,
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
