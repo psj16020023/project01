@@ -824,9 +824,6 @@ class _HomeScreenState extends State<HomeScreen> {
               widget.repository.fetchPostAudienceStats(post.id),
           isMine: post.authorId == widget.currentUser.id,
           isSaved: widget.currentUser.savedPostIds.contains(post.id),
-          isPickedAuthor: widget.currentUser.pickedAuthorIds.contains(
-            post.authorId,
-          ),
           onToggleLike: () async {
             await _toggleLike(_findPostById(post.id) ?? post);
             return _findPostById(post.id) ?? post;
@@ -840,7 +837,6 @@ class _HomeScreenState extends State<HomeScreen> {
             return _findPostById(post.id) ?? post;
           },
           onToggleSave: () => _toggleSavedPost(post.id),
-          onTogglePickAuthor: () => _togglePickedAuthor(post.authorId),
           onEdit: () =>
               _openComposer(initialPost: _findPostById(post.id) ?? post),
           onDelete: () => _deletePost(_findPostById(post.id) ?? post),
@@ -4047,7 +4043,7 @@ class PostCard extends StatelessWidget {
       post.categories,
       maxVisible: compact ? 1 : 2,
     );
-    final cardHeight = compact ? 276.0 : 448.0;
+    final cardHeight = compact ? 284.0 : 448.0;
     final cardPadding = compact ? 5.0 : 8.0;
     final avatarRadius = compact ? 10.0 : 14.0;
     final imageHeight = compact ? 112.0 : 230.0;
@@ -4258,7 +4254,7 @@ class PostCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: ActionChipButton(
-                    label: isSaved ? '저장됨' : '저장',
+                    label: isSaved ? '보관됨' : '보관',
                     active: isSaved,
                     activeColor: const Color(0xFFE2F3FC),
                     activeTextColor: const Color(0xFF176EAA),
@@ -4522,31 +4518,45 @@ class ActionChipButton extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        width: expanded ? double.infinity : null,
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 5 : 6,
-          vertical: compact ? 3 : 5,
-        ),
-        decoration: BoxDecoration(
-          color: active
-              ? (activeColor ?? const Color(0xFFFFE7EC))
-              : const Color(0xFFF6F9FC),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          textAlign: TextAlign.center,
-          style: TextStyle(
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        borderRadius: BorderRadius.circular(999),
+        onTap: () async {
+          try {
+            await onTap();
+          } catch (_) {
+            if (!context.mounted) return;
+            ScaffoldMessenger.of(context)
+              ..clearSnackBars()
+              ..showSnackBar(
+                const SnackBar(content: Text('요청을 처리하지 못했어요. 다시 시도해 주세요.')),
+              );
+          }
+        },
+        child: Ink(
+          width: expanded ? double.infinity : null,
+          padding: EdgeInsets.symmetric(
+            horizontal: compact ? 5 : 6,
+            vertical: compact ? 3 : 5,
+          ),
+          decoration: BoxDecoration(
             color: active
-                ? (activeTextColor ?? const Color(0xFFE44566))
-                : const Color(0xFF52697F),
-            fontWeight: FontWeight.w800,
-            fontSize: compact ? 10 : 11,
+                ? (activeColor ?? const Color(0xFFFFE7EC))
+                : const Color(0xFFF6F9FC),
+            borderRadius: BorderRadius.circular(999),
+          ),
+          child: Text(
+            label,
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: active
+                  ? (activeTextColor ?? const Color(0xFFE44566))
+                  : const Color(0xFF52697F),
+              fontWeight: FontWeight.w800,
+              fontSize: compact ? 10 : 11,
+            ),
           ),
         ),
       ),
@@ -7594,12 +7604,10 @@ class PostDetailPage extends StatefulWidget {
     required this.onLoadAudienceStats,
     required this.isMine,
     required this.isSaved,
-    required this.isPickedAuthor,
     required this.onToggleLike,
     required this.onToggleDislike,
     required this.onAddComment,
     required this.onToggleSave,
-    required this.onTogglePickAuthor,
     required this.onEdit,
     required this.onDelete,
     required this.onOpenAuthor,
@@ -7616,12 +7624,10 @@ class PostDetailPage extends StatefulWidget {
   final Future<PostAudienceStats> Function() onLoadAudienceStats;
   final bool isMine;
   final bool isSaved;
-  final bool isPickedAuthor;
   final Future<Post> Function() onToggleLike;
   final Future<Post> Function() onToggleDislike;
   final Future<Post> Function(String text) onAddComment;
   final Future<void> Function() onToggleSave;
-  final Future<void> Function() onTogglePickAuthor;
   final Future<void> Function() onEdit;
   final Future<void> Function() onDelete;
   final VoidCallback onOpenAuthor;
@@ -7638,7 +7644,6 @@ class PostDetailPage extends StatefulWidget {
 class _PostDetailPageState extends State<PostDetailPage> {
   late Post _post;
   late bool _saved;
-  late bool _pickedAuthor;
   PostAudienceStats? _audienceStats;
 
   @override
@@ -7646,7 +7651,6 @@ class _PostDetailPageState extends State<PostDetailPage> {
     super.initState();
     _post = widget.post;
     _saved = widget.isSaved;
-    _pickedAuthor = widget.isPickedAuthor;
     unawaited(_loadAudienceStats());
   }
 
@@ -7788,23 +7792,6 @@ class _PostDetailPageState extends State<PostDetailPage> {
                         ],
                       ),
                     ),
-                    const Spacer(),
-                    FilledButton.tonal(
-                      onPressed: () async {
-                        await widget.onToggleSave();
-                        if (!mounted) return;
-                        setState(() => _saved = !_saved);
-                      },
-                      style: FilledButton.styleFrom(
-                        backgroundColor: _saved
-                            ? const Color(0xFFE2F3FC)
-                            : const Color(0xFFF4F8FB),
-                        foregroundColor: _saved
-                            ? const Color(0xFF176EAA)
-                            : AppColors.navy,
-                      ),
-                      child: Text(_saved ? '보관 중' : '보관함 이동'),
-                    ),
                   ],
                 ),
                 const SizedBox(height: 16),
@@ -7920,23 +7907,21 @@ class _PostDetailPageState extends State<PostDetailPage> {
                         },
                       ),
                     ),
-                    if (!widget.isMine) ...[
-                      const SizedBox(width: 10),
-                      Expanded(
-                        child: ActionChipButton(
-                          label: _pickedAuthor ? '픽 취소' : '작성자 픽',
-                          active: _pickedAuthor,
-                          activeColor: const Color(0xFFEAF6FF),
-                          activeTextColor: AppColors.navy,
-                          expanded: true,
-                          onTap: () async {
-                            await widget.onTogglePickAuthor();
-                            if (!mounted) return;
-                            setState(() => _pickedAuthor = !_pickedAuthor);
-                          },
-                        ),
+                    const SizedBox(width: 10),
+                    Expanded(
+                      child: ActionChipButton(
+                        label: _saved ? '보관 중' : '보관함 이동',
+                        active: _saved,
+                        activeColor: const Color(0xFFE2F3FC),
+                        activeTextColor: const Color(0xFF176EAA),
+                        expanded: true,
+                        onTap: () async {
+                          await widget.onToggleSave();
+                          if (!mounted) return;
+                          setState(() => _saved = !_saved);
+                        },
                       ),
-                    ],
+                    ),
                   ],
                 ),
                 const SizedBox(height: 10),

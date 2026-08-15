@@ -279,7 +279,7 @@ void main() {
     await tester.tap(find.widgetWithText(TextField, '제목 검색'));
     await tester.pump();
     expect(find.text('카테고리'), findsOneWidget);
-    expect(find.text('랜덤 셔플'), findsOneWidget);
+    expect(find.text('새로 섞기'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }
