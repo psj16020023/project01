@@ -21,6 +21,15 @@ const _battleCanvas = Color(0xFFF6F8FC);
 const _battleLine = Color(0xFFDCE6F0);
 const _battleSubtle = Color(0xFF72869B);
 
+bool _isCombinationTitle(String value) {
+  final parts = value
+      .replaceAll('＋', '+')
+      .split('+')
+      .map((part) => part.trim())
+      .where((part) => part.isNotEmpty);
+  return parts.length >= 2;
+}
+
 String _battleDisplayImageUrl(String imageUrl) {
   final raw = imageUrl.trim();
   if (raw.isEmpty || raw.startsWith('data:')) return raw;
@@ -391,6 +400,11 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
         _toast('서로 다른 게시글을 골라주세요.');
         return null;
       }
+      if (!_isCombinationTitle(leftPost.title) ||
+          !_isCombinationTitle(rightPost.title)) {
+        _toast('픽 쇼츠에는 상품 사이에 +가 있는 조합만 올릴 수 있어요.');
+        return null;
+      }
     } else {
       if (leftCustomTitle.trim().isEmpty || rightCustomTitle.trim().isEmpty) {
         _toast('직접 입력 모드에서는 양쪽 조합 이름을 모두 적어주세요.');
@@ -398,6 +412,11 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
       }
       if (leftCustomImageUrl == null || rightCustomImageUrl == null) {
         _toast('직접 입력 모드에서는 양쪽 사진이 모두 필요해요. 바코드로 불러오거나 직접 올려주세요.');
+        return null;
+      }
+      if (!_isCombinationTitle(leftCustomTitle) ||
+          !_isCombinationTitle(rightCustomTitle)) {
+        _toast('양쪽 조합 이름을 상품 A + 상품 B 형태로 입력해 주세요.');
         return null;
       }
     }
@@ -557,7 +576,9 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
                   builder: (context) => _BattlePostPickerSheet(
-                    posts: _sourcePosts,
+                    posts: _sourcePosts
+                        .where((post) => _isCombinationTitle(post.title))
+                        .toList(),
                     initialPost: leftPost,
                   ),
                 );
@@ -571,7 +592,9 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
                   builder: (context) => _BattlePostPickerSheet(
-                    posts: _sourcePosts,
+                    posts: _sourcePosts
+                        .where((post) => _isCombinationTitle(post.title))
+                        .toList(),
                     initialPost: rightPost,
                   ),
                 );
@@ -1048,6 +1071,15 @@ class _BattleCreatePage extends StatelessWidget {
                   fontWeight: FontWeight.w900,
                 ),
               ),
+              const SizedBox(height: 6),
+              const Text(
+                '상품 A + 상품 B처럼 실제 조합만 대결에 올릴 수 있어요.',
+                style: TextStyle(
+                  color: _battleSubtle,
+                  fontWeight: FontWeight.w700,
+                  fontSize: 12,
+                ),
+              ),
               const SizedBox(height: 18),
               _BattleSourceModeToggle(
                 sourceMode: sourceMode,
@@ -1343,7 +1375,7 @@ class _BattleManualCreateSlot extends StatelessWidget {
                   controller: titleController,
                   decoration: const InputDecoration(
                     labelText: '조합 이름',
-                    hintText: '예: 불닭+치즈 조합',
+                    hintText: '예: 불닭볶음면 + 스트링치즈',
                   ),
                 ),
               ),
