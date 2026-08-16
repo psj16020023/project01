@@ -16,13 +16,11 @@
 
 ## 2주 상품 크롤러
 
-CU, GS25, 세븐일레븐, emart24의 공개 상품 목록은 크롤러로 수집합니다. GitHub Actions는 매일 Render API를 깨우지만, MongoDB에 저장된 마지막 성공 시각을 기준으로 실제 수집은 14일에 한 번만 실행됩니다. 일부 매장 수집이 실패하면 다음 날 다시 시도합니다.
+CU, GS25, 세븐일레븐, emart24의 공개 상품 목록은 크롤러로 수집합니다. GitHub Actions는 매일 Render API를 깨우지만, MongoDB에 저장된 마지막 전체 완료 시각을 기준으로 실제 수집은 14일에 한 번만 실행됩니다. 한 매장만 실패한 부분 실패도 전체 시도로 기록해 14일 주기를 유지하고, 작업 자체가 중단된 경우에만 다음 날 다시 시도합니다.
 
 자동 실행을 켜려면 같은 임의 문자열을 다음 두 곳에 `CRAWLER_REFRESH_SECRET`으로 설정합니다.
 
 1. Render Dashboard의 `Environment`
 2. GitHub 저장소의 `Settings -> Secrets and variables -> Actions -> New repository secret`
 
-GitHub Actions의 `Refresh convenience products` 워크플로는 `Actions` 탭에서 수동 실행할 수도 있습니다. 실행 상태는 비밀키와 함께 `GET /api/internal/crawlers/convenience/status`로 확인할 수 있습니다.
-
-현재는 크롤러 동작 확인을 위해 10분 간격 테스트 설정입니다. 테스트를 마치면 Actions 예약을 하루 한 번으로 되돌리고, Render의 `CRAWLER_REFRESH_INTERVAL_MINUTES`를 `20160`으로 변경해 2주 간격으로 운영합니다.
+GitHub Actions의 `Refresh convenience products` 워크플로는 `Actions` 탭에서 수동 실행할 수도 있습니다. 실행 상태는 비밀키와 함께 `GET /api/internal/crawlers/convenience/status`로 확인할 수 있습니다. 운영 환경의 `CRAWLER_REFRESH_INTERVAL_MINUTES`는 `20160`으로 설정합니다.

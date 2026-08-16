@@ -18,4 +18,4 @@ services:
       - key: CRAWLER_REFRESH_SECRET
         sync: false
       - key: CRAWLER_REFRESH_INTERVAL_MINUTES
-        value: "10"
+        value: "20160"

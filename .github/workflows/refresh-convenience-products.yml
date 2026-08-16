@@ -1,10 +1,9 @@
 name: Refresh convenience products
 
 on:
-  # Temporary 10-minute test schedule. Restore the daily schedule after the
-  # test; the server still decides whether the configured interval has passed.
+  # Wake Render daily; the API starts a crawl only when 14 days have passed.
   schedule:
-    - cron: "*/10 * * * *"
+    - cron: "17 3 * * *"
   workflow_dispatch:
     inputs:
       reset_crawler_data:

@@ -290,6 +290,7 @@ const crawlerScheduleSchema = new mongoose.Schema(
     key: { type: String, required: true, unique: true, index: true },
     status: { type: String, default: "idle" },
     lastStartedAt: { type: Date, default: null },
+    lastCompletedAt: { type: Date, default: null },
     lastSucceededAt: { type: Date, default: null },
     lastFailedAt: { type: Date, default: null },
     lastError: { type: String, default: "" },
@@ -2985,11 +2986,14 @@ async function resetAllConvenienceCrawlerData({ waitForActiveCrawl = false } = {
 }
 
 function crawlerNextRunAt(schedule) {
-  const lastSucceededAt = schedule?.lastSucceededAt
-    ? new Date(schedule.lastSucceededAt)
+  // A partial store failure still counts as a completed two-week collection.
+  // Fall back to older fields so existing schedule documents migrate safely.
+  const lastCompletedAt = schedule?.lastCompletedAt || schedule?.lastSucceededAt || schedule?.lastStartedAt;
+  const completedAt = lastCompletedAt
+    ? new Date(lastCompletedAt)
     : null;
-  if (!lastSucceededAt || Number.isNaN(lastSucceededAt.getTime())) return null;
-  return new Date(lastSucceededAt.getTime() + ALL_CONVENIENCE_CRAWLER_INTERVAL_MS);
+  if (!completedAt || Number.isNaN(completedAt.getTime())) return null;
+  return new Date(completedAt.getTime() + ALL_CONVENIENCE_CRAWLER_INTERVAL_MS);
 }
 
 function crawlerRetryAt(schedule) {
@@ -3007,6 +3011,7 @@ function serializeCrawlerSchedule(schedule) {
     key: ALL_CONVENIENCE_CRAWLER_KEY,
     status: schedule?.status || "idle",
     lastStartedAt: schedule?.lastStartedAt || null,
+    lastCompletedAt: schedule?.lastCompletedAt || null,
     lastSucceededAt: schedule?.lastSucceededAt || null,
     lastFailedAt: schedule?.lastFailedAt || null,
     lastError: schedule?.lastError || "",
@@ -3020,10 +3025,10 @@ function isCrawlerDue(schedule, now) {
   const nextRunAt = crawlerNextRunAt(schedule);
   if (!nextRunAt || nextRunAt <= now) return true;
 
-  // If a full collection had an error, retry the following day instead of
-  // waiting another two weeks with one store's data missing.
+  // Retry only a total job failure the following day. A single-store failure
+  // is recorded as partial-failure and waits for the next two-week collection.
   const retryAt = crawlerRetryAt(schedule);
-  return Boolean(retryAt && retryAt <= now && schedule?.lastFailedAt > schedule?.lastSucceededAt);
+  return Boolean(schedule?.status === "failed" && retryAt && retryAt <= now);
 }
 
 let activeAllConvenienceCrawl = null;
@@ -3059,13 +3064,15 @@ async function requestAllConvenienceRefresh({ force = false } = {}) {
 
       const result = await refreshAllConvenienceProducts();
       const hasErrors = result.errors.length > 0;
+      const completedAt = new Date();
       await CrawlerSchedule.findOneAndUpdate(
         { key: ALL_CONVENIENCE_CRAWLER_KEY },
         {
           $set: {
             status: hasErrors ? "partial-failure" : "idle",
-            lastSucceededAt: hasErrors ? schedule?.lastSucceededAt || null : new Date(),
-            lastFailedAt: hasErrors ? new Date() : null,
+            lastCompletedAt: completedAt,
+            lastSucceededAt: hasErrors ? schedule?.lastSucceededAt || null : completedAt,
+            lastFailedAt: hasErrors ? completedAt : null,
             lastError: hasErrors ? result.errors.map((error) => `${error.store}: ${error.message}`).join(" | ") : "",
             lastResult: result,
           },
