@@ -2365,7 +2365,12 @@ const CONVENIENCE_BROWSER_UA = CU_BROWSER_UA;
 const CONVENIENCE_MAX_PAGES_PER_SOURCE = Number(process.env.CONVENIENCE_MAX_PAGES_PER_SOURCE || 20);
 const CONVENIENCE_NEW_WINDOW_DAYS = Math.max(Number(process.env.CONVENIENCE_NEW_WINDOW_DAYS || 14), 1);
 const ALL_CONVENIENCE_CRAWLER_KEY = "all-convenience-products";
-const ALL_CONVENIENCE_CRAWLER_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
+const ALL_CONVENIENCE_CRAWLER_INTERVAL_MINUTES = Math.max(
+  Number(process.env.CRAWLER_REFRESH_INTERVAL_MINUTES || 14 * 24 * 60),
+  1
+);
+const ALL_CONVENIENCE_CRAWLER_INTERVAL_MS =
+  ALL_CONVENIENCE_CRAWLER_INTERVAL_MINUTES * 60 * 1000;
 const ALL_CONVENIENCE_CRAWLER_RETRY_MS = 24 * 60 * 60 * 1000;
 const STORE_COLORS = {
   CU: "#652F8F",
@@ -2950,6 +2955,27 @@ async function refreshAllConvenienceProducts() {
     pbCount: Number(cu?.pbCount || 0) + Number(convenience?.pbCount || 0),
     barcodeCount: Number(cu?.barcodeCount || 0) + Number(convenience?.barcodeCount || 0),
     errors,
+  };
+}
+
+async function resetAllConvenienceCrawlerData() {
+  if (activeAllConvenienceCrawl) {
+    throw new Error("진행 중인 편의점 크롤링이 끝난 뒤 초기화할 수 있습니다.");
+  }
+
+  const crawlerPostPattern = /^(?:CU 크롤링 데이터에서 확인된|(?:emart24|GS25|7-Eleven) 공개 상품 데이터에서 확인된)/;
+  const [cuProducts, convenienceProducts, crawlerPosts, schedules] = await Promise.all([
+    CuProduct.deleteMany({}),
+    ConvenienceProduct.deleteMany({}),
+    Post.deleteMany({ content: crawlerPostPattern }),
+    CrawlerSchedule.deleteMany({ key: ALL_CONVENIENCE_CRAWLER_KEY }),
+  ]);
+
+  return {
+    deletedCuProducts: cuProducts.deletedCount || 0,
+    deletedConvenienceProducts: convenienceProducts.deletedCount || 0,
+    deletedCrawlerPosts: crawlerPosts.deletedCount || 0,
+    deletedSchedules: schedules.deletedCount || 0,
   };
 }
 
@@ -4244,6 +4270,17 @@ app.post("/api/internal/crawlers/convenience/run", requireCrawlerSecret, async (
   }
 });
 
+app.post("/api/internal/crawlers/convenience/reset", requireCrawlerSecret, async (_req, res) => {
+  try {
+    return res.json({ reset: await resetAllConvenienceCrawlerData() });
+  } catch (error) {
+    return res.status(409).json({
+      message: "크롤러 데이터를 초기화하지 못했습니다.",
+      error: String(error.message || error),
+    });
+  }
+});
+
 app.get("/api/products/lookup/:barcode", async (req, res) => {
   const barcode = normalizeBarcode(req.params.barcode);
   if (!barcode) {
@@ -4418,4 +4455,5 @@ module.exports = {
   refreshAllConvenienceProducts,
   refreshConvenienceProducts,
   refreshCuProducts,
+  resetAllConvenienceCrawlerData,
 };

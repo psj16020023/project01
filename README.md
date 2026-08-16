@@ -24,3 +24,5 @@ CU, GS25, 세븐일레븐, emart24의 공개 상품 목록은 크롤러로 수�
 2. GitHub 저장소의 `Settings -> Secrets and variables -> Actions -> New repository secret`
 
 GitHub Actions의 `Refresh convenience products` 워크플로는 `Actions` 탭에서 수동 실행할 수도 있습니다. 실행 상태는 비밀키와 함께 `GET /api/internal/crawlers/convenience/status`로 확인할 수 있습니다.
+
+현재는 크롤러 동작 확인을 위해 10분 간격 테스트 설정입니다. 테스트를 마치면 Actions 예약을 하루 한 번으로 되돌리고, Render의 `CRAWLER_REFRESH_INTERVAL_MINUTES`를 `20160`으로 변경해 2주 간격으로 운영합니다.

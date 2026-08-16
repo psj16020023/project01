@@ -1,11 +1,17 @@
 name: Refresh convenience products
 
 on:
-  # The server decides whether 14 days have passed. Daily checks also retry a
-  # partially failed crawl without waiting another full collection cycle.
+  # Temporary 10-minute test schedule. Restore the daily schedule after the
+  # test; the server still decides whether the configured interval has passed.
   schedule:
-    - cron: "17 3 * * *"
+    - cron: "*/10 * * * *"
   workflow_dispatch:
+    inputs:
+      reset_crawler_data:
+        description: "Clear only crawler products and crawler-created posts before running"
+        required: false
+        default: false
+        type: boolean
 
 jobs:
   trigger-refresh:
@@ -15,7 +21,16 @@ jobs:
       - name: Wake the API and request a scheduled refresh
         env:
           CRAWLER_REFRESH_SECRET: ${{ secrets.CRAWLER_REFRESH_SECRET }}
+          RESET_CRAWLER_DATA: ${{ inputs.reset_crawler_data || 'false' }}
         run: |
+          BASE_URL="https://pyeonpick.onrender.com/api/internal/crawlers/convenience"
+          if [ "${RESET_CRAWLER_DATA}" = "true" ]; then
+            curl --fail-with-body \
+              --request POST \
+              --header "X-Crawler-Secret: ${CRAWLER_REFRESH_SECRET}" \
+              "${BASE_URL}/reset"
+            RUN_QUERY="?force=true"
+          fi
           curl --fail-with-body \
             --retry 2 \
             --retry-all-errors \
@@ -23,4 +38,4 @@ jobs:
             --max-time 180 \
             --request POST \
             --header "X-Crawler-Secret: ${CRAWLER_REFRESH_SECRET}" \
-            "https://pyeonpick.onrender.com/api/internal/crawlers/convenience/run"
+            "${BASE_URL}/run${RUN_QUERY:-}"
