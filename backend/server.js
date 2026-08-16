@@ -16,6 +16,7 @@ const JWT_SECRET = String(
   process.env.JWT_SECRET || "pyeonpick-local-development-secret"
 );
 const usesDefaultJwtSecret = !process.env.JWT_SECRET;
+const CRAWLER_REFRESH_SECRET = String(process.env.CRAWLER_REFRESH_SECRET || "").trim();
 
 app.use(cors());
 app.use(express.json({ limit: "15mb" }));
@@ -284,6 +285,19 @@ const convenienceProductSchema = new mongoose.Schema(
 convenienceProductSchema.index({ store: 1, normalizedName: 1 });
 convenienceProductSchema.index({ name: "text", normalizedName: "text", barcode: "text", tags: "text" });
 
+const crawlerScheduleSchema = new mongoose.Schema(
+  {
+    key: { type: String, required: true, unique: true, index: true },
+    status: { type: String, default: "idle" },
+    lastStartedAt: { type: Date, default: null },
+    lastSucceededAt: { type: Date, default: null },
+    lastFailedAt: { type: Date, default: null },
+    lastError: { type: String, default: "" },
+    lastResult: { type: mongoose.Schema.Types.Mixed, default: null },
+  },
+  { timestamps: true }
+);
+
 const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true, index: true },
@@ -310,6 +324,7 @@ const Product = mongoose.model("Product", productSchema);
 const ProductLookupMiss = mongoose.model("ProductLookupMiss", productLookupMissSchema);
 const CuProduct = mongoose.model("CuProduct", cuProductSchema);
 const ConvenienceProduct = mongoose.model("ConvenienceProduct", convenienceProductSchema);
+const CrawlerSchedule = mongoose.model("CrawlerSchedule", crawlerScheduleSchema);
 const User = mongoose.model("User", userSchema);
 
 const seedUserIds = {
@@ -928,8 +943,6 @@ const PRODUCT_LOOKUP_SOURCES = [
   "haccp-public-data",
   "open-food-facts",
 ];
-const CU_AUTO_CRAWL_ENABLED = String(process.env.CU_AUTO_CRAWL_ENABLED || "false") === "true";
-const CU_CRAWL_INTERVAL_HOURS = Math.max(Number(process.env.CU_CRAWL_INTERVAL_HOURS || 168), 1);
 
 function serializePost(post, currentUser = null) {
   const likedPostIds = new Set((currentUser?.likedPostIds || []).map(String));
@@ -2348,29 +2361,12 @@ async function seedCuProductCommunityPosts(crawledAt) {
   return created;
 }
 
-function scheduleCuProductRefresh() {
-  if (!CU_AUTO_CRAWL_ENABLED) return;
-
-  const run = async () => {
-    try {
-      const result = await refreshCuProducts();
-      console.log(
-        `CU product crawl complete: ${result.total} products, ${result.newCount} new, ${result.pbCount} PB`
-      );
-    } catch (error) {
-      console.error("CU product crawl failed:", error);
-    }
-  };
-
-  setTimeout(run, 5000);
-  setInterval(run, CU_CRAWL_INTERVAL_HOURS * 60 * 60 * 1000);
-}
-
 const CONVENIENCE_BROWSER_UA = CU_BROWSER_UA;
 const CONVENIENCE_MAX_PAGES_PER_SOURCE = Number(process.env.CONVENIENCE_MAX_PAGES_PER_SOURCE || 20);
-const CONVENIENCE_AUTO_CRAWL_ENABLED = process.env.CONVENIENCE_AUTO_CRAWL_ENABLED !== "false";
-const CONVENIENCE_CRAWL_INTERVAL_HOURS = Math.max(Number(process.env.CONVENIENCE_CRAWL_INTERVAL_HOURS || 336), 1);
 const CONVENIENCE_NEW_WINDOW_DAYS = Math.max(Number(process.env.CONVENIENCE_NEW_WINDOW_DAYS || 14), 1);
+const ALL_CONVENIENCE_CRAWLER_KEY = "all-convenience-products";
+const ALL_CONVENIENCE_CRAWLER_INTERVAL_MS = 14 * 24 * 60 * 60 * 1000;
+const ALL_CONVENIENCE_CRAWLER_RETRY_MS = 24 * 60 * 60 * 1000;
 const STORE_COLORS = {
   CU: "#652F8F",
   emart24: "#F05A28",
@@ -2916,6 +2912,184 @@ async function refreshConvenienceProducts() {
   };
 }
 
+function normalizeCrawlerErrors(errors, store) {
+  return (Array.isArray(errors) ? errors : []).map((error) => ({
+    store: error.store || error.source || store,
+    message: String(error.message || error),
+  }));
+}
+
+async function refreshAllConvenienceProducts() {
+  // Run store crawlers one at a time to avoid rate-limiting the public sites.
+  let cu = null;
+  let convenience = null;
+  const errors = [];
+
+  try {
+    cu = await refreshCuProducts();
+    errors.push(...normalizeCrawlerErrors(cu.errors, "CU"));
+  } catch (error) {
+    errors.push({ store: "CU", message: String(error.message || error) });
+  }
+
+  try {
+    convenience = await refreshConvenienceProducts();
+    errors.push(...normalizeCrawlerErrors(convenience.errors, "other-convenience-stores"));
+  } catch (error) {
+    errors.push({ store: "other-convenience-stores", message: String(error.message || error) });
+  }
+
+  return {
+    crawledAt: new Date(),
+    stores: {
+      CU: cu,
+      otherStores: convenience,
+    },
+    total: Number(cu?.total || 0) + Number(convenience?.total || 0),
+    newCount: Number(cu?.newCount || 0) + Number(convenience?.newCount || 0),
+    pbCount: Number(cu?.pbCount || 0) + Number(convenience?.pbCount || 0),
+    barcodeCount: Number(cu?.barcodeCount || 0) + Number(convenience?.barcodeCount || 0),
+    errors,
+  };
+}
+
+function crawlerNextRunAt(schedule) {
+  const lastSucceededAt = schedule?.lastSucceededAt
+    ? new Date(schedule.lastSucceededAt)
+    : null;
+  if (!lastSucceededAt || Number.isNaN(lastSucceededAt.getTime())) return null;
+  return new Date(lastSucceededAt.getTime() + ALL_CONVENIENCE_CRAWLER_INTERVAL_MS);
+}
+
+function crawlerRetryAt(schedule) {
+  const lastFailedAt = schedule?.lastFailedAt
+    ? new Date(schedule.lastFailedAt)
+    : null;
+  if (!lastFailedAt || Number.isNaN(lastFailedAt.getTime())) return null;
+  return new Date(lastFailedAt.getTime() + ALL_CONVENIENCE_CRAWLER_RETRY_MS);
+}
+
+function serializeCrawlerSchedule(schedule) {
+  const nextRunAt = crawlerNextRunAt(schedule);
+  const retryAt = crawlerRetryAt(schedule);
+  return {
+    key: ALL_CONVENIENCE_CRAWLER_KEY,
+    status: schedule?.status || "idle",
+    lastStartedAt: schedule?.lastStartedAt || null,
+    lastSucceededAt: schedule?.lastSucceededAt || null,
+    lastFailedAt: schedule?.lastFailedAt || null,
+    lastError: schedule?.lastError || "",
+    lastResult: schedule?.lastResult || null,
+    nextRunAt,
+    retryAt,
+  };
+}
+
+function isCrawlerDue(schedule, now) {
+  const nextRunAt = crawlerNextRunAt(schedule);
+  if (!nextRunAt || nextRunAt <= now) return true;
+
+  // If a full collection had an error, retry the following day instead of
+  // waiting another two weeks with one store's data missing.
+  const retryAt = crawlerRetryAt(schedule);
+  return Boolean(retryAt && retryAt <= now && schedule?.lastFailedAt > schedule?.lastSucceededAt);
+}
+
+let activeAllConvenienceCrawl = null;
+
+async function requestAllConvenienceRefresh({ force = false } = {}) {
+  if (activeAllConvenienceCrawl) {
+    return { accepted: false, reason: "already-running" };
+  }
+
+  const now = new Date();
+  const schedule = await CrawlerSchedule.findOne({ key: ALL_CONVENIENCE_CRAWLER_KEY }).lean();
+  if (!force && !isCrawlerDue(schedule, now)) {
+    return {
+      accepted: false,
+      reason: "not-due",
+      schedule: serializeCrawlerSchedule(schedule),
+    };
+  }
+
+  activeAllConvenienceCrawl = (async () => {
+    try {
+      await CrawlerSchedule.findOneAndUpdate(
+        { key: ALL_CONVENIENCE_CRAWLER_KEY },
+        {
+          $set: {
+            status: "running",
+            lastStartedAt: now,
+            lastError: "",
+          },
+        },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+
+      const result = await refreshAllConvenienceProducts();
+      const hasErrors = result.errors.length > 0;
+      await CrawlerSchedule.findOneAndUpdate(
+        { key: ALL_CONVENIENCE_CRAWLER_KEY },
+        {
+          $set: {
+            status: hasErrors ? "partial-failure" : "idle",
+            lastSucceededAt: hasErrors ? schedule?.lastSucceededAt || null : new Date(),
+            lastFailedAt: hasErrors ? new Date() : null,
+            lastError: hasErrors ? result.errors.map((error) => `${error.store}: ${error.message}`).join(" | ") : "",
+            lastResult: result,
+          },
+        }
+      );
+      console.log(
+        `All convenience crawl complete: ${result.total} products, ${result.newCount} new, ${result.pbCount} PB`
+      );
+    } catch (error) {
+      try {
+        await CrawlerSchedule.findOneAndUpdate(
+          { key: ALL_CONVENIENCE_CRAWLER_KEY },
+          {
+            $set: {
+              status: "failed",
+              lastFailedAt: new Date(),
+              lastError: String(error.message || error),
+            },
+          },
+          { upsert: true, setDefaultsOnInsert: true }
+        );
+      } catch (statusError) {
+        console.error("Could not store convenience crawler failure:", statusError);
+      }
+      console.error("All convenience crawl failed:", error);
+    } finally {
+      activeAllConvenienceCrawl = null;
+    }
+  })();
+
+  return {
+    accepted: true,
+    reason: "started",
+    schedule: serializeCrawlerSchedule({ status: "running", lastStartedAt: now }),
+  };
+}
+
+function hasValidCrawlerSecret(requestSecret) {
+  if (!CRAWLER_REFRESH_SECRET || !requestSecret) return false;
+  const expected = Buffer.from(CRAWLER_REFRESH_SECRET);
+  const received = Buffer.from(requestSecret);
+  return expected.length === received.length && crypto.timingSafeEqual(expected, received);
+}
+
+function requireCrawlerSecret(req, res, next) {
+  const requestSecret = String(req.get("x-crawler-secret") || "").trim();
+  if (!CRAWLER_REFRESH_SECRET) {
+    return res.status(503).json({ message: "크롤러 실행 비밀키가 설정되지 않았습니다." });
+  }
+  if (!hasValidCrawlerSecret(requestSecret)) {
+    return res.status(401).json({ message: "크롤러 실행 권한이 없습니다." });
+  }
+  return next();
+}
+
 function convenienceProductPostContent(product) {
   const labels = [
     ...(isConvenienceNewProduct(product) ? ["신상품"] : []),
@@ -2989,24 +3163,6 @@ async function seedConvenienceProductCommunityPosts(crawledAt) {
     visibleIndex += 1;
   }
   return created;
-}
-
-function scheduleConvenienceProductRefresh() {
-  if (!CONVENIENCE_AUTO_CRAWL_ENABLED) return;
-
-  const run = async () => {
-    try {
-      const result = await refreshConvenienceProducts();
-      console.log(
-        `Convenience product crawl complete: ${result.total} products, ${result.newCount} new, ${result.pbCount} PB`
-      );
-    } catch (error) {
-      console.error("Convenience product crawl failed:", error);
-    }
-  };
-
-  setTimeout(run, 5000);
-  setInterval(run, CONVENIENCE_CRAWL_INTERVAL_HOURS * 60 * 60 * 1000);
 }
 
 async function refreshTopFiveBadges() {
@@ -3983,7 +4139,7 @@ app.get("/api/products/cu/labels", async (req, res) => {
   });
 });
 
-app.post("/api/products/cu/refresh", async (req, res) => {
+app.post("/api/products/cu/refresh", requireCrawlerSecret, async (req, res) => {
   try {
     const result = await refreshCuProducts();
     return res.json(result);
@@ -4055,13 +4211,34 @@ app.get("/api/products/convenience/labels", async (req, res) => {
   });
 });
 
-app.post("/api/products/convenience/refresh", async (req, res) => {
+app.post("/api/products/convenience/refresh", requireCrawlerSecret, async (req, res) => {
   try {
     const result = await refreshConvenienceProducts();
     return res.json(result);
   } catch (error) {
     return res.status(502).json({
       message: "편의점 상품 수집에 실패했습니다.",
+      error: String(error.message || error),
+    });
+  }
+});
+
+app.get("/api/internal/crawlers/convenience/status", requireCrawlerSecret, async (_req, res) => {
+  const schedule = await CrawlerSchedule.findOne({ key: ALL_CONVENIENCE_CRAWLER_KEY }).lean();
+  return res.json({
+    running: Boolean(activeAllConvenienceCrawl),
+    schedule: serializeCrawlerSchedule(schedule),
+  });
+});
+
+app.post("/api/internal/crawlers/convenience/run", requireCrawlerSecret, async (req, res) => {
+  try {
+    const force = String(req.query.force || "").toLowerCase() === "true";
+    const result = await requestAllConvenienceRefresh({ force });
+    return res.status(result.accepted ? 202 : 200).json(result);
+  } catch (error) {
+    return res.status(500).json({
+      message: "편의점 전체 수집 작업을 시작하지 못했습니다.",
       error: String(error.message || error),
     });
   }
@@ -4221,8 +4398,8 @@ async function start() {
   await backfillLegacyProducts();
   await Product.deleteMany({ source: "local-fallback-catalog" });
   await refreshTopFiveBadges();
-  scheduleCuProductRefresh();
-  scheduleConvenienceProductRefresh();
+  // GitHub Actions triggers the protected crawler endpoint. This keeps the
+  // 14-day collection schedule independent from Render's free-instance sleep.
 
   app.listen(PORT, "0.0.0.0", () => {
     console.log(`PyeonPick full-stack server running at http://0.0.0.0:${PORT} using ${mongoLabel}`);
@@ -4237,6 +4414,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  requestAllConvenienceRefresh,
+  refreshAllConvenienceProducts,
   refreshConvenienceProducts,
   refreshCuProducts,
 };

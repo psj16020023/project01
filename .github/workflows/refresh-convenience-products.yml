@@ -1,0 +1,26 @@
+name: Refresh convenience products
+
+on:
+  # The server decides whether 14 days have passed. Daily checks also retry a
+  # partially failed crawl without waiting another full collection cycle.
+  schedule:
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+
+jobs:
+  trigger-refresh:
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    steps:
+      - name: Wake the API and request a scheduled refresh
+        env:
+          CRAWLER_REFRESH_SECRET: ${{ secrets.CRAWLER_REFRESH_SECRET }}
+        run: |
+          curl --fail-with-body \
+            --retry 2 \
+            --retry-all-errors \
+            --connect-timeout 30 \
+            --max-time 180 \
+            --request POST \
+            --header "X-Crawler-Secret: ${CRAWLER_REFRESH_SECRET}" \
+            "https://pyeonpick.onrender.com/api/internal/crawlers/convenience/run"

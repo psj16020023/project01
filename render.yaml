@@ -15,3 +15,5 @@ services:
         sync: false
       - key: OPENAI_BOT_MODEL
         value: gpt-5.4-mini
+      - key: CRAWLER_REFRESH_SECRET
+        sync: false
