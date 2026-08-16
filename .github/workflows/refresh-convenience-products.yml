@@ -16,7 +16,8 @@ on:
 jobs:
   trigger-refresh:
     runs-on: ubuntu-latest
-    timeout-minutes: 5
+    # A reset can wait for an already-running full crawl to finish safely.
+    timeout-minutes: 30
     steps:
       - name: Wake the API and request a scheduled refresh
         env:
@@ -26,9 +27,11 @@ jobs:
           BASE_URL="https://pyeonpick.onrender.com/api/internal/crawlers/convenience"
           if [ "${RESET_CRAWLER_DATA}" = "true" ]; then
             curl --fail-with-body \
+              --connect-timeout 30 \
+              --max-time 1500 \
               --request POST \
               --header "X-Crawler-Secret: ${CRAWLER_REFRESH_SECRET}" \
-              "${BASE_URL}/reset"
+              "${BASE_URL}/reset?wait=true"
             RUN_QUERY="?force=true"
           fi
           curl --fail-with-body \

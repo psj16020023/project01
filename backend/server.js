@@ -2958,9 +2958,14 @@ async function refreshAllConvenienceProducts() {
   };
 }
 
-async function resetAllConvenienceCrawlerData() {
+async function resetAllConvenienceCrawlerData({ waitForActiveCrawl = false } = {}) {
   if (activeAllConvenienceCrawl) {
-    throw new Error("진행 중인 편의점 크롤링이 끝난 뒤 초기화할 수 있습니다.");
+    if (!waitForActiveCrawl) {
+      throw new Error("진행 중인 편의점 크롤링이 끝난 뒤 초기화할 수 있습니다.");
+    }
+
+    // A manual reset must not delete products while a crawler is updating them.
+    await activeAllConvenienceCrawl;
   }
 
   const crawlerPostPattern = /^(?:CU 크롤링 데이터에서 확인된|(?:emart24|GS25|7-Eleven) 공개 상품 데이터에서 확인된)/;
@@ -4270,9 +4275,10 @@ app.post("/api/internal/crawlers/convenience/run", requireCrawlerSecret, async (
   }
 });
 
-app.post("/api/internal/crawlers/convenience/reset", requireCrawlerSecret, async (_req, res) => {
+app.post("/api/internal/crawlers/convenience/reset", requireCrawlerSecret, async (req, res) => {
   try {
-    return res.json({ reset: await resetAllConvenienceCrawlerData() });
+    const waitForActiveCrawl = String(req.query.wait || "").toLowerCase() === "true";
+    return res.json({ reset: await resetAllConvenienceCrawlerData({ waitForActiveCrawl }) });
   } catch (error) {
     return res.status(409).json({
       message: "크롤러 데이터를 초기화하지 못했습니다.",
