@@ -272,8 +272,9 @@ void main() {
     );
 
     expect(find.text('취향 필터'), findsNothing);
-    expect(find.text('최신순'), findsOneWidget);
     expect(find.text('이번 주 인기'), findsOneWidget);
+    expect(find.text('남자들이 많이 고른 조합'), findsOneWidget);
+    expect(find.text('여자들이 많이 고른 조합'), findsOneWidget);
     expect(find.text('새로 들어온 조합'), findsOneWidget);
     expect(find.text('PB로 만든 조합'), findsOneWidget);
     expect(find.text('다시 보는 조합'), findsOneWidget);
@@ -282,15 +283,15 @@ void main() {
       find.byKey(const Key('discovery-horizontal-이번 주 인기')),
       findsOneWidget,
     );
-    await tester.ensureVisible(find.byKey(const Key('discovery-topic-1')));
+    await tester.ensureVisible(find.byKey(const Key('discovery-topic-3')));
     await tester.pumpAndSettle();
     final collapsedHeight = tester
-        .getSize(find.byKey(const Key('discovery-topic-1')))
+        .getSize(find.byKey(const Key('discovery-topic-3')))
         .height;
     await tester.tap(find.text('새로 들어온 조합'));
     await tester.pumpAndSettle();
     final expandedHeight = tester
-        .getSize(find.byKey(const Key('discovery-topic-1')))
+        .getSize(find.byKey(const Key('discovery-topic-3')))
         .height;
     expect(expandedHeight, greaterThan(collapsedHeight));
     await tester.ensureVisible(find.byTooltip('상세 필터'));

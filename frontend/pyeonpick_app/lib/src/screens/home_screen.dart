@@ -387,6 +387,8 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
 
   final popular = trend('이번 주 난리난 조합');
   final rediscovered = trend('다시 뜨는 조합');
+  final malePicks = trend('남');
+  final femalePicks = trend('여');
   final fallbackPopular = ranked(
     posts,
     (post) => (post.likes * 5) + (post.reviewCount * 4) - post.dislikes,
@@ -407,6 +409,20 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       icon: Icons.local_fire_department_rounded,
       color: const Color(0xFFFF8A4C),
       posts: popular?.posts ?? fallbackPopular,
+    ),
+    _DiscoveryTopic(
+      label: '남자들이 많이 고른 조합',
+      caption: '남자 하트 비중이 75% 이상인 조합',
+      icon: Icons.male_rounded,
+      color: const Color(0xFF2869E6),
+      posts: malePicks?.posts ?? const <PostFeatureInfo>[],
+    ),
+    _DiscoveryTopic(
+      label: '여자들이 많이 고른 조합',
+      caption: '여자 하트 비중이 75% 이상인 조합',
+      icon: Icons.female_rounded,
+      color: const Color(0xFFE65086),
+      posts: femalePicks?.posts ?? const <PostFeatureInfo>[],
     ),
     _DiscoveryTopic(
       label: '새로 들어온 조합',
