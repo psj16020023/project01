@@ -304,15 +304,17 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
   return <_CommunityTrendGroup>[
     if (weeklyPopular.isNotEmpty)
       _CommunityTrendGroup(
-        label: '이번주 인기',
-        caption: '이번 주 하트 상위',
+        label: '이번 주 난리난 조합',
+        caption: '하트가 가장 빠르게 몰린 조합',
         icon: Icons.local_fire_department_rounded,
         color: const Color(0xFFFF7A1A),
         posts: weeklyPopular,
       ),
     _CommunityTrendGroup(
-      label: '재평가',
-      caption: rediscovered.isEmpty ? '조건에 맞는 글을 기다리는 중' : '오래된 글이 다시 주목받는 중',
+      label: '다시 뜨는 조합',
+      caption: rediscovered.isEmpty
+          ? '다음 재발견 조합을 기다리는 중'
+          : '묻혀 있던 조합이 다시 반응 오는 중',
       icon: Icons.replay_circle_filled_rounded,
       color: const Color(0xFF4F7DF0),
       posts: rediscovered,
@@ -339,6 +341,96 @@ List<_CommunityTrendGroup> _buildCommunityTrendPicks(
         color: const Color(0xFF25A96B),
         posts: weeklyRising,
       ),
+  ];
+}
+
+class _DiscoveryTopic {
+  const _DiscoveryTopic({
+    required this.label,
+    required this.caption,
+    required this.icon,
+    required this.color,
+    required this.posts,
+    this.collectionType,
+  });
+
+  final String label;
+  final String caption;
+  final IconData icon;
+  final Color color;
+  final List<PostFeatureInfo> posts;
+  final HighlightCollectionType? collectionType;
+}
+
+List<_DiscoveryTopic> _buildDiscoveryTopics(
+  List<PostFeatureInfo> posts,
+  List<_CommunityTrendGroup> trends,
+) {
+  _CommunityTrendGroup? trend(String label) {
+    for (final item in trends) {
+      if (item.label == label) return item;
+    }
+    return null;
+  }
+
+  List<PostFeatureInfo> ranked(
+    Iterable<PostFeatureInfo> candidates,
+    int Function(PostFeatureInfo post) score,
+  ) {
+    final result = candidates.toList()
+      ..sort((a, b) {
+        final compared = score(b).compareTo(score(a));
+        return compared != 0 ? compared : b.createdAt.compareTo(a.createdAt);
+      });
+    return result.take(5).toList();
+  }
+
+  final popular = trend('이번 주 난리난 조합');
+  final rediscovered = trend('다시 뜨는 조합');
+  final fallbackPopular = ranked(
+    posts,
+    (post) => (post.likes * 5) + (post.reviewCount * 4) - post.dislikes,
+  );
+  final newProducts = ranked(
+    posts.where(_featureHasNewProduct),
+    (post) => post.createdAt.millisecondsSinceEpoch,
+  );
+  final pbProducts = ranked(
+    posts.where(_featureHasPbProduct),
+    (post) => (post.likes * 4) + (post.reviewCount * 3),
+  );
+
+  return <_DiscoveryTopic>[
+    _DiscoveryTopic(
+      label: '이번 주 인기',
+      caption: '지금 사람들이 실제로 반응하는 조합',
+      icon: Icons.local_fire_department_rounded,
+      color: const Color(0xFFFF8A4C),
+      posts: popular?.posts ?? fallbackPopular,
+    ),
+    _DiscoveryTopic(
+      label: '새로 들어온 조합',
+      caption: '처음 보는 제품이 들어간 최신 조합',
+      icon: Icons.auto_awesome_rounded,
+      color: const Color(0xFF62D4FF),
+      posts: newProducts,
+      collectionType: HighlightCollectionType.newProduct,
+    ),
+    _DiscoveryTopic(
+      label: 'PB로 만든 조합',
+      caption: '편의점별 PB 제품으로 찾은 조합',
+      icon: Icons.local_offer_rounded,
+      color: const Color(0xFFFFD36C),
+      posts: pbProducts,
+      collectionType: HighlightCollectionType.pbProduct,
+    ),
+    _DiscoveryTopic(
+      label: '다시 보는 조합',
+      caption: '묻혀 있다가 최근 다시 반응이 붙은 조합',
+      icon: Icons.replay_circle_filled_rounded,
+      color: const Color(0xFF8FA7FF),
+      posts: rediscovered?.posts ?? const <PostFeatureInfo>[],
+    ),
   ];
 }
 
@@ -2676,9 +2768,8 @@ class CommunicationBody extends StatelessWidget {
     final featureIndex = allFeatureInfo.isEmpty
         ? posts.map(PostFeatureInfo.fromPost).toList()
         : allFeatureInfo;
-    final newProductCount = featureIndex.where(_featureHasNewProduct).length;
-    final pbProductCount = featureIndex.where(_featureHasPbProduct).length;
     final trendPicks = _buildCommunityTrendPicks(featureIndex);
+    final discoveryTopics = _buildDiscoveryTopics(featureIndex, trendPicks);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -2705,36 +2796,25 @@ class CommunicationBody extends StatelessWidget {
               100,
             ),
             children: [
-              Toolbar(
-                searchController: searchController,
-                titleSuggestions: featureIndex
-                    .map((post) => post.title)
-                    .toList(),
-                minFilterController: minFilterController,
-                maxFilterController: maxFilterController,
-                selectedTags: selectedTags,
-                onSearch: onReload,
-                onToggleTag: onToggleSearchTag,
-                onShuffle: onShuffle,
-                onScanBarcode: onScanBarcode,
-              ),
-              const SizedBox(height: 12),
-              _HighlightNavigation(
-                newProductCount: newProductCount,
-                pbProductCount: pbProductCount,
-                onOpenNew: () =>
-                    onOpenCollection(HighlightCollectionType.newProduct),
-                onOpenPb: () =>
-                    onOpenCollection(HighlightCollectionType.pbProduct),
-              ),
-              if (trendPicks.isNotEmpty) ...[
-                const SizedBox(height: 12),
-                _CommunityTrendStrip(
-                  picks: trendPicks,
-                  onOpenPost: (post) => unawaited(onOpenFeaturePost(post)),
+              _DiscoveryStage(
+                toolbar: Toolbar(
+                  searchController: searchController,
+                  titleSuggestions: featureIndex
+                      .map((post) => post.title)
+                      .toList(),
+                  minFilterController: minFilterController,
+                  maxFilterController: maxFilterController,
+                  selectedTags: selectedTags,
+                  onSearch: onReload,
+                  onToggleTag: onToggleSearchTag,
+                  onShuffle: onShuffle,
+                  onScanBarcode: onScanBarcode,
                 ),
-              ],
-              const SizedBox(height: 18),
+                topics: discoveryTopics,
+                onOpenPost: (post) => unawaited(onOpenFeaturePost(post)),
+                onOpenCollection: onOpenCollection,
+              ),
+              const SizedBox(height: 24),
               Row(
                 children: [
                   const Expanded(
@@ -2929,6 +3009,493 @@ class FeatureTabs extends StatelessWidget {
   }
 }
 
+class _DiscoveryStage extends StatelessWidget {
+  const _DiscoveryStage({
+    required this.toolbar,
+    required this.topics,
+    required this.onOpenPost,
+    required this.onOpenCollection,
+  });
+
+  final Widget toolbar;
+  final List<_DiscoveryTopic> topics;
+  final ValueChanged<PostFeatureInfo> onOpenPost;
+  final ValueChanged<HighlightCollectionType> onOpenCollection;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 760;
+
+        return Container(
+          width: double.infinity,
+          clipBehavior: Clip.antiAlias,
+          decoration: BoxDecoration(
+            gradient: const LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [Color(0xFF102E51), Color(0xFF075E7B)],
+            ),
+            borderRadius: BorderRadius.circular(26),
+            boxShadow: [
+              BoxShadow(
+                color: const Color(0xFF0B3554).withAlpha(32),
+                blurRadius: 30,
+                offset: const Offset(0, 15),
+              ),
+            ],
+          ),
+          child: Stack(
+            children: [
+              Positioned(
+                right: -46,
+                top: -64,
+                child: Container(
+                  width: 190,
+                  height: 190,
+                  decoration: BoxDecoration(
+                    shape: BoxShape.circle,
+                    color: const Color(0xFF49B9E8).withAlpha(35),
+                  ),
+                ),
+              ),
+              Positioned(
+                right: 74,
+                bottom: -78,
+                child: Transform.rotate(
+                  angle: -0.28,
+                  child: Container(
+                    width: 180,
+                    height: 120,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFFFB85C).withAlpha(20),
+                      borderRadius: BorderRadius.circular(36),
+                    ),
+                  ),
+                ),
+              ),
+              Padding(
+                padding: EdgeInsets.fromLTRB(
+                  wide ? 22 : 16,
+                  wide ? 20 : 17,
+                  wide ? 22 : 16,
+                  wide ? 21 : 17,
+                ),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Row(
+                      children: [
+                        Container(
+                          padding: const EdgeInsets.symmetric(
+                            horizontal: 9,
+                            vertical: 5,
+                          ),
+                          decoration: BoxDecoration(
+                            color: Colors.white.withAlpha(28),
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: Colors.white.withAlpha(38),
+                            ),
+                          ),
+                          child: const Row(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              Icon(
+                                Icons.bolt_rounded,
+                                size: 13,
+                                color: Color(0xFFFFCE72),
+                              ),
+                              SizedBox(width: 4),
+                              Text(
+                                '편픽 탐색대',
+                                style: TextStyle(
+                                  color: Colors.white,
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                            ],
+                          ),
+                        ),
+                        const Spacer(),
+                        const Text(
+                          '지금 반응 오는 조합만',
+                          style: TextStyle(
+                            color: Colors.white60,
+                            fontSize: 10,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 11),
+                    Text(
+                      '지금, 편의점에서 뭐가 뜰까?',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: wide ? 25 : 21,
+                        fontWeight: FontWeight.w900,
+                        letterSpacing: -0.8,
+                      ),
+                    ),
+                    const SizedBox(height: 5),
+                    const Text(
+                      '찾고 싶은 조합을 검색하거나 오늘 반응이 모이는 코너를 가볍게 훑어보세요.',
+                      style: TextStyle(
+                        color: Colors.white70,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w700,
+                        height: 1.35,
+                      ),
+                    ),
+                    const SizedBox(height: 15),
+                    toolbar,
+                    const SizedBox(height: 17),
+                    _DiscoveryAccordion(
+                      topics: topics,
+                      onOpenPost: onOpenPost,
+                      onOpenCollection: onOpenCollection,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DiscoveryAccordion extends StatefulWidget {
+  const _DiscoveryAccordion({
+    required this.topics,
+    required this.onOpenPost,
+    required this.onOpenCollection,
+  });
+
+  final List<_DiscoveryTopic> topics;
+  final ValueChanged<PostFeatureInfo> onOpenPost;
+  final ValueChanged<HighlightCollectionType> onOpenCollection;
+
+  @override
+  State<_DiscoveryAccordion> createState() => _DiscoveryAccordionState();
+}
+
+class _DiscoveryAccordionState extends State<_DiscoveryAccordion> {
+  final Set<int> _expanded = <int>{0};
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.topics.isEmpty) return const SizedBox.shrink();
+    return Container(
+      key: const Key('discovery-topic-accordion'),
+      decoration: const BoxDecoration(
+        border: Border.symmetric(
+          horizontal: BorderSide(color: Color(0x33FFFFFF)),
+        ),
+      ),
+      child: Column(
+        children: widget.topics.indexed.map((entry) {
+          final index = entry.$1;
+          final topic = entry.$2;
+          final expanded = _expanded.contains(index);
+          return _DiscoveryTopicSection(
+            key: Key('discovery-topic-$index'),
+            topic: topic,
+            index: index,
+            expanded: expanded,
+            onToggle: () => setState(() {
+              if (expanded) {
+                _expanded.remove(index);
+              } else {
+                _expanded.add(index);
+              }
+            }),
+            onOpenPost: widget.onOpenPost,
+            onOpenCollection: widget.onOpenCollection,
+          );
+        }).toList(),
+      ),
+    );
+  }
+}
+
+class _DiscoveryTopicSection extends StatelessWidget {
+  const _DiscoveryTopicSection({
+    super.key,
+    required this.topic,
+    required this.index,
+    required this.expanded,
+    required this.onToggle,
+    required this.onOpenPost,
+    required this.onOpenCollection,
+  });
+
+  final _DiscoveryTopic topic;
+  final int index;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final ValueChanged<PostFeatureInfo> onOpenPost;
+  final ValueChanged<HighlightCollectionType> onOpenCollection;
+
+  @override
+  Widget build(BuildContext context) {
+    final visiblePosts = topic.posts.take(3).toList();
+    return AnimatedContainer(
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOut,
+      decoration: BoxDecoration(
+        color: expanded ? topic.color.withAlpha(14) : Colors.transparent,
+        border: index == 0
+            ? null
+            : const Border(top: BorderSide(color: Color(0x2AFFFFFF))),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggle,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 13),
+              child: Row(
+                children: [
+                  SizedBox(
+                    width: 30,
+                    child: Text(
+                      '${index + 1}'.padLeft(2, '0'),
+                      style: TextStyle(
+                        color: topic.color,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Icon(topic.icon, color: topic.color, size: 19),
+                  const SizedBox(width: 9),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          topic.label,
+                          style: const TextStyle(
+                            color: Colors.white,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                        const SizedBox(height: 2),
+                        Text(
+                          topic.caption,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: Colors.white54,
+                            fontSize: 9.5,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    '${topic.posts.length}개',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 9.5,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  AnimatedRotation(
+                    turns: expanded ? 0.5 : 0,
+                    duration: const Duration(milliseconds: 240),
+                    child: const Icon(
+                      Icons.keyboard_arrow_down_rounded,
+                      color: Colors.white70,
+                      size: 21,
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 260),
+            curve: Curves.easeOutCubic,
+            alignment: Alignment.topCenter,
+            child: expanded
+                ? Padding(
+                    padding: const EdgeInsets.fromLTRB(30, 0, 0, 12),
+                    child: Column(
+                      children: [
+                        const Divider(height: 1, color: Color(0x2AFFFFFF)),
+                        const SizedBox(height: 5),
+                        if (visiblePosts.isEmpty)
+                          const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 15),
+                            child: Align(
+                              alignment: Alignment.centerLeft,
+                              child: Text(
+                                '아직 이 주제의 게시글을 모으는 중이에요.',
+                                style: TextStyle(
+                                  color: Colors.white60,
+                                  fontSize: 10.5,
+                                  fontWeight: FontWeight.w700,
+                                ),
+                              ),
+                            ),
+                          )
+                        else
+                          ...visiblePosts.indexed.map(
+                            (entry) => _DiscoveryPostLine(
+                              rank: entry.$1 + 1,
+                              post: entry.$2,
+                              color: topic.color,
+                              compact: true,
+                              onTap: () => onOpenPost(entry.$2),
+                            ),
+                          ),
+                        if (topic.collectionType != null)
+                          Align(
+                            alignment: Alignment.centerRight,
+                            child: TextButton.icon(
+                              onPressed: () =>
+                                  onOpenCollection(topic.collectionType!),
+                              style: TextButton.styleFrom(
+                                foregroundColor: topic.color,
+                                visualDensity: VisualDensity.compact,
+                                padding: const EdgeInsets.symmetric(
+                                  horizontal: 8,
+                                  vertical: 4,
+                                ),
+                              ),
+                              label: Text(
+                                '${topic.posts.length}개 전체 보기',
+                                style: const TextStyle(
+                                  fontSize: 10,
+                                  fontWeight: FontWeight.w900,
+                                ),
+                              ),
+                              icon: const Icon(
+                                Icons.arrow_forward_rounded,
+                                size: 13,
+                              ),
+                            ),
+                          ),
+                      ],
+                    ),
+                  )
+                : const SizedBox.shrink(),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _DiscoveryPostLine extends StatelessWidget {
+  const _DiscoveryPostLine({
+    required this.rank,
+    required this.post,
+    required this.color,
+    required this.compact,
+    required this.onTap,
+  });
+
+  final int rank;
+  final PostFeatureInfo post;
+  final Color color;
+  final bool compact;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      child: Container(
+        constraints: BoxConstraints(minHeight: compact ? 39 : 0),
+        padding: EdgeInsets.fromLTRB(compact ? 2 : 13, 7, 8, 7),
+        child: compact
+            ? Row(
+                children: [
+                  SizedBox(
+                    width: 24,
+                    child: Text(
+                      '$rank',
+                      style: TextStyle(
+                        color: color,
+                        fontSize: 12,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  Expanded(
+                    child: Text(
+                      post.title,
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                      style: const TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    '♥ ${post.likes}',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                ],
+              )
+            : Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Text(
+                    '$rank'.padLeft(2, '0'),
+                    style: TextStyle(
+                      color: color,
+                      fontSize: 24,
+                      fontWeight: FontWeight.w900,
+                      height: 1,
+                    ),
+                  ),
+                  const SizedBox(height: 9),
+                  Text(
+                    post.title,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    style: const TextStyle(
+                      color: Colors.white,
+                      fontSize: 11,
+                      fontWeight: FontWeight.w900,
+                      height: 1.3,
+                    ),
+                  ),
+                  const SizedBox(height: 7),
+                  Text(
+                    '하트 ${post.likes}  ·  후기 ${post.reviewCount}',
+                    style: const TextStyle(
+                      color: Colors.white54,
+                      fontSize: 9,
+                      fontWeight: FontWeight.w700,
+                    ),
+                  ),
+                ],
+              ),
+      ),
+    );
+  }
+}
+
 class Toolbar extends StatefulWidget {
   const Toolbar({
     super.key,
@@ -2960,12 +3527,6 @@ class Toolbar extends StatefulWidget {
 class _ToolbarState extends State<Toolbar> {
   bool _categoriesVisible = false;
 
-  void _showCategories() {
-    if (!_categoriesVisible) {
-      setState(() => _categoriesVisible = true);
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
     InputDecoration compactInput(String hint, {IconData? icon}) {
@@ -2994,8 +3555,10 @@ class _ToolbarState extends State<Toolbar> {
               child: TextField(
                 controller: widget.searchController,
                 style: const TextStyle(fontSize: 12),
-                decoration: compactInput('제목 검색', icon: Icons.search_rounded),
-                onTap: _showCategories,
+                decoration: compactInput(
+                  '조합명, 재료, 오늘 기분으로 검색',
+                  icon: Icons.search_rounded,
+                ),
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => widget.onSearch(),
               ),
@@ -3008,7 +3571,8 @@ class _ToolbarState extends State<Toolbar> {
                 onPressed: widget.onScanBarcode,
                 style: IconButton.styleFrom(
                   foregroundColor: AppColors.navy,
-                  side: const BorderSide(color: AppColors.line),
+                  backgroundColor: Colors.white,
+                  side: BorderSide(color: Colors.white.withAlpha(55)),
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(38, 38),
                   fixedSize: const Size(38, 38),
@@ -3024,35 +3588,32 @@ class _ToolbarState extends State<Toolbar> {
             ),
             const SizedBox(width: 6),
             SizedBox(
-              width: 60,
-              child: TextField(
-                controller: widget.minFilterController,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(fontSize: 11),
-                decoration: compactInput('최소'),
-                onTap: _showCategories,
-                onSubmitted: (_) => widget.onSearch(),
-              ),
-            ),
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 3),
-              child: Text(
-                '~',
-                style: TextStyle(
-                  fontWeight: FontWeight.w900,
-                  color: AppColors.ink,
+              width: 38,
+              height: 38,
+              child: IconButton(
+                onPressed: () =>
+                    setState(() => _categoriesVisible = !_categoriesVisible),
+                style: IconButton.styleFrom(
+                  backgroundColor: _categoriesVisible
+                      ? Colors.white
+                      : Colors.white.withAlpha(28),
+                  foregroundColor: _categoriesVisible
+                      ? AppColors.navy
+                      : Colors.white,
+                  padding: EdgeInsets.zero,
+                  minimumSize: const Size(38, 38),
+                  fixedSize: const Size(38, 38),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                  shape: RoundedRectangleBorder(
+                    borderRadius: BorderRadius.circular(10),
+                    side: BorderSide(color: Colors.white.withAlpha(45)),
+                  ),
                 ),
-              ),
-            ),
-            SizedBox(
-              width: 60,
-              child: TextField(
-                controller: widget.maxFilterController,
-                keyboardType: TextInputType.number,
-                style: const TextStyle(fontSize: 11),
-                decoration: compactInput('최대'),
-                onTap: _showCategories,
-                onSubmitted: (_) => widget.onSearch(),
+                tooltip: '상세 필터',
+                icon: Icon(
+                  _categoriesVisible ? Icons.tune_rounded : Icons.tune_outlined,
+                  size: 18,
+                ),
               ),
             ),
             const SizedBox(width: 6),
@@ -3097,96 +3658,152 @@ class _ToolbarState extends State<Toolbar> {
           ),
         ],
         if (_categoriesVisible) ...[
-          const SizedBox(height: 8),
-          Row(
-            children: [
-              const Text(
-                '카테고리',
-                style: TextStyle(
-                  color: AppColors.ink,
-                  fontSize: 11,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-              const Spacer(),
-              TextButton.icon(
-                onPressed: () => setState(() => _categoriesVisible = false),
-                style: TextButton.styleFrom(
-                  foregroundColor: AppColors.muted,
-                  visualDensity: VisualDensity.compact,
-                  padding: const EdgeInsets.symmetric(horizontal: 6),
-                ),
-                icon: const Icon(Icons.expand_less_rounded, size: 16),
-                label: const Text(
-                  '접기',
-                  style: TextStyle(fontSize: 10, fontWeight: FontWeight.w800),
-                ),
-              ),
-            ],
-          ),
-          SizedBox(
-            height: 30,
-            child: ListView.separated(
-              scrollDirection: Axis.horizontal,
-              itemCount: _suggestedSearchCategories.length + 1,
-              separatorBuilder: (_, _) => const SizedBox(width: 5),
-              itemBuilder: (context, index) {
-                final category = index == 0
-                    ? '전체'
-                    : _suggestedSearchCategories[index - 1];
-                final isAll = index == 0;
-                final selected = isAll
-                    ? widget.selectedTags.isEmpty
-                    : widget.selectedTags.contains(category);
-                return InkWell(
-                  borderRadius: BorderRadius.circular(999),
-                  onTap: () =>
-                      unawaited(widget.onToggleTag(isAll ? '' : category)),
-                  child: Container(
-                    alignment: Alignment.center,
-                    padding: const EdgeInsets.symmetric(horizontal: 9),
-                    decoration: BoxDecoration(
-                      color: selected ? const Color(0xFFE4F4FD) : Colors.white,
-                      borderRadius: BorderRadius.circular(999),
-                      border: Border.all(
-                        color: selected
-                            ? const Color(0xFF93D1F1)
-                            : AppColors.line,
-                      ),
-                    ),
-                    child: Text(
-                      isAll ? category : '#$category',
-                      style: TextStyle(
-                        color: selected
-                            ? const Color(0xFF5B7715)
-                            : AppColors.muted,
-                        fontWeight: FontWeight.w800,
-                        fontSize: 9,
-                      ),
-                    ),
-                  ),
-                );
-              },
+          const SizedBox(height: 10),
+          Container(
+            width: double.infinity,
+            padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
+            decoration: BoxDecoration(
+              color: Colors.white.withAlpha(22),
+              borderRadius: BorderRadius.circular(14),
+              border: Border.all(color: Colors.white.withAlpha(32)),
             ),
-          ),
-          const SizedBox(height: 7),
-          Align(
-            alignment: Alignment.centerRight,
-            child: TextButton.icon(
-              onPressed: widget.onShuffle,
-              style: TextButton.styleFrom(
-                foregroundColor: AppColors.navy,
-                backgroundColor: const Color(0xFFF5F9FB),
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 5),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(9),
+            child: Column(
+              children: [
+                Row(
+                  children: [
+                    const Text(
+                      '취향 필터',
+                      style: TextStyle(
+                        color: Colors.white,
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                    const Spacer(),
+                    TextButton.icon(
+                      onPressed: () =>
+                          setState(() => _categoriesVisible = false),
+                      style: TextButton.styleFrom(
+                        foregroundColor: Colors.white70,
+                        visualDensity: VisualDensity.compact,
+                        padding: const EdgeInsets.symmetric(horizontal: 6),
+                      ),
+                      icon: const Icon(Icons.expand_less_rounded, size: 16),
+                      label: const Text(
+                        '접기',
+                        style: TextStyle(
+                          fontSize: 10,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                    ),
+                  ],
                 ),
-              ),
-              icon: const Icon(Icons.shuffle_rounded, size: 15),
-              label: const Text(
-                '새로 섞기',
-                style: TextStyle(fontWeight: FontWeight.w900, fontSize: 10),
-              ),
+                SizedBox(
+                  height: 30,
+                  child: ListView.separated(
+                    scrollDirection: Axis.horizontal,
+                    itemCount: _suggestedSearchCategories.length + 1,
+                    separatorBuilder: (_, _) => const SizedBox(width: 5),
+                    itemBuilder: (context, index) {
+                      final category = index == 0
+                          ? '전체'
+                          : _suggestedSearchCategories[index - 1];
+                      final isAll = index == 0;
+                      final selected = isAll
+                          ? widget.selectedTags.isEmpty
+                          : widget.selectedTags.contains(category);
+                      return InkWell(
+                        borderRadius: BorderRadius.circular(999),
+                        onTap: () => unawaited(
+                          widget.onToggleTag(isAll ? '' : category),
+                        ),
+                        child: Container(
+                          alignment: Alignment.center,
+                          padding: const EdgeInsets.symmetric(horizontal: 9),
+                          decoration: BoxDecoration(
+                            color: selected
+                                ? const Color(0xFFE4F4FD)
+                                : Colors.white,
+                            borderRadius: BorderRadius.circular(999),
+                            border: Border.all(
+                              color: selected
+                                  ? const Color(0xFF93D1F1)
+                                  : AppColors.line,
+                            ),
+                          ),
+                          child: Text(
+                            isAll ? category : '#$category',
+                            style: TextStyle(
+                              color: selected
+                                  ? const Color(0xFF5B7715)
+                                  : AppColors.muted,
+                              fontWeight: FontWeight.w800,
+                              fontSize: 9,
+                            ),
+                          ),
+                        ),
+                      );
+                    },
+                  ),
+                ),
+                const SizedBox(height: 10),
+                Row(
+                  children: [
+                    Expanded(
+                      child: TextField(
+                        controller: widget.minFilterController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 11),
+                        decoration: compactInput('최소 금액'),
+                        onSubmitted: (_) => widget.onSearch(),
+                      ),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(horizontal: 8),
+                      child: Text(
+                        '~',
+                        style: TextStyle(
+                          color: Colors.white70,
+                          fontWeight: FontWeight.w900,
+                        ),
+                      ),
+                    ),
+                    Expanded(
+                      child: TextField(
+                        controller: widget.maxFilterController,
+                        keyboardType: TextInputType.number,
+                        style: const TextStyle(fontSize: 11),
+                        decoration: compactInput('최대 금액'),
+                        onSubmitted: (_) => widget.onSearch(),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton.icon(
+                      onPressed: widget.onShuffle,
+                      style: TextButton.styleFrom(
+                        foregroundColor: AppColors.navy,
+                        backgroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 10,
+                          vertical: 9,
+                        ),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(10),
+                        ),
+                      ),
+                      icon: const Icon(Icons.shuffle_rounded, size: 15),
+                      label: const Text(
+                        '섞기',
+                        style: TextStyle(
+                          fontWeight: FontWeight.w900,
+                          fontSize: 10,
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ],
@@ -3332,110 +3949,6 @@ class SortSelector extends StatelessWidget {
           ],
         ),
       ),
-    );
-  }
-}
-
-class _HighlightNavigation extends StatelessWidget {
-  const _HighlightNavigation({
-    required this.newProductCount,
-    required this.pbProductCount,
-    required this.onOpenNew,
-    required this.onOpenPb,
-  });
-
-  final int newProductCount;
-  final int pbProductCount;
-  final VoidCallback onOpenNew;
-  final VoidCallback onOpenPb;
-
-  @override
-  Widget build(BuildContext context) {
-    Widget button({
-      required String label,
-      required String caption,
-      required IconData icon,
-      required Color color,
-      required VoidCallback onTap,
-    }) {
-      return Expanded(
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-          child: Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-            decoration: BoxDecoration(
-              color: color.withAlpha(16),
-              borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-              border: Border(left: BorderSide(color: color, width: 4)),
-            ),
-            child: Row(
-              children: [
-                Container(
-                  width: 30,
-                  height: 30,
-                  decoration: BoxDecoration(
-                    color: color.withAlpha(24),
-                    shape: BoxShape.circle,
-                  ),
-                  child: Icon(icon, color: color, size: 17),
-                ),
-                const SizedBox(width: 9),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        label,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: const TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 13,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
-                      Text(
-                        caption,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 10,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
-                const Icon(
-                  Icons.chevron_right_rounded,
-                  size: 17,
-                  color: AppColors.muted,
-                ),
-              ],
-            ),
-          ),
-        ),
-      );
-    }
-
-    return Row(
-      children: [
-        button(
-          label: '신상',
-          caption: '$newProductCount개',
-          icon: Icons.auto_awesome_rounded,
-          color: AppColors.skyBlueDeep,
-          onTap: onOpenNew,
-        ),
-        const SizedBox(width: 8),
-        button(
-          label: 'PB',
-          caption: '$pbProductCount개',
-          icon: Icons.local_offer_rounded,
-          color: AppColors.navy,
-          onTap: onOpenPb,
-        ),
-      ],
     );
   }
 }
@@ -3647,228 +4160,6 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
                 ),
               );
             },
-          );
-        },
-      ),
-    );
-  }
-}
-
-class _CommunityTrendStrip extends StatelessWidget {
-  const _CommunityTrendStrip({required this.picks, required this.onOpenPost});
-
-  final List<_CommunityTrendGroup> picks;
-  final ValueChanged<PostFeatureInfo> onOpenPost;
-
-  void _openGroup(BuildContext context, _CommunityTrendGroup group) {
-    if (group.posts.length == 1) {
-      onOpenPost(group.posts.first);
-      return;
-    }
-    showModalBottomSheet<void>(
-      context: context,
-      isScrollControlled: true,
-      useSafeArea: true,
-      backgroundColor: Colors.transparent,
-      builder: (sheetContext) => FractionallySizedBox(
-        heightFactor: 0.62,
-        child: Container(
-          padding: const EdgeInsets.fromLTRB(18, 12, 18, 18),
-          decoration: const BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.vertical(top: Radius.circular(28)),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Center(
-                child: Container(
-                  width: 42,
-                  height: 4,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFFDDE5EA),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-              ),
-              const SizedBox(height: 16),
-              Row(
-                children: [
-                  Container(
-                    width: 38,
-                    height: 38,
-                    decoration: BoxDecoration(
-                      color: group.color.withAlpha(22),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(group.icon, color: group.color, size: 21),
-                  ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      group.label,
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontSize: 20,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                  ),
-                  Text(
-                    '${group.posts.length}개',
-                    style: const TextStyle(
-                      color: AppColors.muted,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 14),
-              Expanded(
-                child: group.posts.isEmpty
-                    ? const Center(
-                        child: Text(
-                          '아직 재평가 조건을 충족한 글이 없어요.',
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      )
-                    : ListView.separated(
-                        itemCount: group.posts.length,
-                        separatorBuilder: (_, _) =>
-                            const Divider(height: 1, color: Color(0xFFE8EEF2)),
-                        itemBuilder: (context, index) {
-                          final post = group.posts[index];
-                          return ListTile(
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 2,
-                              vertical: 5,
-                            ),
-                            title: Text(
-                              post.title,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.ink,
-                                fontWeight: FontWeight.w900,
-                              ),
-                            ),
-                            subtitle: Text(
-                              '하트 ${post.likes} · 후기 ${post.reviewCount}',
-                              style: const TextStyle(
-                                color: AppColors.muted,
-                                fontWeight: FontWeight.w700,
-                              ),
-                            ),
-                            trailing: const Icon(
-                              Icons.chevron_right_rounded,
-                              color: AppColors.muted,
-                            ),
-                            onTap: () {
-                              Navigator.of(sheetContext).pop();
-                              onOpenPost(post);
-                            },
-                          );
-                        },
-                      ),
-              ),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    return SizedBox(
-      height: 86,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: picks.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 9),
-        itemBuilder: (context, index) {
-          final item = picks[index];
-          final postTitle = item.posts.isEmpty
-              ? '아직 해당 글 없음'
-              : item.posts.first.title;
-          return InkWell(
-            onTap: () => _openGroup(context, item),
-            borderRadius: BorderRadius.circular(16),
-            child: Container(
-              width: 178,
-              padding: const EdgeInsets.all(10),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: AppColors.line),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(6),
-                    blurRadius: 14,
-                    offset: const Offset(0, 8),
-                  ),
-                ],
-              ),
-              child: Row(
-                children: [
-                  Container(
-                    width: 34,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: item.color.withAlpha(22),
-                      shape: BoxShape.circle,
-                    ),
-                    child: Icon(item.icon, color: item.color, size: 19),
-                  ),
-                  const SizedBox(width: 9),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      mainAxisAlignment: MainAxisAlignment.center,
-                      children: [
-                        Text(
-                          item.label,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          postTitle,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        const SizedBox(height: 2),
-                        Text(
-                          item.posts.length > 1
-                              ? '${item.caption} · ${item.posts.length}개'
-                              : item.caption,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 9.5,
-                            fontWeight: FontWeight.w700,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                ],
-              ),
-            ),
           );
         },
       ),
