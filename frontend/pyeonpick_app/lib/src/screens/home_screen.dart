@@ -3027,6 +3027,46 @@ class _DiscoveryStage extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final wide = constraints.maxWidth >= 760;
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Padding(
+              padding: EdgeInsets.symmetric(horizontal: wide ? 2 : 0),
+              child: toolbar,
+            ),
+            SizedBox(height: wide ? 30 : 24),
+            _DiscoveryAccordion(
+              topics: topics,
+              onOpenPost: onOpenPost,
+              onOpenCollection: onOpenCollection,
+            ),
+          ],
+        );
+      },
+    );
+  }
+}
+
+// Kept temporarily separate while the new feed-style discovery surface settles.
+// ignore: unused_element
+class _LegacyDiscoveryStage extends StatelessWidget {
+  const _LegacyDiscoveryStage({
+    required this.toolbar,
+    required this.topics,
+    required this.onOpenPost,
+    required this.onOpenCollection,
+  });
+
+  final Widget toolbar;
+  final List<_DiscoveryTopic> topics;
+  final ValueChanged<PostFeatureInfo> onOpenPost;
+  final ValueChanged<HighlightCollectionType> onOpenCollection;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 760;
 
         return Container(
           width: double.infinity,
@@ -3153,7 +3193,7 @@ class _DiscoveryStage extends StatelessWidget {
                     const SizedBox(height: 15),
                     toolbar,
                     const SizedBox(height: 17),
-                    _DiscoveryAccordion(
+                    _LegacyDiscoveryAccordion(
                       topics: topics,
                       onOpenPost: onOpenPost,
                       onOpenCollection: onOpenCollection,
@@ -3190,6 +3230,363 @@ class _DiscoveryAccordionState extends State<_DiscoveryAccordion> {
   @override
   Widget build(BuildContext context) {
     if (widget.topics.isEmpty) return const SizedBox.shrink();
+    return Column(
+      key: const Key('discovery-topic-accordion'),
+      children: widget.topics.indexed.map((entry) {
+        final index = entry.$1;
+        final expanded = _expanded.contains(index);
+        return _DiscoveryTopicShelf(
+          key: Key('discovery-topic-$index'),
+          topic: entry.$2,
+          expanded: expanded,
+          onToggle: () => setState(() {
+            expanded ? _expanded.remove(index) : _expanded.add(index);
+          }),
+          onOpenPost: widget.onOpenPost,
+          onOpenCollection: widget.onOpenCollection,
+        );
+      }).toList(),
+    );
+  }
+}
+
+class _DiscoveryTopicShelf extends StatelessWidget {
+  const _DiscoveryTopicShelf({
+    super.key,
+    required this.topic,
+    required this.expanded,
+    required this.onToggle,
+    required this.onOpenPost,
+    required this.onOpenCollection,
+  });
+
+  final _DiscoveryTopic topic;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final ValueChanged<PostFeatureInfo> onOpenPost;
+  final ValueChanged<HighlightCollectionType> onOpenCollection;
+
+  @override
+  Widget build(BuildContext context) {
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final wide = constraints.maxWidth >= 760;
+        final cardWidth = wide ? 224.0 : 172.0;
+        final shelfHeight = wide ? 252.0 : 220.0;
+        return Container(
+          padding: EdgeInsets.only(bottom: wide ? 30 : 24),
+          margin: EdgeInsets.only(bottom: wide ? 26 : 20),
+          decoration: const BoxDecoration(
+            border: Border(bottom: BorderSide(color: AppColors.divider)),
+          ),
+          child: Column(
+            children: [
+              InkWell(
+                onTap: onToggle,
+                borderRadius: BorderRadius.circular(8),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  child: Row(
+                    crossAxisAlignment: CrossAxisAlignment.center,
+                    children: [
+                      Container(
+                        width: 4,
+                        height: 34,
+                        decoration: BoxDecoration(
+                          color: topic.color,
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                      ),
+                      const SizedBox(width: 11),
+                      Expanded(
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Text(
+                              topic.label,
+                              style: TextStyle(
+                                color: AppColors.ink,
+                                fontSize: wide ? 19 : 16,
+                                fontWeight: FontWeight.w900,
+                                letterSpacing: -0.4,
+                              ),
+                            ),
+                            const SizedBox(height: 3),
+                            Text(
+                              topic.caption,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: const TextStyle(
+                                color: AppColors.muted,
+                                fontSize: 10.5,
+                                fontWeight: FontWeight.w600,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                      Text(
+                        '${topic.posts.length}',
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w800,
+                        ),
+                      ),
+                      const SizedBox(width: 5),
+                      AnimatedRotation(
+                        turns: expanded ? 0.5 : 0,
+                        duration: const Duration(milliseconds: 220),
+                        child: const Icon(
+                          Icons.keyboard_arrow_down_rounded,
+                          color: AppColors.ink,
+                          size: 24,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+              AnimatedSize(
+                duration: const Duration(milliseconds: 260),
+                curve: Curves.easeOutCubic,
+                alignment: Alignment.topCenter,
+                child: expanded
+                    ? Padding(
+                        padding: const EdgeInsets.only(top: 16),
+                        child: topic.posts.isEmpty
+                            ? Container(
+                                height: 92,
+                                width: double.infinity,
+                                alignment: Alignment.centerLeft,
+                                child: const Text(
+                                  '이 주제의 조합을 모으고 있어요.',
+                                  style: TextStyle(
+                                    color: AppColors.muted,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              )
+                            : SizedBox(
+                                key: Key('discovery-horizontal-${topic.label}'),
+                                height: shelfHeight,
+                                child: ListView.separated(
+                                  scrollDirection: Axis.horizontal,
+                                  physics: const BouncingScrollPhysics(),
+                                  padding: const EdgeInsets.only(right: 18),
+                                  itemCount:
+                                      topic.posts.length +
+                                      (topic.collectionType == null ? 0 : 1),
+                                  separatorBuilder: (_, _) =>
+                                      const SizedBox(width: 11),
+                                  itemBuilder: (context, index) {
+                                    if (index == topic.posts.length) {
+                                      return _DiscoveryMoreCard(
+                                        width: cardWidth,
+                                        color: topic.color,
+                                        count: topic.posts.length,
+                                        onTap: () => onOpenCollection(
+                                          topic.collectionType!,
+                                        ),
+                                      );
+                                    }
+                                    final post = topic.posts[index];
+                                    return _DiscoveryPhotoCard(
+                                      key: Key('discovery-card-${post.id}'),
+                                      width: cardWidth,
+                                      post: post,
+                                      color: topic.color,
+                                      onTap: () => onOpenPost(post),
+                                    );
+                                  },
+                                ),
+                              ),
+                      )
+                    : const SizedBox.shrink(),
+              ),
+            ],
+          ),
+        );
+      },
+    );
+  }
+}
+
+class _DiscoveryPhotoCard extends StatelessWidget {
+  const _DiscoveryPhotoCard({
+    super.key,
+    required this.width,
+    required this.post,
+    required this.color,
+    required this.onTap,
+  });
+
+  final double width;
+  final PostFeatureInfo post;
+  final Color color;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    final source = post.imageUrl?.trim() ?? '';
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Stack(
+                  fit: StackFit.expand,
+                  children: [
+                    source.isEmpty
+                        ? GradientPhoto(title: post.title)
+                        : Image.network(
+                            _displayImageUrl(source),
+                            fit: BoxFit.cover,
+                            errorBuilder: (_, _, _) =>
+                                GradientPhoto(title: post.title),
+                          ),
+                    Positioned(
+                      left: 9,
+                      top: 9,
+                      child: Container(
+                        padding: const EdgeInsets.symmetric(
+                          horizontal: 7,
+                          vertical: 4,
+                        ),
+                        decoration: BoxDecoration(
+                          color: Colors.white.withAlpha(232),
+                          borderRadius: BorderRadius.circular(999),
+                        ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            Icon(topicIcon(post), size: 11, color: color),
+                            const SizedBox(width: 3),
+                            Text(
+                              '하트 ${post.likes}',
+                              style: const TextStyle(
+                                color: AppColors.ink,
+                                fontSize: 9,
+                                fontWeight: FontWeight.w900,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 9),
+            Text(
+              post.title,
+              maxLines: 2,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w900,
+                height: 1.28,
+              ),
+            ),
+            const SizedBox(height: 4),
+            Text(
+              '후기 ${post.reviewCount}  ·  댓글 ${post.commentCount}',
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 9.5,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  IconData topicIcon(PostFeatureInfo post) => post.recentLikeCount > 0
+      ? Icons.trending_up_rounded
+      : Icons.favorite_rounded;
+}
+
+class _DiscoveryMoreCard extends StatelessWidget {
+  const _DiscoveryMoreCard({
+    required this.width,
+    required this.color,
+    required this.count,
+    required this.onTap,
+  });
+
+  final double width;
+  final Color color;
+  final int count;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: DecoratedBox(
+          decoration: BoxDecoration(
+            color: color.withAlpha(18),
+            borderRadius: BorderRadius.circular(16),
+            border: Border.all(color: color.withAlpha(75)),
+          ),
+          child: Column(
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(Icons.arrow_forward_rounded, color: color, size: 28),
+              const SizedBox(height: 9),
+              Text(
+                '$count개 전체 보기',
+                style: const TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+  }
+}
+
+// ignore: unused_element
+class _LegacyDiscoveryAccordion extends StatefulWidget {
+  const _LegacyDiscoveryAccordion({
+    required this.topics,
+    required this.onOpenPost,
+    required this.onOpenCollection,
+  });
+
+  final List<_DiscoveryTopic> topics;
+  final ValueChanged<PostFeatureInfo> onOpenPost;
+  final ValueChanged<HighlightCollectionType> onOpenCollection;
+
+  @override
+  State<_LegacyDiscoveryAccordion> createState() =>
+      _LegacyDiscoveryAccordionState();
+}
+
+class _LegacyDiscoveryAccordionState extends State<_LegacyDiscoveryAccordion> {
+  final Set<int> _expanded = <int>{0};
+
+  @override
+  Widget build(BuildContext context) {
+    if (widget.topics.isEmpty) return const SizedBox.shrink();
     return Container(
       key: const Key('discovery-topic-accordion'),
       decoration: const BoxDecoration(
@@ -3202,7 +3599,7 @@ class _DiscoveryAccordionState extends State<_DiscoveryAccordion> {
           final index = entry.$1;
           final topic = entry.$2;
           final expanded = _expanded.contains(index);
-          return _DiscoveryTopicSection(
+          return _LegacyDiscoveryTopicSection(
             key: Key('discovery-topic-$index'),
             topic: topic,
             index: index,
@@ -3223,8 +3620,8 @@ class _DiscoveryAccordionState extends State<_DiscoveryAccordion> {
   }
 }
 
-class _DiscoveryTopicSection extends StatelessWidget {
-  const _DiscoveryTopicSection({
+class _LegacyDiscoveryTopicSection extends StatelessWidget {
+  const _LegacyDiscoveryTopicSection({
     super.key,
     required this.topic,
     required this.index,
@@ -3350,7 +3747,7 @@ class _DiscoveryTopicSection extends StatelessWidget {
                           )
                         else
                           ...visiblePosts.indexed.map(
-                            (entry) => _DiscoveryPostLine(
+                            (entry) => _LegacyDiscoveryPostLine(
                               rank: entry.$1 + 1,
                               post: entry.$2,
                               color: topic.color,
@@ -3396,8 +3793,8 @@ class _DiscoveryTopicSection extends StatelessWidget {
   }
 }
 
-class _DiscoveryPostLine extends StatelessWidget {
-  const _DiscoveryPostLine({
+class _LegacyDiscoveryPostLine extends StatelessWidget {
+  const _LegacyDiscoveryPostLine({
     required this.rank,
     required this.post,
     required this.color,
@@ -3572,7 +3969,7 @@ class _ToolbarState extends State<Toolbar> {
                 style: IconButton.styleFrom(
                   foregroundColor: AppColors.navy,
                   backgroundColor: Colors.white,
-                  side: BorderSide(color: Colors.white.withAlpha(55)),
+                  side: const BorderSide(color: AppColors.line),
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(38, 38),
                   fixedSize: const Size(38, 38),
@@ -3595,18 +3992,18 @@ class _ToolbarState extends State<Toolbar> {
                     setState(() => _categoriesVisible = !_categoriesVisible),
                 style: IconButton.styleFrom(
                   backgroundColor: _categoriesVisible
-                      ? Colors.white
-                      : Colors.white.withAlpha(28),
-                  foregroundColor: _categoriesVisible
-                      ? AppColors.navy
+                      ? const Color(0xFFEAF7FD)
                       : Colors.white,
+                  foregroundColor: _categoriesVisible
+                      ? AppColors.skyBlueDeep
+                      : AppColors.muted,
                   padding: EdgeInsets.zero,
                   minimumSize: const Size(38, 38),
                   fixedSize: const Size(38, 38),
                   tapTargetSize: MaterialTapTargetSize.shrinkWrap,
                   shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10),
-                    side: BorderSide(color: Colors.white.withAlpha(45)),
+                    side: const BorderSide(color: AppColors.line),
                   ),
                 ),
                 tooltip: '상세 필터',
@@ -3663,9 +4060,9 @@ class _ToolbarState extends State<Toolbar> {
             width: double.infinity,
             padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
             decoration: BoxDecoration(
-              color: Colors.white.withAlpha(22),
+              color: const Color(0xFFF7FAFC),
               borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: Colors.white.withAlpha(32)),
+              border: Border.all(color: AppColors.line),
             ),
             child: Column(
               children: [
@@ -3674,7 +4071,7 @@ class _ToolbarState extends State<Toolbar> {
                     const Text(
                       '취향 필터',
                       style: TextStyle(
-                        color: Colors.white,
+                        color: AppColors.ink,
                         fontSize: 11,
                         fontWeight: FontWeight.w900,
                       ),
@@ -3684,7 +4081,7 @@ class _ToolbarState extends State<Toolbar> {
                       onPressed: () =>
                           setState(() => _categoriesVisible = false),
                       style: TextButton.styleFrom(
-                        foregroundColor: Colors.white70,
+                        foregroundColor: AppColors.muted,
                         visualDensity: VisualDensity.compact,
                         padding: const EdgeInsets.symmetric(horizontal: 6),
                       ),
@@ -3764,7 +4161,7 @@ class _ToolbarState extends State<Toolbar> {
                       child: Text(
                         '~',
                         style: TextStyle(
-                          color: Colors.white70,
+                          color: AppColors.muted,
                           fontWeight: FontWeight.w900,
                         ),
                       ),

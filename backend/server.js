@@ -1010,6 +1010,8 @@ function serializePost(post, currentUser = null) {
 
 function serializePostFeatureInfo(post, audienceCounts = { male: 0, female: 0 }) {
   const recentLikeCutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
+  const storedImageUrl = (post.imageUrls || [])[0] || post.imageUrl || "";
+  const hasStoredImage = (post.imageDatas || []).length > 0 || Boolean(post.imageData);
   return {
     id: post._id.toString(),
     authorId: post.authorId,
@@ -1026,6 +1028,9 @@ function serializePostFeatureInfo(post, audienceCounts = { male: 0, female: 0 })
     createdAt: post.createdAt,
     topFiveEnteredAt: post.topFiveEnteredAt || null,
     topWorstEnteredAt: post.topWorstEnteredAt || null,
+    imageUrl: storedImageUrl || (hasStoredImage
+      ? `/api/posts/${post._id.toString()}/images/0`
+      : null),
   };
 }
 
@@ -3731,7 +3736,7 @@ app.get("/api/posts/catalog", async (req, res) => {
 
 app.get("/api/posts/feature-index", async (req, res) => {
   const posts = await Post.find({})
-    .select("authorId title likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt")
+    .select("authorId title likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt imageUrl imageUrls imageData imageDatas")
     .sort({ createdAt: -1, _id: -1 })
     .limit(1000);
   const usersWithGender = await User.find({

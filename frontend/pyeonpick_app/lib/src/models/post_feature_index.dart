@@ -15,6 +15,7 @@ class PostFeatureInfo {
     required this.createdAt,
     required this.topFiveEnteredAt,
     required this.topWorstEnteredAt,
+    this.imageUrl,
   });
 
   factory PostFeatureInfo.fromJson(Map<String, dynamic> json) {
@@ -38,6 +39,7 @@ class PostFeatureInfo {
       topWorstEnteredAt: json['topWorstEnteredAt'] == null
           ? null
           : DateTime.tryParse(json['topWorstEnteredAt'] as String),
+      imageUrl: json['imageUrl'] as String?,
     );
   }
 
@@ -56,6 +58,9 @@ class PostFeatureInfo {
       createdAt: post.createdAt,
       topFiveEnteredAt: post.topFiveEnteredAt,
       topWorstEnteredAt: post.topWorstEnteredAt,
+      imageUrl: post.allImageDatas.isNotEmpty
+          ? post.allImageDatas.first
+          : (post.allImageUrls.isNotEmpty ? post.allImageUrls.first : null),
     );
   }
 
@@ -72,6 +77,7 @@ class PostFeatureInfo {
   final DateTime createdAt;
   final DateTime? topFiveEnteredAt;
   final DateTime? topWorstEnteredAt;
+  final String? imageUrl;
 
   int get genderLikeTotal => maleLikeCount + femaleLikeCount;
 
@@ -96,6 +102,7 @@ class PostFeatureInfo {
       createdAt: createdAt,
       topFiveEnteredAt: topFiveEnteredAt,
       topWorstEnteredAt: topWorstEnteredAt,
+      imageUrl: imageUrl,
     );
   }
 }

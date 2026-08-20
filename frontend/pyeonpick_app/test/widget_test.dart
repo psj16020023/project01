@@ -210,88 +210,95 @@ void main() {
     expect(budgetField.controller?.text, '5000');
   });
 
-  testWidgets(
-    'communication topics expand vertically and filters stay optional',
-    (tester) async {
-      tester.view.physicalSize = const Size(390, 844);
-      tester.view.devicePixelRatio = 1;
-      addTearDown(tester.view.resetPhysicalSize);
-      addTearDown(tester.view.resetDevicePixelRatio);
+  testWidgets('communication topics reveal horizontal photo shelves', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
 
-      final searchController = TextEditingController();
-      final minController = TextEditingController();
-      final maxController = TextEditingController();
-      final scrollController = ScrollController();
-      addTearDown(searchController.dispose);
-      addTearDown(minController.dispose);
-      addTearDown(maxController.dispose);
-      addTearDown(scrollController.dispose);
+    final searchController = TextEditingController();
+    final minController = TextEditingController();
+    final maxController = TextEditingController();
+    final scrollController = ScrollController();
+    addTearDown(searchController.dispose);
+    addTearDown(minController.dispose);
+    addTearDown(maxController.dispose);
+    addTearDown(scrollController.dispose);
 
-      final user = PyeonUser(
-        id: 'communication-user',
-        username: 'communication-user',
-        password: '1234',
-        nickname: '커뮤니케이션테스터',
-      );
+    final user = PyeonUser(
+      id: 'communication-user',
+      username: 'communication-user',
+      password: '1234',
+      nickname: '커뮤니케이션테스터',
+    );
 
-      await tester.pumpWidget(
-        MaterialApp(
-          home: Scaffold(
-            body: CommunicationBody(
-              loading: false,
-              error: null,
-              posts: mockPosts.take(2).toList(),
-              allFeatureInfo: mockPosts.map(PostFeatureInfo.fromPost).toList(),
-              currentUser: user,
-              searchController: searchController,
-              minFilterController: minController,
-              maxFilterController: maxController,
-              sortMode: SortMode.latest,
-              selectedTags: const <String>{},
-              scrollController: scrollController,
-              hasMorePosts: false,
-              loadingMore: false,
-              onReload: () async {},
-              onChangeSort: (_) {},
-              onToggleLike: (_) async {},
-              onToggleDislike: (_) async {},
-              onToggleSave: (_) async {},
-              onAddComment: (_, _) async {},
-              onEditPost: (_) async {},
-              onDeletePost: (_) async {},
-              onOpenAuthor: (_) {},
-              onOpenPost: (_) async {},
-              onOpenFeaturePost: (_) async {},
-              onToggleSearchTag: (_) async {},
-              onOpenCollection: (_) {},
-              onShuffle: () {},
-              onScanBarcode: () async {},
-            ),
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CommunicationBody(
+            loading: false,
+            error: null,
+            posts: mockPosts.take(2).toList(),
+            allFeatureInfo: mockPosts.map(PostFeatureInfo.fromPost).toList(),
+            currentUser: user,
+            searchController: searchController,
+            minFilterController: minController,
+            maxFilterController: maxController,
+            sortMode: SortMode.latest,
+            selectedTags: const <String>{},
+            scrollController: scrollController,
+            hasMorePosts: false,
+            loadingMore: false,
+            onReload: () async {},
+            onChangeSort: (_) {},
+            onToggleLike: (_) async {},
+            onToggleDislike: (_) async {},
+            onToggleSave: (_) async {},
+            onAddComment: (_, _) async {},
+            onEditPost: (_) async {},
+            onDeletePost: (_) async {},
+            onOpenAuthor: (_) {},
+            onOpenPost: (_) async {},
+            onOpenFeaturePost: (_) async {},
+            onToggleSearchTag: (_) async {},
+            onOpenCollection: (_) {},
+            onShuffle: () {},
+            onScanBarcode: () async {},
           ),
         ),
-      );
+      ),
+    );
 
-      expect(find.text('취향 필터'), findsNothing);
-      expect(find.text('최신순'), findsOneWidget);
-      expect(find.text('이번 주 인기'), findsOneWidget);
-      expect(find.text('새로 들어온 조합'), findsOneWidget);
-      expect(find.text('PB로 만든 조합'), findsOneWidget);
-      expect(find.text('다시 보는 조합'), findsOneWidget);
-      expect(find.text('하트 성비'), findsNothing);
-      final collapsedHeight = tester
-          .getSize(find.byKey(const Key('discovery-topic-1')))
-          .height;
-      await tester.tap(find.byKey(const Key('discovery-topic-1')));
-      await tester.pumpAndSettle();
-      final expandedHeight = tester
-          .getSize(find.byKey(const Key('discovery-topic-1')))
-          .height;
-      expect(expandedHeight, greaterThan(collapsedHeight));
-      await tester.tap(find.byTooltip('상세 필터'));
-      await tester.pump();
-      expect(find.text('취향 필터'), findsOneWidget);
-      expect(find.text('섞기'), findsOneWidget);
-      expect(tester.takeException(), isNull);
-    },
-  );
+    expect(find.text('취향 필터'), findsNothing);
+    expect(find.text('최신순'), findsOneWidget);
+    expect(find.text('이번 주 인기'), findsOneWidget);
+    expect(find.text('새로 들어온 조합'), findsOneWidget);
+    expect(find.text('PB로 만든 조합'), findsOneWidget);
+    expect(find.text('다시 보는 조합'), findsOneWidget);
+    expect(find.text('하트 성비'), findsNothing);
+    expect(
+      find.byKey(const Key('discovery-horizontal-이번 주 인기')),
+      findsOneWidget,
+    );
+    await tester.ensureVisible(find.byKey(const Key('discovery-topic-1')));
+    await tester.pumpAndSettle();
+    final collapsedHeight = tester
+        .getSize(find.byKey(const Key('discovery-topic-1')))
+        .height;
+    await tester.tap(find.text('새로 들어온 조합'));
+    await tester.pumpAndSettle();
+    final expandedHeight = tester
+        .getSize(find.byKey(const Key('discovery-topic-1')))
+        .height;
+    expect(expandedHeight, greaterThan(collapsedHeight));
+    await tester.ensureVisible(find.byTooltip('상세 필터'));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byTooltip('상세 필터'));
+    await tester.pump();
+    expect(find.text('취향 필터'), findsOneWidget);
+    expect(find.text('섞기'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }
