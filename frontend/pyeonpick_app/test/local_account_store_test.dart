@@ -36,6 +36,25 @@ void main() {
     expect((await reloadedStore.getCurrentUser())?.nickname, '저장테스트');
   });
 
+  test('mock 계정은 비밀번호 확인 후 완전히 삭제된다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final store = await LocalAccountStore.load(environment: environment);
+    final created = await store.signUp(
+      nickname: '삭제테스트',
+      username: 'delete-user',
+      password: 'safe-password',
+    );
+
+    await expectLater(
+      store.deleteAccount(user: created, password: 'wrong-password'),
+      throwsA(isA<StateError>()),
+    );
+    await store.deleteAccount(user: created, password: 'safe-password');
+
+    expect(await store.getCurrentUser(), isNull);
+    expect(store.getAccounts().where((user) => user.id == created.id), isEmpty);
+  });
+
   test('age maps to the supplied one-meal calorie ranges', () {
     expect(MealCalorieRange.forAge(4)?.label, '450~550 kcal');
     expect(MealCalorieRange.forAge(8)?.label, '550~650 kcal');

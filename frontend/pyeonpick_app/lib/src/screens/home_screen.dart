@@ -31,6 +31,10 @@ import 'combination_battle_screen.dart';
 import 'post_reviews_screen.dart';
 
 const List<String> _suggestedSearchCategories = <String>[
+  '달달',
+  '매콤',
+  '새콤',
+  '짭짤',
   '저칼로리',
   '가성비',
   '시간절약',
@@ -458,6 +462,7 @@ class HomeScreen extends StatefulWidget {
     required this.currentUser,
     required this.onUserChanged,
     required this.onLogout,
+    required this.onDeleteAccount,
   });
 
   final PostRepository repository;
@@ -465,6 +470,7 @@ class HomeScreen extends StatefulWidget {
   final PyeonUser currentUser;
   final Future<void> Function(PyeonUser user) onUserChanged;
   final Future<void> Function() onLogout;
+  final Future<void> Function(String password) onDeleteAccount;
 
   @override
   State<HomeScreen> createState() => _HomeScreenState();
@@ -570,7 +576,7 @@ class _HomeScreenState extends State<HomeScreen> {
   Future<void> _loadPosts({bool reset = true, int attempt = 0}) async {
     setState(() {
       if (reset) {
-        _loading = true;
+        _loading = _posts.isEmpty;
         _error = null;
         _nextPostsCursor = null;
         _hasMorePosts = true;
@@ -788,25 +794,65 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _toggleLike(Post post) async {
-    final updated = await widget.repository.toggleLike(
-      post.id,
-      widget.currentUser.id,
+    final optimistic = post.copyWith(
+      likedByMe: !post.likedByMe,
+      dislikedByMe: false,
+      likes: math.max(0, post.likes + (post.likedByMe ? -1 : 1)),
+      dislikes: math.max(
+        0,
+        post.dislikes + (post.dislikedByMe && !post.likedByMe ? -1 : 0),
+      ),
     );
-    if (!mounted) return;
-    _applyUpdatedPost(updated);
-    await _syncPostReactionToUser(updated);
-    unawaited(_loadPostFeatureIndex());
+    _applyUpdatedPost(optimistic);
+    unawaited(_syncPostReactionToUser(optimistic));
+    try {
+      final updated = await widget.repository.toggleLike(
+        post.id,
+        widget.currentUser.id,
+      );
+      if (!mounted) return;
+      _applyUpdatedPost(updated);
+      unawaited(_syncPostReactionToUser(updated));
+      unawaited(_loadPostFeatureIndex());
+    } catch (_) {
+      if (!mounted) return;
+      _applyUpdatedPost(post);
+      unawaited(_syncPostReactionToUser(post));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('하트를 반영하지 못했어요.')));
+    }
   }
 
   Future<void> _toggleDislike(Post post) async {
-    final updated = await widget.repository.toggleDislike(
-      post.id,
-      widget.currentUser.id,
+    final optimistic = post.copyWith(
+      dislikedByMe: !post.dislikedByMe,
+      likedByMe: false,
+      dislikes: math.max(0, post.dislikes + (post.dislikedByMe ? -1 : 1)),
+      likes: math.max(
+        0,
+        post.likes + (post.likedByMe && !post.dislikedByMe ? -1 : 0),
+      ),
     );
-    if (!mounted) return;
-    _applyUpdatedPost(updated);
-    await _syncPostReactionToUser(updated);
-    unawaited(_loadPostFeatureIndex());
+    _applyUpdatedPost(optimistic);
+    unawaited(_syncPostReactionToUser(optimistic));
+    try {
+      final updated = await widget.repository.toggleDislike(
+        post.id,
+        widget.currentUser.id,
+      );
+      if (!mounted) return;
+      _applyUpdatedPost(updated);
+      unawaited(_syncPostReactionToUser(updated));
+      unawaited(_loadPostFeatureIndex());
+    } catch (_) {
+      if (!mounted) return;
+      _applyUpdatedPost(post);
+      unawaited(_syncPostReactionToUser(post));
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('싫어요를 반영하지 못했어요.')));
+    }
   }
 
   Future<void> _syncPostReactionToUser(Post post) async {
@@ -1060,15 +1106,23 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     final setup = widget.currentUser.botSetup;
     if (setup == null) return const BotTurnResult();
-    if (_botRecommendationPosts.isEmpty) {
-      await _loadBotRecommendationPool(reset: true);
-    }
+    final previousMessages = List<BotMessage>.from(
+      widget.currentUser.botMessages,
+    );
 
     final userMessage = BotMessage(
       role: 'user',
       text: prompt,
       createdAt: DateTime.now(),
     );
+    final userMessageSave = widget.onUserChanged(
+      widget.currentUser.copyWith(
+        botMessages: <BotMessage>[...previousMessages, userMessage],
+      ),
+    );
+    if (_botRecommendationPosts.isEmpty) {
+      await _loadBotRecommendationPool(reset: true);
+    }
     final aiSituation = await BotSituationAnalyzer.analyze(
       environment: widget.environment,
       prompt: prompt,
@@ -1095,10 +1149,15 @@ class _HomeScreenState extends State<HomeScreen> {
     );
 
     final nextMessages = <BotMessage>[
-      ...widget.currentUser.botMessages,
+      ...previousMessages,
       userMessage,
       assistantMessage,
     ];
+    try {
+      await userMessageSave;
+    } catch (_) {
+      // The complete turn save below is the authoritative retry.
+    }
     await widget.onUserChanged(
       widget.currentUser.copyWith(
         botMessages: nextMessages,
@@ -2700,6 +2759,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onUserChanged: widget.onUserChanged,
           onResetBotSetup: _resetBotSetup,
           onLogout: widget.onLogout,
+          onDeleteAccount: widget.onDeleteAccount,
           onOpenPost: _openPostDetail,
           onOpenAuthor: _openAuthorProfile,
           onToggleProfilePublic: _toggleProfilePublic,
@@ -5893,32 +5953,38 @@ class _DetailInputCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFD),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE3EDF4)),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            title,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w900,
-              fontSize: 15,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.ink,
+            fontWeight: FontWeight.w900,
+            fontSize: 15,
+          ),
+        ),
+        const SizedBox(height: 4),
+        TextField(
+          controller: controller,
+          maxLines: 4,
+          decoration: InputDecoration(
+            hintText: hint,
+            hintStyle: const TextStyle(color: Color(0xFF9AA9B3)),
+            filled: false,
+            contentPadding: const EdgeInsets.symmetric(vertical: 12),
+            border: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFDDE5E9)),
+            ),
+            enabledBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: Color(0xFFDDE5E9)),
+            ),
+            focusedBorder: const UnderlineInputBorder(
+              borderSide: BorderSide(color: AppColors.skyBlueDeep, width: 2),
             ),
           ),
-          const SizedBox(height: 10),
-          TextField(
-            controller: controller,
-            maxLines: 4,
-            decoration: inputDecoration(hint),
-          ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 }
@@ -5931,39 +5997,47 @@ class _PostRatingPicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFD),
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: const Color(0xFFE3EDF4)),
-      ),
-      child: Row(
-        children: [
-          const Expanded(
-            child: Text(
-              '평점',
-              style: TextStyle(
-                color: AppColors.ink,
-                fontWeight: FontWeight.w900,
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const Text(
+          '평점',
+          style: TextStyle(
+            color: AppColors.ink,
+            fontWeight: FontWeight.w900,
+            fontSize: 15,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Row(
+          children: [
+            ...List.generate(5, (index) {
+              final score = index + 1;
+              return IconButton(
+                visualDensity: VisualDensity.compact,
+                padding: const EdgeInsets.only(right: 6),
+                onPressed: () => onChanged(score),
+                icon: Icon(
+                  score <= value
+                      ? Icons.star_rounded
+                      : Icons.star_outline_rounded,
+                  color: const Color(0xFFF4B942),
+                  size: 30,
+                ),
+              );
+            }),
+            const SizedBox(width: 6),
+            Text(
+              '$value.0',
+              style: const TextStyle(
+                color: Color(0xFF788B98),
+                fontWeight: FontWeight.w800,
               ),
             ),
-          ),
-          ...List.generate(5, (index) {
-            final score = index + 1;
-            return IconButton(
-              visualDensity: VisualDensity.compact,
-              onPressed: () => onChanged(score),
-              icon: Icon(
-                score <= value
-                    ? Icons.star_rounded
-                    : Icons.star_outline_rounded,
-                color: const Color(0xFFF4B942),
-              ),
-            );
-          }),
-        ],
-      ),
+          ],
+        ),
+        const Divider(height: 1, color: Color(0xFFE4EAED)),
+      ],
     );
   }
 }
@@ -6738,6 +6812,7 @@ class ProfilePage extends StatefulWidget {
     required this.onUserChanged,
     required this.onResetBotSetup,
     required this.onLogout,
+    required this.onDeleteAccount,
     required this.onOpenPost,
     required this.onOpenAuthor,
     required this.onToggleProfilePublic,
@@ -6748,6 +6823,7 @@ class ProfilePage extends StatefulWidget {
   final Future<void> Function(PyeonUser user) onUserChanged;
   final Future<void> Function() onResetBotSetup;
   final Future<void> Function() onLogout;
+  final Future<void> Function(String password) onDeleteAccount;
   final Future<void> Function(Post post) onOpenPost;
   final ValueChanged<Post> onOpenAuthor;
   final Future<void> Function(bool value) onToggleProfilePublic;
@@ -6761,6 +6837,7 @@ class _ProfilePageState extends State<ProfilePage> {
   SortMode _postSortMode = SortMode.latest;
   final ImagePicker _picker = ImagePicker();
   CombinationBattleState _sharedBattleState = const CombinationBattleState();
+  bool _deletingAccount = false;
 
   @override
   void initState() {
@@ -6814,6 +6891,64 @@ class _ProfilePageState extends State<ProfilePage> {
 
     final randomPost = widget.posts[math.Random().nextInt(widget.posts.length)];
     await widget.onOpenPost(randomPost);
+  }
+
+  Future<void> _deleteAccount() async {
+    final passwordController = TextEditingController();
+    final password = await showDialog<String>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: const Text('계정을 삭제할까요?'),
+        content: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const Text(
+              '내 게시글과 댓글, 후기, 투표 기록이 함께 정리되며 되돌릴 수 없어요.',
+              style: TextStyle(height: 1.5),
+            ),
+            const SizedBox(height: 16),
+            TextField(
+              controller: passwordController,
+              obscureText: true,
+              autofocus: true,
+              decoration: inputDecoration('확인을 위해 비밀번호 입력'),
+            ),
+          ],
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: const Text('취소'),
+          ),
+          FilledButton(
+            onPressed: () =>
+                Navigator.of(dialogContext).pop(passwordController.text),
+            style: FilledButton.styleFrom(
+              backgroundColor: const Color(0xFFD84B4B),
+              foregroundColor: Colors.white,
+            ),
+            child: const Text('계정 영구 삭제'),
+          ),
+        ],
+      ),
+    );
+    passwordController.dispose();
+    if (password == null || password.isEmpty || !mounted) return;
+
+    setState(() => _deletingAccount = true);
+    try {
+      await widget.onDeleteAccount(password);
+    } catch (error) {
+      if (!mounted) return;
+      setState(() => _deletingAccount = false);
+      final message = error is StateError
+          ? error.message.toString()
+          : '계정을 삭제하지 못했어요.';
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(SnackBar(content: Text(message)));
+    }
   }
 
   List<Post> _sortPosts(List<Post> posts) {
@@ -7666,6 +7801,15 @@ class _ProfilePageState extends State<ProfilePage> {
             padding: const EdgeInsets.symmetric(vertical: 15),
           ),
           child: const Text('로그아웃'),
+        ),
+        const SizedBox(height: 6),
+        TextButton(
+          onPressed: _deletingAccount ? null : _deleteAccount,
+          style: TextButton.styleFrom(
+            foregroundColor: const Color(0xFFB64A4A),
+            padding: const EdgeInsets.symmetric(vertical: 12),
+          ),
+          child: Text(_deletingAccount ? '계정 삭제 중...' : '계정 삭제'),
         ),
       ],
     );

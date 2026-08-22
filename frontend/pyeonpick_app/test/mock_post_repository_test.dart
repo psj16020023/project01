@@ -57,4 +57,19 @@ void main() {
     expect(page.posts.map((post) => post.id), contains('seed-2026-01'));
     expect(page.posts.map((post) => post.id), contains('seed-2026-06'));
   });
+
+  test('맛 필터로 본문의 맛 표현을 찾는다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = MockPostRepository();
+
+    final page = await repository.fetchPosts(
+      selectedTags: const <String>['매콤'],
+      sortMode: SortMode.latest,
+      currentUserId: 'tester',
+      limit: 100,
+    );
+
+    expect(page.posts.map((post) => post.id), contains('seed-2026-01'));
+    expect(page.posts.map((post) => post.id), contains('seed-2026-06'));
+  });
 }

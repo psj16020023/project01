@@ -914,11 +914,17 @@ class _ReviewDetailPageState extends State<ReviewDetailPage> {
 InputDecoration _reviewInputDecoration(String hint) {
   return InputDecoration(
     hintText: hint,
-    filled: true,
-    fillColor: const Color(0xFFF5F8FA),
-    border: OutlineInputBorder(
-      borderRadius: BorderRadius.circular(17),
-      borderSide: BorderSide.none,
+    hintStyle: const TextStyle(color: Color(0xFF9AA9B3)),
+    filled: false,
+    contentPadding: const EdgeInsets.symmetric(vertical: 12),
+    border: const UnderlineInputBorder(
+      borderSide: BorderSide(color: Color(0xFFDDE5E9)),
+    ),
+    enabledBorder: const UnderlineInputBorder(
+      borderSide: BorderSide(color: Color(0xFFDDE5E9)),
+    ),
+    focusedBorder: const UnderlineInputBorder(
+      borderSide: BorderSide(color: AppColors.skyBlueDeep, width: 2),
     ),
   );
 }

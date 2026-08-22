@@ -5,6 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_environment.dart';
 import '../models/pyeon_user.dart';
+import 'battle_state_store.dart';
 import 'account_string_store.dart';
 import 'browser_account_string_store.dart';
 
@@ -317,6 +318,37 @@ class LocalAccountStore {
     await _store.remove(_currentUserIdKey);
     await _store.remove(_cachedCurrentUserKey);
     await _store.remove(_authTokenKey);
+  }
+
+  Future<void> deleteAccount({
+    required PyeonUser user,
+    required String password,
+  }) async {
+    if (password.isEmpty) throw StateError('비밀번호를 입력해 주세요.');
+
+    if (!_usesRemoteAuth) {
+      if (user.password != password) {
+        throw StateError('비밀번호가 맞지 않아요.');
+      }
+      await _saveAccounts(
+        getAccounts().where((account) => account.id != user.id).toList(),
+      );
+    } else {
+      final response = await http
+          .delete(
+            Uri.parse('${environment.apiBaseUrl}/users/${user.id}'),
+            headers: _authorizedHeaders(contentType: true),
+            body: jsonEncode(<String, dynamic>{'password': password}),
+          )
+          .timeout(const Duration(seconds: 8));
+      if (response.statusCode != 200) {
+        final message = _extractMessage(response.body, '계정을 삭제하지 못했어요.');
+        throw StateError(message);
+      }
+    }
+
+    await BattleStateStore.removeUser(user.id);
+    await signOut();
   }
 
   Future<void> _storeAuthToken(String? token) async {

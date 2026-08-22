@@ -27,4 +27,32 @@ class BattleStateStore {
     await prefs.setString(sharedBattleStateKey, encoded);
     await prefs.remove(_legacySharedBattleStateKey);
   }
+
+  static Future<void> removeUser(String userId) async {
+    final current = await load();
+    final nextMatches = current.matches
+        .where((match) => match.authorId != userId)
+        .map((match) {
+          return match.copyWith(
+            leftVoterIds: match.leftVoterIds
+                .where((id) => id != userId)
+                .toList(),
+            rightVoterIds: match.rightVoterIds
+                .where((id) => id != userId)
+                .toList(),
+          );
+        })
+        .toList();
+    await save(
+      current.copyWith(
+        matches: nextMatches,
+        notifiedExpiredMatchIds: current.notifiedExpiredMatchIds
+            .where(nextMatches.map((match) => match.id).toSet().contains)
+            .toList(),
+        todayEndedSummarySeenMatchIds: current.todayEndedSummarySeenMatchIds
+            .where(nextMatches.map((match) => match.id).toSet().contains)
+            .toList(),
+      ),
+    );
+  }
 }

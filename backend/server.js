@@ -3586,6 +3586,64 @@ app.put("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
   return res.json({ user: await serializeUser(user) });
 });
 
+app.delete("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
+  const user = await User.findById(req.params.id);
+  if (!user) {
+    return res.status(404).json({ message: "사용자를 찾을 수 없어요." });
+  }
+
+  const password = String(req.body.password || "");
+  if (!passwordMatches(password, user.passwordHash)) {
+    return res.status(401).json({ message: "비밀번호가 맞지 않아요." });
+  }
+
+  const userId = user._id.toString();
+  const ownedPosts = await Post.find({ authorId: userId }).select("_id").lean();
+  const ownedPostIds = ownedPosts.map((post) => post._id.toString());
+  const likedPostObjectIds = (user.likedPostIds || [])
+    .filter(isValidObjectId)
+    .map((id) => new mongoose.Types.ObjectId(id));
+  const dislikedPostObjectIds = (user.dislikedPostIds || [])
+    .filter(isValidObjectId)
+    .map((id) => new mongoose.Types.ObjectId(id));
+
+  await Promise.all([
+    Post.deleteMany({ authorId: userId }),
+    Post.updateMany(
+      { _id: { $in: likedPostObjectIds }, likes: { $gt: 0 } },
+      { $inc: { likes: -1 }, $pull: { likeEvents: { userId } } },
+    ),
+    Post.updateMany(
+      { _id: { $in: dislikedPostObjectIds }, dislikes: { $gt: 0 } },
+      { $inc: { dislikes: -1 } },
+    ),
+    Post.updateMany(
+      { authorId: { $ne: userId } },
+      {
+        $pull: {
+          comments: { authorId: userId },
+          reviews: { authorId: userId },
+          likeEvents: { userId },
+        },
+      },
+    ),
+    User.updateMany(
+      { _id: { $ne: user._id } },
+      {
+        $pull: {
+          likedPostIds: { $in: ownedPostIds },
+          dislikedPostIds: { $in: ownedPostIds },
+          savedPostIds: { $in: ownedPostIds },
+          pickedAuthorIds: userId,
+        },
+      },
+    ),
+  ]);
+
+  await User.deleteOne({ _id: user._id });
+  return res.json({ message: "계정을 삭제했어요." });
+});
+
 app.get("/api/image-proxy", async (req, res) => {
   const rawUrl = String(req.query.url || "").trim();
   if (!/^https?:\/\//i.test(rawUrl)) {
@@ -3678,8 +3736,25 @@ app.get("/api/posts", async (req, res) => {
   if (requestedTags.length > 0) {
     filters.$and = filters.$and || [];
     for (const tag of requestedTags) {
+      const tasteAliases = {
+        "달달": ["달달", "달콤", "단맛", "단 맛", "단거"],
+        "매콤": ["매콤", "매운맛", "매운 맛", "맵단"],
+        "새콤": ["새콤", "상큼", "신맛", "신 맛", "시다"],
+        "짭짤": ["짭짤", "짠맛", "짠 맛", "짜다"],
+      };
+      const terms = tasteAliases[tag] || [tag];
+      const searchRegex = terms
+        .map((term) => term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+        .join("|");
       filters.$and.push({
-        categories: { $regex: tag, $options: "i" },
+        $or: [
+          { title: { $regex: searchRegex, $options: "i" } },
+          { content: { $regex: searchRegex, $options: "i" } },
+          { categories: { $regex: searchRegex, $options: "i" } },
+          { "details.eatingSteps": { $regex: searchRegex, $options: "i" } },
+          { "details.tips": { $regex: searchRegex, $options: "i" } },
+          { "reviews.text": { $regex: searchRegex, $options: "i" } },
+        ],
       });
     }
   }

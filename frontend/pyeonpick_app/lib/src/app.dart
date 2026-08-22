@@ -95,6 +95,15 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
     setState(() => _currentUser = null);
   }
 
+  Future<void> _handleDeleteAccount(String password) async {
+    final store = _accountStore!;
+    final user = _currentUser;
+    if (user == null) return;
+    await store.deleteAccount(user: user, password: password);
+    if (!mounted) return;
+    setState(() => _currentUser = null);
+  }
+
   @override
   Widget build(BuildContext context) {
     return MaterialApp(
@@ -201,6 +210,7 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
               currentUser: _currentUser!,
               onUserChanged: _handleUserChanged,
               onLogout: _handleLogout,
+              onDeleteAccount: _handleDeleteAccount,
             ),
     );
   }

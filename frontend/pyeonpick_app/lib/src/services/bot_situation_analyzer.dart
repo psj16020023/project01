@@ -74,7 +74,7 @@ abstract final class BotSituationAnalyzer {
               'memoryNotes': memoryNotes.take(6).toList(),
             }),
           )
-          .timeout(const Duration(seconds: 8));
+          .timeout(const Duration(milliseconds: 2200));
       if (response.statusCode != 200) return null;
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       return BotSituationContext.fromJson(

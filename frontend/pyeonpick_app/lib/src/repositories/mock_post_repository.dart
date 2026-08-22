@@ -286,12 +286,18 @@ class MockPostRepository implements PostRepository {
           : expandedQueries.any(searchableText.contains);
       final matchesTags = selectedTags == null || selectedTags.isEmpty
           ? true
-          : selectedTags.every(
-              (tag) => post.categories.any(
-                (category) =>
-                    category.toLowerCase().contains(tag.toLowerCase()),
-              ),
-            );
+          : selectedTags.every((tag) {
+              final normalizedTag = tag.toLowerCase();
+              final tagQueries = <String>{normalizedTag};
+              for (final entry in tasteAliases.entries) {
+                if (entry.key == normalizedTag ||
+                    entry.value.any(normalizedTag.contains)) {
+                  tagQueries.add(entry.key);
+                  tagQueries.addAll(entry.value);
+                }
+              }
+              return tagQueries.any(searchableText.contains);
+            });
 
       final matchesMin = minPrice == null || post.priceMax >= minPrice;
       final matchesMax = maxPrice == null || post.priceMin <= maxPrice;

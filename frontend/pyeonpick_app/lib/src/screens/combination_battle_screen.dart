@@ -196,10 +196,12 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
         _shuffleRanks = _buildShuffleRanks(normalized.matches);
       }
     });
-    await _saveSharedBattleState(normalized);
-    await widget.onUserChanged(
-      widget.currentUser.copyWith(battleState: normalized),
-    );
+    await Future.wait<void>([
+      _saveSharedBattleState(normalized),
+      widget.onUserChanged(
+        widget.currentUser.copyWith(battleState: normalized),
+      ),
+    ]);
   }
 
   Future<void> _loadAllBattlePosts() async {
@@ -335,7 +337,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
       leftVoterIds: left.toList(),
       rightVoterIds: right.toList(),
     );
-    await _replaceMatch(updated);
+    unawaited(_replaceMatch(updated));
     return updated;
   }
 
@@ -646,10 +648,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
                   sourceMode = _BattleCreateSourceMode.community;
                 });
                 if (navigator.mounted) navigator.pop();
-                await Future<void>.delayed(const Duration(milliseconds: 120));
-                if (!mounted) return;
                 _toast('픽 쇼츠를 올렸어요.');
-                await Future<void>.delayed(const Duration(milliseconds: 550));
                 if (!mounted) return;
                 await _openDetail(createdMatch);
               },
@@ -841,7 +840,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
       _revealedMatchId = updated.id;
       _revealedMatch = updated;
     });
-    await Future<void>.delayed(const Duration(milliseconds: 650));
+    await Future<void>.delayed(const Duration(seconds: 1));
     if (!mounted) return updated;
     await _goNextFrom(updated.id);
     if (!mounted) return updated;
@@ -1906,12 +1905,9 @@ class _BattleMatchCard extends StatelessWidget {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           if (immersive) Expanded(child: voteArena) else voteArena,
-          SizedBox(height: immersive ? 8 : 12),
-          Padding(
-            padding: EdgeInsets.symmetric(horizontal: immersive ? 4 : 0),
-            child: _BattleEndPill(match: match, compact: immersive),
-          ),
           if (!immersive) ...[
+            const SizedBox(height: 12),
+            _BattleEndPill(match: match),
             const SizedBox(height: 9),
             Row(
               children: [
@@ -2017,10 +2013,9 @@ class _BattleMatchCard extends StatelessWidget {
 }
 
 class _BattleEndPill extends StatelessWidget {
-  const _BattleEndPill({required this.match, this.compact = false});
+  const _BattleEndPill({required this.match});
 
   final BattleMatchEntry match;
-  final bool compact;
 
   @override
   Widget build(BuildContext context) {
@@ -2029,10 +2024,7 @@ class _BattleEndPill extends StatelessWidget {
       return Align(
         alignment: Alignment.centerLeft,
         child: Container(
-          padding: EdgeInsets.symmetric(
-            horizontal: compact ? 9 : 11,
-            vertical: compact ? 5 : 6,
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
           decoration: BoxDecoration(
             color: const Color(0xFFF0F2F5),
             borderRadius: BorderRadius.circular(999),
@@ -2040,9 +2032,9 @@ class _BattleEndPill extends StatelessWidget {
           ),
           child: Text(
             '종료 시간 없음',
-            style: TextStyle(
+            style: const TextStyle(
               color: _battleSubtle,
-              fontSize: compact ? 10.5 : 11.5,
+              fontSize: 11.5,
               fontWeight: FontWeight.w900,
             ),
           ),
@@ -2056,10 +2048,7 @@ class _BattleEndPill extends StatelessWidget {
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width - 48,
         ),
-        padding: EdgeInsets.symmetric(
-          horizontal: compact ? 9 : 11,
-          vertical: compact ? 5 : 6,
-        ),
+        padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 6),
         decoration: BoxDecoration(
           color: expired ? const Color(0xFFF0F2F5) : const Color(0xFFEAF3FF),
           borderRadius: BorderRadius.circular(999),
@@ -2072,7 +2061,7 @@ class _BattleEndPill extends StatelessWidget {
           children: [
             Icon(
               expired ? Icons.lock_clock_rounded : Icons.timer_rounded,
-              size: compact ? 13 : 15,
+              size: 15,
               color: expired ? _battleSubtle : const Color(0xFF2458B6),
             ),
             const SizedBox(width: 5),
@@ -2085,7 +2074,7 @@ class _BattleEndPill extends StatelessWidget {
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
                   color: expired ? _battleSubtle : const Color(0xFF2458B6),
-                  fontSize: compact ? 10.5 : 11.5,
+                  fontSize: 11.5,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.2,
                 ),
@@ -2232,65 +2221,22 @@ class _BattleVoteArena extends StatelessWidget {
                       ),
                     ],
                   ),
-                  child: Row(
-                    children: [
-                      SizedBox(
-                        width: 50,
-                        child: Text(
-                          '${_formatVotes(match.leftVotes)}표',
-                          textAlign: TextAlign.left,
-                          style: const TextStyle(
-                            color: _battleSubtle,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                      Expanded(
-                        child: Text(
-                          matchTitle,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          textAlign: TextAlign.center,
-                          style: const TextStyle(
-                            color: _battleInk,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w900,
-                            height: 1.18,
-                            letterSpacing: -0.3,
-                          ),
-                        ),
-                      ),
-                      SizedBox(
-                        width: 50,
-                        child: Text(
-                          '${_formatVotes(match.rightVotes)}표',
-                          textAlign: TextAlign.right,
-                          style: const TextStyle(
-                            color: _battleSubtle,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w900,
-                          ),
-                        ),
-                      ),
-                    ],
+                  child: Text(
+                    matchTitle,
+                    maxLines: 2,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: const TextStyle(
+                      color: _battleInk,
+                      fontSize: 15,
+                      fontWeight: FontWeight.w900,
+                      height: 1.18,
+                      letterSpacing: -0.3,
+                    ),
                   ),
                 ),
               ),
             ),
-            if (height == null && showVoteStats)
-              Positioned(
-                left: 14,
-                right: 14,
-                bottom: 18,
-                child: IgnorePointer(
-                  child: _BattleVoteResultBanner(
-                    match: match,
-                    leftTitle: leftSide.title,
-                    rightTitle: rightSide.title,
-                  ),
-                ),
-              ),
           ],
         );
       },
@@ -2584,83 +2530,51 @@ class _BattleVoteHero extends StatelessWidget {
           ),
           if (title != null)
             Positioned(
-              left: alignLeft ? 10 : 6,
-              right: alignLeft ? 6 : 10,
-              bottom: 62,
-              child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 7),
-                decoration: BoxDecoration(
-                  color: Colors.black.withAlpha(105),
-                  borderRadius: BorderRadius.circular(12),
+              left: alignLeft ? 14 : 8,
+              right: alignLeft ? 8 : 14,
+              bottom: 22,
+              child: Text(
+                title!,
+                maxLines: 3,
+                overflow: TextOverflow.ellipsis,
+                textAlign: textAlign,
+                style: const TextStyle(
+                  color: Colors.white,
+                  fontSize: 15,
+                  fontWeight: FontWeight.w900,
+                  height: 1.2,
+                  shadows: [
+                    Shadow(
+                      color: Color(0xB0000000),
+                      blurRadius: 10,
+                      offset: Offset(0, 2),
+                    ),
+                  ],
                 ),
+              ),
+            ),
+          if (showVotes)
+            Center(
+              child: IgnorePointer(
                 child: Text(
-                  title!,
-                  maxLines: 3,
-                  overflow: TextOverflow.ellipsis,
-                  textAlign: textAlign,
+                  '$votes\n표',
+                  textAlign: TextAlign.center,
                   style: const TextStyle(
                     color: Colors.white,
-                    fontSize: 13,
+                    fontSize: 48,
                     fontWeight: FontWeight.w900,
-                    height: 1.2,
+                    height: 0.92,
+                    shadows: [
+                      Shadow(
+                        color: Color(0x99000000),
+                        blurRadius: 18,
+                        offset: Offset(0, 4),
+                      ),
+                    ],
                   ),
                 ),
               ),
             ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BattleVoteResultBanner extends StatelessWidget {
-  const _BattleVoteResultBanner({
-    required this.match,
-    required this.leftTitle,
-    required this.rightTitle,
-  });
-
-  final BattleMatchEntry match;
-  final String leftTitle;
-  final String rightTitle;
-
-  @override
-  Widget build(BuildContext context) {
-    final winner = match.winnerSide;
-    final summary = switch (winner) {
-      BattleVoteSide.left => '$leftTitle 쪽이 더 많이 선택됐어요',
-      BattleVoteSide.right => '$rightTitle 쪽이 더 많이 선택됐어요',
-      null => '지금은 동률이에요',
-    };
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 12),
-      decoration: BoxDecoration(
-        color: Colors.black.withAlpha(136),
-        borderRadius: BorderRadius.circular(18),
-      ),
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            summary,
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 13,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            '왼쪽 ${_formatVotes(match.leftVotes)}표 · 오른쪽 ${_formatVotes(match.rightVotes)}표',
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 12,
-              fontWeight: FontWeight.w700,
-            ),
-          ),
         ],
       ),
     );
