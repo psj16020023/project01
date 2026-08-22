@@ -42,4 +42,19 @@ void main() {
     expect(restored.likedByMe, isTrue);
     expect(restored.likes, liked.likes);
   });
+
+  test('맛 표현으로 제목 외의 내용도 검색한다', () async {
+    SharedPreferences.setMockInitialValues({});
+    final repository = MockPostRepository();
+
+    final page = await repository.fetchPosts(
+      query: '매운맛',
+      sortMode: SortMode.latest,
+      currentUserId: 'tester',
+      limit: 100,
+    );
+
+    expect(page.posts.map((post) => post.id), contains('seed-2026-01'));
+    expect(page.posts.map((post) => post.id), contains('seed-2026-06'));
+  });
 }

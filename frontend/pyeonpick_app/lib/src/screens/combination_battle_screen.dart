@@ -841,7 +841,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
       _revealedMatchId = updated.id;
       _revealedMatch = updated;
     });
-    await Future<void>.delayed(const Duration(seconds: 1));
+    await Future<void>.delayed(const Duration(milliseconds: 650));
     if (!mounted) return updated;
     await _goNextFrom(updated.id);
     if (!mounted) return updated;
@@ -856,7 +856,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 14, 16, 14),
+      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
       child: Column(
         children: [
           Row(
@@ -913,7 +913,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
               ),
             ],
           ),
-          const SizedBox(height: 10),
+          const SizedBox(height: 6),
           Expanded(
             child: widget.matches.isEmpty
                 ? const Center(
@@ -929,6 +929,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
                   )
                 : PageView.builder(
                     controller: _pageController,
+                    scrollDirection: Axis.vertical,
                     itemCount: widget.matches.length,
                     physics: _processingVote
                         ? const NeverScrollableScrollPhysics()
@@ -943,10 +944,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
                       final left = widget.resolveSide(match, true);
                       final right = widget.resolveSide(match, false);
                       return Padding(
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 2,
-                          vertical: 2,
-                        ),
+                        padding: const EdgeInsets.symmetric(vertical: 2),
                         child: _BattleMatchCard(
                           match: match,
                           leftSide: left,
@@ -1909,7 +1907,10 @@ class _BattleMatchCard extends StatelessWidget {
         children: [
           if (immersive) Expanded(child: voteArena) else voteArena,
           SizedBox(height: immersive ? 8 : 12),
-          _BattleEndPill(match: match, compact: immersive),
+          Padding(
+            padding: EdgeInsets.symmetric(horizontal: immersive ? 4 : 0),
+            child: _BattleEndPill(match: match, compact: immersive),
+          ),
           if (!immersive) ...[
             const SizedBox(height: 9),
             Row(
@@ -2130,7 +2131,7 @@ class _BattleVoteArena extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = LayoutBuilder(
       builder: (context, constraints) {
-        const vsSize = 82.0;
+        const vsSize = 62.0;
         final arenaHeight = constraints.maxHeight;
         final seamX = constraints.maxWidth / 2;
         final sideWidth = constraints.maxWidth / 2;
@@ -2153,8 +2154,8 @@ class _BattleVoteArena extends StatelessWidget {
                 showVotes: showVoteStats,
                 alignLeft: true,
                 borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(26),
-                  bottomLeft: Radius.circular(26),
+                  topLeft: Radius.circular(20),
+                  bottomLeft: Radius.circular(20),
                   topRight: Radius.zero,
                   bottomRight: Radius.zero,
                 ),
@@ -2179,8 +2180,8 @@ class _BattleVoteArena extends StatelessWidget {
                 borderRadius: const BorderRadius.only(
                   topLeft: Radius.zero,
                   bottomLeft: Radius.zero,
-                  topRight: Radius.circular(26),
-                  bottomRight: Radius.circular(26),
+                  topRight: Radius.circular(20),
+                  bottomRight: Radius.circular(20),
                 ),
                 onTap: () => onVote(match, BattleVoteSide.right),
               ),
@@ -2193,14 +2194,13 @@ class _BattleVoteArena extends StatelessWidget {
                 height: vsSize,
                 alignment: Alignment.center,
                 decoration: BoxDecoration(
-                  color: Colors.white,
+                  color: Colors.white.withAlpha(238),
                   shape: BoxShape.circle,
-                  border: Border.all(color: _battleLine, width: 1.5),
                   boxShadow: [
                     BoxShadow(
-                      color: Colors.black.withAlpha(18),
-                      blurRadius: 18,
-                      offset: const Offset(0, 8),
+                      color: Colors.black.withAlpha(14),
+                      blurRadius: 12,
+                      offset: const Offset(0, 5),
                     ),
                   ],
                 ),
@@ -2208,47 +2208,72 @@ class _BattleVoteArena extends StatelessWidget {
                   'VS',
                   style: TextStyle(
                     color: Color(0xFF8D99A7),
-                    fontSize: 28,
+                    fontSize: 20,
                     fontWeight: FontWeight.w900,
                   ),
                 ),
               ),
             ),
             Positioned(
-              left: 14,
-              right: 14,
-              top: 12,
+              left: 10,
+              right: 10,
+              top: 10,
               child: IgnorePointer(
-                child: Center(
-                  child: Container(
-                    constraints: const BoxConstraints(maxWidth: 320),
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 8,
-                    ),
-                    decoration: BoxDecoration(
-                      color: Colors.white.withAlpha(230),
-                      borderRadius: BorderRadius.circular(999),
-                      boxShadow: [
-                        BoxShadow(
-                          color: Colors.black.withAlpha(20),
-                          blurRadius: 16,
-                          offset: const Offset(0, 7),
-                        ),
-                      ],
-                    ),
-                    child: Text(
-                      matchTitle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                      style: const TextStyle(
-                        color: _battleInk,
-                        fontSize: 14,
-                        fontWeight: FontWeight.w900,
-                        letterSpacing: -0.25,
+                child: Container(
+                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(238),
+                    borderRadius: BorderRadius.circular(16),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withAlpha(16),
+                        blurRadius: 14,
+                        offset: const Offset(0, 6),
                       ),
-                    ),
+                    ],
+                  ),
+                  child: Row(
+                    children: [
+                      SizedBox(
+                        width: 50,
+                        child: Text(
+                          '${_formatVotes(match.leftVotes)}표',
+                          textAlign: TextAlign.left,
+                          style: const TextStyle(
+                            color: _battleSubtle,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                      Expanded(
+                        child: Text(
+                          matchTitle,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          textAlign: TextAlign.center,
+                          style: const TextStyle(
+                            color: _battleInk,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w900,
+                            height: 1.18,
+                            letterSpacing: -0.3,
+                          ),
+                        ),
+                      ),
+                      SizedBox(
+                        width: 50,
+                        child: Text(
+                          '${_formatVotes(match.rightVotes)}표',
+                          textAlign: TextAlign.right,
+                          style: const TextStyle(
+                            color: _battleSubtle,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w900,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
@@ -2313,18 +2338,13 @@ class _BattleVoteSideCard extends StatelessWidget {
         decoration: BoxDecoration(
           color: fullBleed ? Colors.transparent : Colors.white,
           borderRadius: borderRadius,
-          border: fullBleed
-              ? null
-              : Border.all(
-                  color: color.withAlpha(active ? 255 : 170),
-                  width: active ? 2.6 : 1.4,
-                ),
+          border: fullBleed ? null : Border.all(color: const Color(0xFFE5E9ED)),
           boxShadow: fullBleed
               ? const []
               : [
                   BoxShadow(
-                    color: color.withAlpha(disabled ? 12 : (active ? 52 : 18)),
-                    blurRadius: active ? 24 : 14,
+                    color: Colors.black.withAlpha(active ? 24 : 12),
+                    blurRadius: active ? 20 : 14,
                     offset: const Offset(0, 10),
                   ),
                 ],
@@ -2449,7 +2469,7 @@ class _BattleImageFill extends StatelessWidget {
       try {
         return Image.memory(
           base64Decode(source.substring(commaIndex + 1)),
-          fit: BoxFit.cover,
+          fit: BoxFit.contain,
           errorBuilder: (_, _, _) => _errorFallback(),
         );
       } catch (_) {
@@ -2465,7 +2485,7 @@ class _BattleImageFill extends StatelessWidget {
   Widget _networkImage(List<String> sources, [int index = 0]) {
     return Image.network(
       _battleDisplayImageUrl(sources[index]),
-      fit: BoxFit.cover,
+      fit: BoxFit.contain,
       loadingBuilder: (context, child, progress) {
         if (progress == null) return child;
         return Stack(
@@ -2551,8 +2571,7 @@ class _BattleVoteHero extends StatelessWidget {
       clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
         borderRadius: borderRadius,
-        border: Border.all(color: color.withAlpha(110)),
-        color: color.withAlpha(12),
+        color: const Color(0xFFF0F1F2),
       ),
       child: Stack(
         fit: StackFit.expand,
@@ -2584,35 +2603,6 @@ class _BattleVoteHero extends StatelessWidget {
                     fontSize: 13,
                     fontWeight: FontWeight.w900,
                     height: 1.2,
-                  ),
-                ),
-              ),
-            ),
-          if (showVotes)
-            Padding(
-              padding: const EdgeInsets.all(10),
-              child: Align(
-                alignment: alignLeft
-                    ? Alignment.bottomLeft
-                    : Alignment.bottomRight,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 9,
-                    vertical: 6,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.black.withAlpha(88),
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                  child: Text(
-                    votes,
-                    textAlign: textAlign,
-                    style: const TextStyle(
-                      color: Colors.white,
-                      fontWeight: FontWeight.w900,
-                      fontSize: 28,
-                      height: 1,
-                    ),
                   ),
                 ),
               ),

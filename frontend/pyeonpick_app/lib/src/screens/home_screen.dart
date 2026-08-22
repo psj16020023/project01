@@ -1245,6 +1245,12 @@ class _HomeScreenState extends State<HomeScreen> {
     int? currentBudget,
     int? currentMinimumPrice,
   }) {
+    String varied(List<String> options) {
+      final turn = widget.currentUser.botMessages.length;
+      final promptSeed = prompt.runes.fold<int>(0, (sum, rune) => sum + rune);
+      return options[(turn + promptSeed) % options.length];
+    }
+
     BotMessage? lastAssistantMessage;
     for (final message in widget.currentUser.botMessages.reversed) {
       if (message.role == 'assistant') {
@@ -1516,10 +1522,14 @@ class _HomeScreenState extends State<HomeScreen> {
     }..removeWhere((mood) => mood.isEmpty || mood == 'neutral');
 
     if (isGreeting) {
-      return const _BotReply(
-        text: '안녕! 지금 기분, 가진 돈, 남은 시간, 먹는 상황을 편하게 말해줘. 네 맛 점수와 예산 안에서 골라볼게.',
+      return _BotReply(
+        text: varied(const [
+          '안녕! 오늘은 뭐가 당겨? 기분이나 예산만 편하게 말해줘도 같이 골라볼게.',
+          '반가워. 지금 어떤 상태인지부터 들어볼까? 먹고 싶은 맛, 남은 돈, 시간 중 하나만 말해줘도 돼.',
+          '왔구나. 오늘 기분에 맞는 조합을 찾아보자. 지금 제일 중요한 게 맛인지, 예산인지부터 알려줘.',
+        ]),
         memoryNote: '인사로 대화 시작',
-        recommendedPostIds: <String>[],
+        recommendedPostIds: const <String>[],
       );
     }
     if (isQuestionAboutBot) {
@@ -1533,8 +1543,16 @@ class _HomeScreenState extends State<HomeScreen> {
     if (isThanks) {
       final followUp =
           lastAssistantMessage?.recommendedPostIds.isNotEmpty == true
-          ? '천만에. 방금 추천한 것들 중에서 더 끌리는 쪽이 있으면 왜 그게 당기는지도 같이 정리해줄게.'
-          : '천만에. 지금은 추천 없이 그냥 이야기만 이어가도 되고, 상황이 정리되면 그때 바로 골라줄게.';
+          ? varied(const [
+              '별말을. 방금 후보 중 끌리는 게 있으면 둘만 놓고 비교해보자.',
+              '좋아. 먹어보고 어땠지 궁금하네. 다음엔 더 매콤하게, 더 가볍게처럼 바꿔서도 골라줄게.',
+              '언제든지. 방금 추천에서 가성비나 맛 하나만 더 중요하면 바로 줄여보자.',
+            ])
+          : varied(const [
+              '별말을. 원할 때 지금 상황만 한 줄로 말해줘.',
+              '좋아. 지금은 그냥 얘기만 이어가도 돼.',
+              '언제든지. 맛이나 예산이 정해지면 그때 바로 골라줄게.',
+            ]);
       return _BotReply(
         text: followUp,
         memoryNote: '감사 인사에 응답',
@@ -1812,10 +1830,18 @@ class _HomeScreenState extends State<HomeScreen> {
         ? '지금 메시지에서는 특정 감정보다 평소 좋아하는 맛과 좋아요 패턴을 더 크게 반영했어요.'
         : reasonParts.join(' ');
     final closing = isAskingForEmpathy
-        ? '원하면 이 셋 중에서 지금 제일 끌리는 쪽을 같이 더 좁혀볼게.'
-        : '좋아요 기록과 초기설정을 같이 보고 골라봤어. 마음에 걸리는 후보가 있으면 비교도 바로 해줄게.';
-    final replyText =
-        '$empathyText\n\n$reasonText\n\n$closing\n$recommendationText';
+        ? varied(const [
+            '이 셋 중 끌리는 걸 말해주면 같이 하나까지 좁혀보자.',
+            '지금은 선택을 서두르지 않아도 돼. 마음 가는 후보만 찜해두자.',
+          ])
+        : varied(const [
+            '취향과 좋아요 기록을 같이 보고 골랐어. 두 개가 고민되면 바로 비교해줄게.',
+            '지금 조건에서 가능성 높은 순서야. 더 싼 것, 더 맛이 센 것으로 다시 좁혀도 돼.',
+            '우선 이 세 개부터 보자. 하나가 마음에 걸리면 그 이유를 중심으로 다시 골라줄게.',
+          ]);
+    final replyText = recommendations.isEmpty
+        ? '$empathyText\n\n$recommendationText'
+        : '$empathyText\n\n$reasonText\n\n$closing';
 
     return _BotReply(
       text: replyText,
@@ -3969,7 +3995,7 @@ class _ToolbarState extends State<Toolbar> {
                 controller: widget.searchController,
                 style: const TextStyle(fontSize: 12),
                 decoration: compactInput(
-                  '조합명, 재료, 오늘 기분으로 검색',
+                  '조합명, 재료, 맛, 오늘 기분으로 검색',
                   icon: Icons.search_rounded,
                 ),
                 onChanged: (_) => setState(() {}),
@@ -4481,7 +4507,7 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
   Widget build(BuildContext context) {
     final posts = _sortedPosts;
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FBFD),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: AppColors.ink,
@@ -6487,9 +6513,8 @@ class _BotSetupPageState extends State<BotSetupPage> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F8E9),
+              color: const Color(0xFFF4F7F8),
               borderRadius: BorderRadius.circular(12),
-              border: Border.all(color: AppColors.skyBlue),
             ),
             child: Text(
               '${range.ageLabel} 한 끼 참고 범위 · ${range.label}',
@@ -6591,24 +6616,34 @@ class _BotSetupPageState extends State<BotSetupPage> {
             child: Container(
               width: double.infinity,
               constraints: BoxConstraints(minHeight: desktop ? 520 : 0),
-              padding: EdgeInsets.all(desktop ? 46 : 22),
-              decoration: BoxDecoration(
-                color: Colors.white,
-                borderRadius: BorderRadius.circular(desktop ? 38 : 30),
-                border: Border.all(color: const Color(0xFFE6EEF3)),
-                boxShadow: [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(16),
-                    blurRadius: 34,
-                    offset: const Offset(0, 20),
-                  ),
-                ],
+              padding: EdgeInsets.symmetric(
+                horizontal: desktop ? 36 : 6,
+                vertical: desktop ? 28 : 10,
               ),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 6,
+                    ),
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF1F4F5),
+                      borderRadius: BorderRadius.circular(999),
+                    ),
+                    child: const Text(
+                      '1분 취향 설정',
+                      style: TextStyle(
+                        color: Color(0xFF6A7D8B),
+                        fontSize: 11,
+                        fontWeight: FontWeight.w900,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(height: 14),
                   Text(
-                    '편봇 초기 설정',
+                    '내 입맛 알려주기',
                     style: TextStyle(
                       color: AppColors.ink,
                       fontWeight: FontWeight.w900,
@@ -6618,7 +6653,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
                   ),
                   const SizedBox(height: 10),
                   const Text(
-                    '처음 한 번만 답하면, 좋아요와 대화 기록을 바탕으로 취향을 더 잘 기억해요.',
+                    '평소 좋아하는 맛과 중요한 기준을 알려줘. 대화할수록 더 잘 맞춰갈게.',
                     style: TextStyle(
                       color: Color(0xFF73889B),
                       fontSize: 15,
@@ -6627,6 +6662,8 @@ class _BotSetupPageState extends State<BotSetupPage> {
                     ),
                   ),
                   SizedBox(height: desktop ? 42 : 22),
+                  const Divider(height: 1, color: Color(0xFFE7ECEF)),
+                  SizedBox(height: desktop ? 34 : 24),
                   if (desktop)
                     Row(
                       crossAxisAlignment: CrossAxisAlignment.start,
@@ -8413,7 +8450,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
     final displayContent = _contentWithoutBarcodeLines(_post.content);
 
     return Scaffold(
-      backgroundColor: const Color(0xFFF7FBFD),
+      backgroundColor: Colors.white,
       appBar: AppBar(
         backgroundColor: Colors.white,
         foregroundColor: AppColors.ink,
@@ -8443,205 +8480,208 @@ class _PostDetailPageState extends State<PostDetailPage> {
         ],
       ),
       body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 24),
+        padding: EdgeInsets.fromLTRB(
+          MediaQuery.sizeOf(context).width >= 860 ? 48 : 20,
+          14,
+          MediaQuery.sizeOf(context).width >= 860 ? 48 : 20,
+          40,
+        ),
         children: [
-          Container(
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(28),
-              boxShadow: [
-                BoxShadow(
-                  color: Colors.black.withAlpha(12),
-                  blurRadius: 28,
-                  offset: const Offset(0, 16),
-                ),
-              ],
-            ),
-            padding: const EdgeInsets.all(18),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Row(
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820),
+              child: Container(
+                color: Colors.white,
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    InkWell(
-                      onTap: widget.onOpenAuthor,
-                      borderRadius: BorderRadius.circular(999),
-                      child: Row(
-                        children: [
-                          _UserAvatar(
-                            imageSource: _post.authorProfileImageUrl,
-                            radius: 18,
-                          ),
-                          const SizedBox(width: 10),
-                          Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
+                    Row(
+                      children: [
+                        InkWell(
+                          onTap: widget.onOpenAuthor,
+                          borderRadius: BorderRadius.circular(999),
+                          child: Row(
                             children: [
-                              Text(
-                                _post.authorNickname,
-                                style: const TextStyle(
-                                  color: AppColors.ink,
-                                  fontWeight: FontWeight.w900,
-                                ),
+                              _UserAvatar(
+                                imageSource: _post.authorProfileImageUrl,
+                                radius: 18,
                               ),
-                              Text(
-                                _post.createdAtLabel,
-                                style: const TextStyle(
-                                  color: Color(0xFF8CA0B3),
-                                  fontSize: 12,
-                                  fontWeight: FontWeight.w600,
-                                ),
+                              const SizedBox(width: 10),
+                              Column(
+                                crossAxisAlignment: CrossAxisAlignment.start,
+                                children: [
+                                  Text(
+                                    _post.authorNickname,
+                                    style: const TextStyle(
+                                      color: AppColors.ink,
+                                      fontWeight: FontWeight.w900,
+                                    ),
+                                  ),
+                                  Text(
+                                    _post.createdAtLabel,
+                                    style: const TextStyle(
+                                      color: Color(0xFF8CA0B3),
+                                      fontSize: 12,
+                                      fontWeight: FontWeight.w600,
+                                    ),
+                                  ),
+                                ],
                               ),
                             ],
                           ),
-                        ],
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 14),
+                    Center(
+                      child: GestureDetector(
+                        onTap: _openPhotoViewer,
+                        child: ClipRRect(
+                          borderRadius: BorderRadius.circular(18),
+                          child: ConstrainedBox(
+                            constraints: const BoxConstraints(maxHeight: 520),
+                            child: AspectRatio(
+                              aspectRatio: 4 / 3,
+                              child: _PostImageGallery(post: _post),
+                            ),
+                          ),
+                        ),
                       ),
+                    ),
+                    const SizedBox(height: 20),
+                    ConvenienceProductTitle(
+                      title: _post.title,
+                      contextText: '${_post.title} ${_post.content}',
+                      maxLines: 3,
+                      showLabels: false,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 26,
+                        height: 1.24,
+                      ),
+                    ),
+                    const SizedBox(height: 12),
+                    CuProductBadgeStrip(
+                      text: _post.title,
+                      contextText: '${_post.title} ${_post.content}',
+                    ),
+                    const SizedBox(height: 12),
+                    _PostMetaRow(
+                      priceLabel: _post.priceLabel,
+                      calories: _post.calories,
+                      rating: _post.rating,
+                    ),
+                    const SizedBox(height: 12),
+                    Wrap(
+                      spacing: 8,
+                      runSpacing: 8,
+                      children: _displayCategories(_post.categories)
+                          .map((category) => _TagPill(label: '#$category'))
+                          .toList(),
+                    ),
+                    const Padding(
+                      padding: EdgeInsets.symmetric(vertical: 18),
+                      child: Divider(height: 1, color: Color(0xFFE7ECEF)),
+                    ),
+                    const Text(
+                      '후기',
+                      style: TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w900,
+                        fontSize: 17,
+                      ),
+                    ),
+                    const SizedBox(height: 6),
+                    Text(
+                      displayContent.isEmpty
+                          ? '아직 후기가 비어 있어요.'
+                          : displayContent,
+                      style: const TextStyle(
+                        color: AppColors.ink,
+                        fontWeight: FontWeight.w600,
+                        height: 1.7,
+                      ),
+                    ),
+                    const SizedBox(height: 18),
+                    _PostDetailsSection(details: _post.details),
+                    if (_post.details.eatingSteps.isNotEmpty ||
+                        _post.details.tips.isNotEmpty)
+                      const SizedBox(height: 20),
+                    const Divider(height: 1, color: Color(0xFFE7ECEF)),
+                    const SizedBox(height: 16),
+                    Row(
+                      children: [
+                        Expanded(
+                          child: ActionChipButton(
+                            label:
+                                '${_post.likedByMe ? '♥' : '♡'} 하트 ${_post.likes}',
+                            active: _post.likedByMe,
+                            expanded: true,
+                            onTap: () async {
+                              final updated = await widget.onToggleLike();
+                              if (!mounted) return;
+                              setState(() => _post = updated);
+                              unawaited(_loadAudienceStats());
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ActionChipButton(
+                            label: '👎 싫어요 ${_post.dislikes}',
+                            active: _post.dislikedByMe,
+                            activeColor: const Color(0xFFE8EDF3),
+                            activeTextColor: const Color(0xFF38485A),
+                            expanded: true,
+                            onTap: () async {
+                              final updated = await widget.onToggleDislike();
+                              if (!mounted) return;
+                              setState(() => _post = updated);
+                            },
+                          ),
+                        ),
+                        const SizedBox(width: 10),
+                        Expanded(
+                          child: ActionChipButton(
+                            label: _saved ? '보관 중' : '보관함 이동',
+                            active: _saved,
+                            activeColor: const Color(0xFFE2F3FC),
+                            activeTextColor: const Color(0xFF176EAA),
+                            expanded: true,
+                            onTap: () async {
+                              await widget.onToggleSave();
+                              if (!mounted) return;
+                              setState(() => _saved = !_saved);
+                            },
+                          ),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 10),
+                    ActionChipButton(
+                      label: '후기 ${_post.reviews.length}',
+                      expanded: true,
+                      onTap: _openReviews,
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
-                GestureDetector(
-                  onTap: _openPhotoViewer,
-                  child: ClipRRect(
-                    borderRadius: BorderRadius.circular(24),
-                    child: SizedBox(
-                      height: 360,
-                      width: double.infinity,
-                      child: _PostImageGallery(post: _post),
-                    ),
-                  ),
-                ),
-                const SizedBox(height: 16),
-                ConvenienceProductTitle(
-                  title: _post.title,
-                  contextText: '${_post.title} ${_post.content}',
-                  maxLines: 3,
-                  showLabels: false,
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 28,
-                    height: 1.2,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                CuProductBadgeStrip(
-                  text: _post.title,
-                  contextText: '${_post.title} ${_post.content}',
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: [
-                    _TagPill(label: _post.priceLabel),
-                    if (_post.calories != null)
-                      _TagPill(label: '${_post.calories}kcal'),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                Text(
-                  _post.rating <= 0
-                      ? '평점 미입력'
-                      : '평점  ★ ${_post.rating.toStringAsFixed(1)}',
-                  style: const TextStyle(
-                    color: AppColors.priceRed,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 16,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Wrap(
-                  spacing: 8,
-                  runSpacing: 8,
-                  children: _displayCategories(
-                    _post.categories,
-                  ).map((category) => _TagPill(label: '#$category')).toList(),
-                ),
-                const SizedBox(height: 14),
-                const Text(
-                  '후기',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 17,
-                  ),
-                ),
-                const SizedBox(height: 6),
-                Text(
-                  displayContent.isEmpty ? '아직 후기가 비어 있어요.' : displayContent,
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w600,
-                    height: 1.7,
-                  ),
-                ),
-                const SizedBox(height: 16),
-                _PostDetailsSection(details: _post.details),
-                if (_post.details.eatingSteps.isNotEmpty ||
-                    _post.details.tips.isNotEmpty)
-                  const SizedBox(height: 16),
-                Row(
-                  children: [
-                    Expanded(
-                      child: ActionChipButton(
-                        label:
-                            '${_post.likedByMe ? '♥' : '♡'} 하트 ${_post.likes}',
-                        active: _post.likedByMe,
-                        expanded: true,
-                        onTap: () async {
-                          final updated = await widget.onToggleLike();
-                          if (!mounted) return;
-                          setState(() => _post = updated);
-                          unawaited(_loadAudienceStats());
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ActionChipButton(
-                        label: '👎 싫어요 ${_post.dislikes}',
-                        active: _post.dislikedByMe,
-                        activeColor: const Color(0xFFE8EDF3),
-                        activeTextColor: const Color(0xFF38485A),
-                        expanded: true,
-                        onTap: () async {
-                          final updated = await widget.onToggleDislike();
-                          if (!mounted) return;
-                          setState(() => _post = updated);
-                        },
-                      ),
-                    ),
-                    const SizedBox(width: 10),
-                    Expanded(
-                      child: ActionChipButton(
-                        label: _saved ? '보관 중' : '보관함 이동',
-                        active: _saved,
-                        activeColor: const Color(0xFFE2F3FC),
-                        activeTextColor: const Color(0xFF176EAA),
-                        expanded: true,
-                        onTap: () async {
-                          await widget.onToggleSave();
-                          if (!mounted) return;
-                          setState(() => _saved = !_saved);
-                        },
-                      ),
-                    ),
-                  ],
-                ),
-                const SizedBox(height: 10),
-                ActionChipButton(
-                  label: '후기 ${_post.reviews.length}',
-                  expanded: true,
-                  onTap: _openReviews,
-                ),
-              ],
+              ),
             ),
           ),
-          const SizedBox(height: 16),
-          _PostLikeAudienceCard(
-            likedUsers: _likedUsers,
-            audienceStats: _audienceStats,
-            reviews: _post.reviews,
+          const Padding(
+            padding: EdgeInsets.symmetric(vertical: 24),
+            child: Divider(height: 1, color: Color(0xFFE7ECEF)),
+          ),
+          Center(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 820),
+              child: _PostLikeAudienceCard(
+                likedUsers: _likedUsers,
+                audienceStats: _audienceStats,
+                reviews: _post.reviews,
+              ),
+            ),
           ),
         ],
       ),
@@ -8661,17 +8701,110 @@ class _PostDetailsSection extends StatelessWidget {
     if (!hasAny) {
       return const SizedBox.shrink();
     }
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE8EFF4)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(top: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [_DetailBlock(title: '먹는 법', items: eatingTips)],
       ),
+    );
+  }
+}
+
+class _PostMetaRow extends StatelessWidget {
+  const _PostMetaRow({
+    required this.priceLabel,
+    required this.calories,
+    required this.rating,
+  });
+
+  final String priceLabel;
+  final int? calories;
+  final double rating;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      decoration: const BoxDecoration(
+        border: Border.symmetric(
+          horizontal: BorderSide(color: Color(0xFFE9EEF1)),
+        ),
+      ),
+      child: Row(
+        children: [
+          Expanded(
+            child: _PostMetaItem(label: '가격', value: priceLabel),
+          ),
+          if (calories != null) ...[
+            const _PostMetaDivider(),
+            Expanded(
+              child: _PostMetaItem(label: '칼로리', value: '$calories kcal'),
+            ),
+          ],
+          const _PostMetaDivider(),
+          Expanded(
+            child: _PostMetaItem(
+              label: '평점',
+              value: rating <= 0 ? '미입력' : '★ ${rating.toStringAsFixed(1)}',
+              valueColor: const Color(0xFFC87812),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _PostMetaItem extends StatelessWidget {
+  const _PostMetaItem({
+    required this.label,
+    required this.value,
+    this.valueColor = AppColors.ink,
+  });
+
+  final String label;
+  final String value;
+  final Color valueColor;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(
+          label,
+          style: const TextStyle(
+            color: Color(0xFF8A9AA7),
+            fontSize: 10.5,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+        const SizedBox(height: 4),
+        Text(
+          value,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: valueColor,
+            fontSize: 14,
+            fontWeight: FontWeight.w900,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _PostMetaDivider extends StatelessWidget {
+  const _PostMetaDivider();
+
+  @override
+  Widget build(BuildContext context) {
+    return const SizedBox(
+      height: 32,
+      width: 18,
+      child: VerticalDivider(width: 18, color: Color(0xFFE6EBEE)),
     );
   }
 }
@@ -8713,13 +8846,8 @@ class _PostLikeAudienceCard extends StatelessWidget {
       return '${((count / total) * 100).round()}%';
     }
 
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE8EFF4)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 4),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -8739,7 +8867,7 @@ class _PostLikeAudienceCard extends StatelessWidget {
               fontWeight: FontWeight.w700,
             ),
           ),
-          const SizedBox(height: 18),
+          const SizedBox(height: 16),
           LayoutBuilder(
             builder: (context, constraints) {
               final genderCard = _AudiencePieChartCard(
@@ -9112,24 +9240,27 @@ class _DetailBlock extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        ...items.map(
-          (item) => Padding(
-            padding: const EdgeInsets.only(bottom: 8),
+        ...items.indexed.map(
+          (entry) => Padding(
+            padding: const EdgeInsets.only(bottom: 12),
             child: Row(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Padding(
-                  padding: EdgeInsets.only(top: 4),
-                  child: Icon(
-                    Icons.fiber_manual_record_rounded,
-                    size: 10,
-                    color: AppColors.skyBlueDeep,
+                SizedBox(
+                  width: 32,
+                  child: Text(
+                    '${entry.$1 + 1}'.padLeft(2, '0'),
+                    style: const TextStyle(
+                      color: Color(0xFF88A2B3),
+                      fontSize: 12,
+                      fontWeight: FontWeight.w900,
+                      letterSpacing: 0.5,
+                    ),
                   ),
                 ),
-                const SizedBox(width: 8),
                 Expanded(
                   child: Text(
-                    item,
+                    entry.$2,
                     style: const TextStyle(
                       color: AppColors.ink,
                       fontWeight: FontWeight.w600,
@@ -10234,19 +10365,64 @@ class _BotIntroCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(18),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7FBFD),
-        borderRadius: BorderRadius.circular(22),
-        border: Border.all(color: const Color(0xFFE4EEF4)),
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(4, 14, 4, 20),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          const Text(
+            '오늘 뭐 먹을까?',
+            style: TextStyle(
+              color: AppColors.ink,
+              fontSize: 22,
+              fontWeight: FontWeight.w900,
+              letterSpacing: -0.5,
+            ),
+          ),
+          const SizedBox(height: 8),
+          const Text(
+            '기분과 예산을 편하게 말해줘. 네 입맛과 좋아요 기록을 보고 실제 게시글에서 골라줄게.',
+            style: TextStyle(
+              color: Color(0xFF657B8D),
+              fontWeight: FontWeight.w600,
+              height: 1.6,
+            ),
+          ),
+          const SizedBox(height: 14),
+          Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: const [
+              _BotPromptExample(label: '오천 원으로 든든하게'),
+              _BotPromptExample(label: '오늘 너무 피곤해'),
+              _BotPromptExample(label: '매콤한 거 추천해줘'),
+            ],
+          ),
+        ],
       ),
-      child: const Text(
-        '편봇이 준비됐어요. 지금 기분이나 상황을 말해주면, 초기설정과 좋아요 기록을 기준으로 꿀조합 공유 게시글을 추천해드릴게요.',
-        style: TextStyle(
-          color: AppColors.ink,
-          fontWeight: FontWeight.w700,
-          height: 1.7,
+    );
+  }
+}
+
+class _BotPromptExample extends StatelessWidget {
+  const _BotPromptExample({required this.label});
+
+  final String label;
+
+  @override
+  Widget build(BuildContext context) {
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 11, vertical: 7),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF5F7F8),
+        borderRadius: BorderRadius.circular(999),
+      ),
+      child: Text(
+        label,
+        style: const TextStyle(
+          color: Color(0xFF647887),
+          fontSize: 11,
+          fontWeight: FontWeight.w800,
         ),
       ),
     );
@@ -10329,46 +10505,72 @@ class _BotMessageBubble extends StatelessWidget {
               ),
             ),
             if (!isUser && recommended.isNotEmpty) ...[
-              const SizedBox(height: 10),
+              const SizedBox(height: 12),
               ...recommended.map(
                 (post) => GestureDetector(
                   onTap: () => onOpenPost(post.id),
                   child: Container(
-                    margin: const EdgeInsets.only(bottom: 8),
-                    padding: const EdgeInsets.all(14),
+                    margin: const EdgeInsets.only(bottom: 10),
+                    clipBehavior: Clip.antiAlias,
                     decoration: BoxDecoration(
                       color: Colors.white,
-                      borderRadius: BorderRadius.circular(18),
-                      border: Border.all(color: const Color(0xFFE3EDF3)),
+                      borderRadius: BorderRadius.circular(16),
+                      boxShadow: [
+                        BoxShadow(
+                          color: Colors.black.withAlpha(12),
+                          blurRadius: 18,
+                          offset: const Offset(0, 7),
+                        ),
+                      ],
                     ),
                     child: Row(
+                      crossAxisAlignment: CrossAxisAlignment.center,
                       children: [
-                        Expanded(
-                          child: Column(
-                            crossAxisAlignment: CrossAxisAlignment.start,
-                            children: [
-                              Text(
-                                post.title,
-                                style: const TextStyle(
-                                  color: AppColors.ink,
-                                  fontWeight: FontWeight.w900,
-                                ),
-                              ),
-                              const SizedBox(height: 4),
-                              Text(
-                                '${post.categories.join(', ')} · ${post.priceLabel}',
-                                style: const TextStyle(
-                                  color: Color(0xFF7B90A1),
-                                  fontWeight: FontWeight.w600,
-                                ),
-                              ),
-                            ],
-                          ),
+                        SizedBox(
+                          width: 108,
+                          height: 108,
+                          child: _BotPostThumbnail(post: post),
                         ),
-                        const SizedBox(width: 10),
-                        const Icon(
-                          Icons.open_in_new_rounded,
-                          color: AppColors.navy,
+                        Expanded(
+                          child: Padding(
+                            padding: const EdgeInsets.fromLTRB(14, 13, 12, 12),
+                            child: Column(
+                              crossAxisAlignment: CrossAxisAlignment.start,
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Text(
+                                  post.title,
+                                  maxLines: 2,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: AppColors.ink,
+                                    fontWeight: FontWeight.w900,
+                                    height: 1.3,
+                                  ),
+                                ),
+                                const SizedBox(height: 7),
+                                Text(
+                                  post.priceLabel,
+                                  style: const TextStyle(
+                                    color: AppColors.ink,
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w900,
+                                  ),
+                                ),
+                                const SizedBox(height: 4),
+                                Text(
+                                  post.categories.take(3).join(' · '),
+                                  maxLines: 1,
+                                  overflow: TextOverflow.ellipsis,
+                                  style: const TextStyle(
+                                    color: Color(0xFF80909B),
+                                    fontSize: 11,
+                                    fontWeight: FontWeight.w600,
+                                  ),
+                                ),
+                              ],
+                            ),
+                          ),
                         ),
                       ],
                     ),
@@ -10380,6 +10582,42 @@ class _BotMessageBubble extends StatelessWidget {
         ),
       ),
     );
+  }
+}
+
+class _BotPostThumbnail extends StatelessWidget {
+  const _BotPostThumbnail({required this.post});
+
+  final Post post;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget fallback() => const ColoredBox(
+      color: Color(0xFFF0F2F3),
+      child: Center(
+        child: Icon(Icons.fastfood_rounded, color: Color(0xFF9AA7AF)),
+      ),
+    );
+
+    if (post.allImageDatas.isNotEmpty) {
+      try {
+        return Image.memory(
+          base64Decode(post.allImageDatas.first),
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => fallback(),
+        );
+      } catch (_) {
+        return fallback();
+      }
+    }
+    if (post.allImageUrls.isNotEmpty) {
+      return Image.network(
+        _displayImageUrl(post.allImageUrls.first),
+        fit: BoxFit.cover,
+        errorBuilder: (_, _, _) => fallback(),
+      );
+    }
+    return fallback();
   }
 }
 

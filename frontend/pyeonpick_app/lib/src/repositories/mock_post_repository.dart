@@ -251,6 +251,31 @@ class MockPostRepository implements PostRepository {
     final normalized = (query ?? '').trim().toLowerCase();
 
     final filtered = _posts.where((post) {
+      final tasteAliases = <String, List<String>>{
+        '달달': const ['달달', '달콤', '단맛', '단 맛', '단거'],
+        '매콤': const ['매콤', '매운맛', '매운 맛', '맵단'],
+        '새콤': const ['새콤', '상큼', '신맛', '신 맛', '시다'],
+        '짭짤': const ['짭짤', '짠맛', '짠 맛', '짜다'],
+      };
+      final expandedQueries = <String>{normalized};
+      for (final entry in tasteAliases.entries) {
+        if (entry.value.any(normalized.contains)) {
+          expandedQueries.add(entry.key);
+          expandedQueries.addAll(entry.value);
+        }
+      }
+      final searchableText = <String>[
+        post.title,
+        post.content,
+        ...post.categories,
+        ...post.details.eatingSteps,
+        ...post.details.tips,
+        ...post.details.situationTags,
+        ...post.details.reviewPoints,
+        ...post.reviews.expand(
+          (review) => <String>[review.text, ...review.tags],
+        ),
+      ].join(' ').toLowerCase();
       final matchesQuery = normalized.isEmpty
           ? true
           : normalized.startsWith('#')
@@ -258,7 +283,7 @@ class MockPostRepository implements PostRepository {
               (category) =>
                   category.toLowerCase().contains(normalized.substring(1)),
             )
-          : post.title.toLowerCase().contains(normalized);
+          : expandedQueries.any(searchableText.contains);
       final matchesTags = selectedTags == null || selectedTags.isEmpty
           ? true
           : selectedTags.every(

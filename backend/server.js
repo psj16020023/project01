@@ -3639,7 +3639,35 @@ app.get("/api/posts", async (req, res) => {
     if (String(query).startsWith("#")) {
       filters.categories = { $regex: String(query).slice(1), $options: "i" };
     } else {
-      filters.title = { $regex: String(query), $options: "i" };
+      const rawQuery = String(query).trim();
+      const tasteAliases = {
+        "달달": ["달달", "달콤", "단맛", "단 맛", "단거"],
+        "매콤": ["매콤", "매운맛", "매운 맛", "맵단"],
+        "새콤": ["새콤", "상큼", "신맛", "신 맛", "시다"],
+        "짭짤": ["짭짤", "짠맛", "짠 맛", "짜다"],
+      };
+      const searchTerms = new Set([rawQuery]);
+      for (const [taste, aliases] of Object.entries(tasteAliases)) {
+        if (aliases.some((alias) => rawQuery.includes(alias))) {
+          searchTerms.add(taste);
+          aliases.forEach((alias) => searchTerms.add(alias));
+        }
+      }
+      const escapedTerms = [...searchTerms].map((term) =>
+        term.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"),
+      );
+      const searchRegex = escapedTerms.join("|");
+      filters.$or = [
+        { title: { $regex: searchRegex, $options: "i" } },
+        { content: { $regex: searchRegex, $options: "i" } },
+        { categories: { $regex: searchRegex, $options: "i" } },
+        { "details.eatingSteps": { $regex: searchRegex, $options: "i" } },
+        { "details.tips": { $regex: searchRegex, $options: "i" } },
+        { "details.situationTags": { $regex: searchRegex, $options: "i" } },
+        { "details.reviewPoints": { $regex: searchRegex, $options: "i" } },
+        { "reviews.text": { $regex: searchRegex, $options: "i" } },
+        { "reviews.tags": { $regex: searchRegex, $options: "i" } },
+      ];
     }
   }
 
