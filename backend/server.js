@@ -72,6 +72,7 @@ const postReviewSchema = new mongoose.Schema(
 
 const postDetailsSchema = new mongoose.Schema(
   {
+    usedProducts: { type: [String], default: [] },
     eatingSteps: { type: [String], default: [] },
     tips: { type: [String], default: [] },
     cautions: { type: [String], default: [] },
@@ -994,6 +995,7 @@ function serializePost(post, currentUser = null) {
       ? post.imageUrls
       : (post.imageUrl ? [post.imageUrl] : []),
     details: post.details || {
+      usedProducts: [],
       eatingSteps: [],
       tips: [],
       cautions: [],
@@ -1016,6 +1018,7 @@ function serializePostFeatureInfo(post, audienceCounts = { male: 0, female: 0 })
     id: post._id.toString(),
     authorId: post.authorId,
     title: post.title,
+    usedProducts: post.details?.usedProducts || [],
     likes: Number(post.likes || 0),
     dislikes: Number(post.dislikes || 0),
     commentCount: (post.comments || []).length,
@@ -3785,6 +3788,7 @@ app.get("/api/posts", async (req, res) => {
         { title: { $regex: searchRegex, $options: "i" } },
         { content: { $regex: searchRegex, $options: "i" } },
         { categories: { $regex: searchRegex, $options: "i" } },
+        { "details.usedProducts": { $regex: searchRegex, $options: "i" } },
         { "details.eatingSteps": { $regex: searchRegex, $options: "i" } },
         { "details.tips": { $regex: searchRegex, $options: "i" } },
         { "details.situationTags": { $regex: searchRegex, $options: "i" } },
@@ -3817,6 +3821,7 @@ app.get("/api/posts", async (req, res) => {
           { title: { $regex: searchRegex, $options: "i" } },
           { content: { $regex: searchRegex, $options: "i" } },
           { categories: { $regex: searchRegex, $options: "i" } },
+          { "details.usedProducts": { $regex: searchRegex, $options: "i" } },
           { "details.eatingSteps": { $regex: searchRegex, $options: "i" } },
           { "details.tips": { $regex: searchRegex, $options: "i" } },
           { "reviews.text": { $regex: searchRegex, $options: "i" } },
@@ -3905,7 +3910,7 @@ app.get("/api/posts/catalog", async (req, res) => {
 
 app.get("/api/posts/feature-index", async (req, res) => {
   const posts = await Post.find({})
-    .select("authorId title likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt imageUrl imageUrls imageData imageDatas")
+    .select("authorId title details.usedProducts likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt imageUrl imageUrls imageData imageDatas")
     .sort({ createdAt: -1, _id: -1 })
     .limit(1000);
   const usersWithGender = await User.find({
@@ -3997,15 +4002,25 @@ app.post("/api/posts", async (req, res) => {
   const normalizedImageDatas = Array.isArray(imageDatas) ? imageDatas.filter(Boolean) : (imageData ? [imageData] : []);
   const normalizedImageUrls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : (imageUrl ? [imageUrl] : []);
   const hasImage = normalizedImageDatas.length > 0 || normalizedImageUrls.length > 0;
-  const normalizedDetails = details || {};
-  const normalizedTitle = String(title || "").trim();
+  const rawDetails = details && typeof details === "object" ? details : {};
+  const requestedTitle = String(title || "").trim();
+  const usedProducts = (Array.isArray(rawDetails.usedProducts)
+    ? rawDetails.usedProducts
+    : [])
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  if (usedProducts.length === 0 && requestedTitle) {
+    usedProducts.push(...requestedTitle.split("+").map((item) => item.trim()).filter(Boolean));
+  }
+  const normalizedTitle = requestedTitle || usedProducts.join(" + ");
+  const normalizedDetails = { ...rawDetails, usedProducts: [...new Set(usedProducts)] };
   const normalizedRating = Math.min(5, Math.max(0, Number(rating) || 0));
 
   if (!hasImage) {
     return res.status(400).json({ message: "사진은 꼭 필요합니다." });
   }
-  if (!normalizedTitle) {
-    return res.status(400).json({ message: "품명은 꼭 필요합니다." });
+  if (normalizedDetails.usedProducts.length === 0) {
+    return res.status(400).json({ message: "사용한 상품은 하나 이상 필요합니다." });
   }
   if (normalizedRating <= 0) {
     return res.status(400).json({ message: "평점은 꼭 필요합니다." });
@@ -4059,7 +4074,7 @@ app.put("/api/posts/:id", async (req, res) => {
   } = req.body;
   const normalizedImageDatas = Array.isArray(imageDatas) ? imageDatas.filter(Boolean) : (imageData ? [imageData] : []);
   const normalizedImageUrls = Array.isArray(imageUrls) ? imageUrls.filter(Boolean) : (imageUrl ? [imageUrl] : []);
-  const normalizedDetails = details || {};
+  const rawDetails = details && typeof details === "object" ? details : {};
 
   const post = await Post.findById(req.params.id);
   if (!post) return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
@@ -4068,14 +4083,25 @@ app.put("/api/posts/:id", async (req, res) => {
   }
 
   const hasImage = normalizedImageDatas.length > 0 || normalizedImageUrls.length > 0 || (post.imageDatas?.length || 0) > 0 || (post.imageUrls?.length || 0) > 0;
-  const normalizedTitle = String(title || "").trim();
+  const requestedTitle = String(title || "").trim();
+  const usedProducts = (Array.isArray(rawDetails.usedProducts)
+    ? rawDetails.usedProducts
+    : (post.details?.usedProducts || []))
+    .map((item) => String(item || "").trim())
+    .filter(Boolean);
+  if (usedProducts.length === 0) {
+    const fallbackTitle = requestedTitle || String(post.title || "");
+    usedProducts.push(...fallbackTitle.split("+").map((item) => item.trim()).filter(Boolean));
+  }
+  const normalizedTitle = requestedTitle || usedProducts.join(" + ");
+  const normalizedDetails = { ...rawDetails, usedProducts: [...new Set(usedProducts)] };
   const normalizedRating = Math.min(5, Math.max(0, Number(rating) || 0));
 
   if (!hasImage) {
     return res.status(400).json({ message: "사진은 꼭 필요합니다." });
   }
-  if (!normalizedTitle) {
-    return res.status(400).json({ message: "품명은 꼭 필요합니다." });
+  if (normalizedDetails.usedProducts.length === 0) {
+    return res.status(400).json({ message: "사용한 상품은 하나 이상 필요합니다." });
   }
   if (normalizedRating <= 0) {
     return res.status(400).json({ message: "평점은 꼭 필요합니다." });

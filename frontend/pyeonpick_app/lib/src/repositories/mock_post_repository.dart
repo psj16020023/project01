@@ -268,6 +268,7 @@ class MockPostRepository implements PostRepository {
         post.title,
         post.content,
         ...post.categories,
+        ...post.details.usedProducts,
         ...post.details.eatingSteps,
         ...post.details.tips,
         ...post.details.situationTags,

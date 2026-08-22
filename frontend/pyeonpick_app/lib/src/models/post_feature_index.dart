@@ -5,6 +5,7 @@ class PostFeatureInfo {
     required this.id,
     required this.authorId,
     required this.title,
+    this.usedProducts = const <String>[],
     required this.likes,
     required this.dislikes,
     required this.commentCount,
@@ -23,6 +24,10 @@ class PostFeatureInfo {
       id: json['id'] as String? ?? '',
       authorId: json['authorId'] as String? ?? '',
       title: json['title'] as String? ?? '제목 없는 꿀조합',
+      usedProducts:
+          (json['usedProducts'] as List<dynamic>? ?? const <dynamic>[])
+              .map((item) => item.toString())
+              .toList(),
       likes: json['likes'] as int? ?? 0,
       dislikes: json['dislikes'] as int? ?? 0,
       commentCount: json['commentCount'] as int? ?? 0,
@@ -48,6 +53,7 @@ class PostFeatureInfo {
       id: post.id,
       authorId: post.authorId,
       title: post.title,
+      usedProducts: post.details.usedProducts,
       likes: post.likes,
       dislikes: post.dislikes,
       commentCount: post.comments.length,
@@ -67,6 +73,7 @@ class PostFeatureInfo {
   final String id;
   final String authorId;
   final String title;
+  final List<String> usedProducts;
   final int likes;
   final int dislikes;
   final int commentCount;
@@ -92,6 +99,7 @@ class PostFeatureInfo {
       id: id,
       authorId: authorId,
       title: title,
+      usedProducts: usedProducts,
       likes: likes,
       dislikes: dislikes,
       commentCount: commentCount,

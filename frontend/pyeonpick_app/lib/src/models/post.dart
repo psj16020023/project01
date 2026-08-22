@@ -159,6 +159,7 @@ class PostComment {
 
 class PostDetails {
   const PostDetails({
+    this.usedProducts = const <String>[],
     required this.eatingSteps,
     required this.tips,
     required this.cautions,
@@ -169,6 +170,11 @@ class PostDetails {
 
   factory PostDetails.fromJson(Map<String, dynamic>? json) {
     return PostDetails(
+      usedProducts:
+          (json?['usedProducts'] as List<dynamic>? ?? const <dynamic>[])
+              .map((item) => item.toString().trim())
+              .where((item) => item.isNotEmpty)
+              .toList(),
       eatingSteps: (json?['eatingSteps'] as List<dynamic>? ?? const <dynamic>[])
           .map((item) => item.toString())
           .toList(),
@@ -190,6 +196,7 @@ class PostDetails {
     );
   }
 
+  final List<String> usedProducts;
   final List<String> eatingSteps;
   final List<String> tips;
   final List<String> cautions;
@@ -199,6 +206,7 @@ class PostDetails {
 
   Map<String, dynamic> toJson() {
     return {
+      'usedProducts': usedProducts,
       'eatingSteps': eatingSteps,
       'tips': tips,
       'cautions': cautions,

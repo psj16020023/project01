@@ -65,13 +65,18 @@ Color _storeColor(String store) => switch (store) {
   _ => AppColors.navy,
 };
 
-List<CuProductMatch> _productMatchesForPost(Post post) => <CuProductMatch>[
-  ...CuProductCatalog.matchesForText(post.title),
-  ...CuProductCatalog.contextMatchesForTitle(
-    post.title,
-    '${post.title} ${post.content}',
-  ),
-];
+List<CuProductMatch> _productMatchesForPost(Post post) {
+  final productText = post.details.usedProducts.isEmpty
+      ? post.title
+      : post.details.usedProducts.join(' + ');
+  return <CuProductMatch>[
+    ...CuProductCatalog.matchesForText(productText),
+    ...CuProductCatalog.contextMatchesForTitle(
+      productText,
+      '$productText ${post.title} ${post.content}',
+    ),
+  ];
+}
 
 bool _postMatchesStore(Post post, String store) =>
     _productMatchesForPost(post).any((match) => match.store == store);
@@ -128,11 +133,14 @@ bool _postHasPbProduct(Post post) => _productMatchesForPost(
   post,
 ).any((match) => match.labels.contains(CuProductLabel.pbProduct));
 
+String _featureProductText(PostFeatureInfo post) =>
+    post.usedProducts.isEmpty ? post.title : post.usedProducts.join(' + ');
+
 bool _featureHasNewProduct(PostFeatureInfo post) =>
-    _titleHasNewProduct(post.title);
+    _titleHasNewProduct(_featureProductText(post));
 
 bool _featureHasPbProduct(PostFeatureInfo post) =>
-    _titleHasPbProduct(post.title);
+    _titleHasPbProduct(_featureProductText(post));
 
 String _formatWon(int amount) {
   return '${NumberFormat.decimalPattern('ko_KR').format(amount)}원';
@@ -5406,6 +5414,7 @@ class ComposerSheet extends StatefulWidget {
 class _ComposerSheetState extends State<ComposerSheet> {
   final picker = ImagePicker();
   late final TextEditingController titleController;
+  late final TextEditingController productController;
   late final TextEditingController contentController;
   late final TextEditingController priceController;
   late final TextEditingController calorieController;
@@ -5414,7 +5423,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
 
   final List<Uint8List> selectedImageBytes = <Uint8List>[];
   final List<String> selectedImageUrls = <String>[];
-  List<String> postTitleIndex = const <String>[];
+  List<String> productNameIndex = const <String>[];
   bool submitting = false;
   String? error;
 
@@ -5425,6 +5434,13 @@ class _ComposerSheetState extends State<ComposerSheet> {
     super.initState();
     final post = widget.initialPost;
     titleController = TextEditingController(text: post?.title ?? '');
+    productController = TextEditingController(
+      text: post == null
+          ? ''
+          : (post.details.usedProducts.isNotEmpty
+                ? post.details.usedProducts.join(' + ')
+                : post.title),
+    );
     contentController = TextEditingController(text: post?.content ?? '');
     priceController = TextEditingController(
       text: post == null ? '' : '${post.priceMin}',
@@ -5447,7 +5463,14 @@ class _ComposerSheetState extends State<ComposerSheet> {
       final index = await widget.repository.fetchPostFeatureIndex();
       if (!mounted) return;
       setState(() {
-        postTitleIndex = index.map((post) => post.title).toList();
+        productNameIndex = index
+            .expand(
+              (post) => post.usedProducts.isEmpty
+                  ? <String>[post.title]
+                  : post.usedProducts,
+            )
+            .toSet()
+            .toList();
       });
     } catch (_) {
       // Suggestions are optional; posting remains available if the index fails.
@@ -5457,6 +5480,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
   @override
   void dispose() {
     titleController.dispose();
+    productController.dispose();
     contentController.dispose();
     priceController.dispose();
     calorieController.dispose();
@@ -5489,13 +5513,13 @@ class _ComposerSheetState extends State<ComposerSheet> {
 
       setState(() {
         final nextTitle = result.officialName.trim();
-        final currentTitle = titleController.text.trim();
+        final currentTitle = productController.text.trim();
         if (nextTitle.isEmpty) {
           error = null;
           return;
         }
         if (currentTitle.isEmpty) {
-          titleController.text = nextTitle;
+          productController.text = nextTitle;
         } else {
           final normalizedParts = currentTitle
               .split('+')
@@ -5503,11 +5527,11 @@ class _ComposerSheetState extends State<ComposerSheet> {
               .where((item) => item.isNotEmpty)
               .toList();
           if (!normalizedParts.contains(nextTitle)) {
-            titleController.text = '$currentTitle + $nextTitle';
+            productController.text = '$currentTitle + $nextTitle';
           }
         }
-        titleController.selection = TextSelection.collapsed(
-          offset: titleController.text.length,
+        productController.selection = TextSelection.collapsed(
+          offset: productController.text.length,
         );
         final productImageUrl = result.imageUrl?.trim();
         if (productImageUrl != null &&
@@ -5539,7 +5563,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
       if (!mounted) return;
       ScaffoldMessenger.of(context).showSnackBar(
         const SnackBar(
-          content: Text('아직 등록되지 않은 상품이거나 조회가 잠시 실패했어요. 제목을 직접 적어 주세요.'),
+          content: Text('아직 등록되지 않은 상품이거나 조회가 잠시 실패했어요. 사용한 상품을 직접 적어 주세요.'),
         ),
       );
     }
@@ -5570,11 +5594,19 @@ class _ComposerSheetState extends State<ComposerSheet> {
   }
 
   Future<void> submit() async {
-    final title = titleController.text.trim();
+    final customTitle = titleController.text.trim();
+    final usedProducts = productController.text
+        .split('+')
+        .map((item) => item.trim())
+        .where((item) => item.isNotEmpty)
+        .toSet()
+        .toList();
+    final title = customTitle.isEmpty ? usedProducts.join(' + ') : customTitle;
     final content = contentController.text.trim();
     final singlePrice = int.tryParse(priceController.text.trim());
     final calories = int.tryParse(calorieController.text.trim());
     final details = PostDetails(
+      usedProducts: usedProducts,
       eatingSteps: _splitLines(eatingStepsController.text),
       tips: const <String>[],
       cautions: const <String>[],
@@ -5592,8 +5624,8 @@ class _ComposerSheetState extends State<ComposerSheet> {
       setState(() => error = '사진은 꼭 필요해요. 직접 올리거나 바코드로 상품 이미지를 불러와 주세요.');
       return;
     }
-    if (title.isEmpty) {
-      setState(() => error = '품명은 꼭 입력해 주세요.');
+    if (usedProducts.isEmpty) {
+      setState(() => error = '사용한 상품은 하나 이상 입력해 주세요.');
       return;
     }
     if (rating <= 0) {
@@ -5609,7 +5641,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
     final draft = PostDraft(
       authorId: widget.currentUser.id,
       authorNickname: widget.currentUser.nickname,
-      title: title.isEmpty ? '제목 없는 꿀조합' : title,
+      title: title,
       content: content,
       priceMin: singlePrice ?? 0,
       priceMax: singlePrice ?? 0,
@@ -5691,7 +5723,7 @@ class _ComposerSheetState extends State<ComposerSheet> {
                           Text(
                             isEditing
                                 ? '내 게시글을 다시 다듬어 보세요.'
-                                : '조합 사진과 품명, 먹어본 기록을 남겨보세요.',
+                                : '조합 사진과 제목, 사용한 상품을 남겨보세요.',
                             style: const TextStyle(
                               color: Color(0xFF8CA0B3),
                               fontWeight: FontWeight.w600,
@@ -5813,8 +5845,13 @@ class _ComposerSheetState extends State<ComposerSheet> {
                   ),
                 TextField(
                   controller: titleController,
+                  decoration: inputDecoration('제목 (선택): 초가성비 조합'),
+                ),
+                const SizedBox(height: 12),
+                TextField(
+                  controller: productController,
                   onChanged: (_) => setState(() {}),
-                  decoration: inputDecoration('품명: 불닭볶음면 + 스트링치즈').copyWith(
+                  decoration: inputDecoration('사용한 상품: 불닭볶음면 + 스트링치즈').copyWith(
                     suffixIcon: Padding(
                       padding: const EdgeInsets.only(right: 6),
                       child: TextButton.icon(
@@ -5842,31 +5879,31 @@ class _ComposerSheetState extends State<ComposerSheet> {
                     ),
                   ),
                 ),
-                if (titleController.text.trim().isNotEmpty) ...[
+                if (productController.text.trim().isNotEmpty) ...[
                   const SizedBox(height: 8),
                   _LiveTitleSuggestions(
                     suggestions: _matchingTitleSuggestions(
-                      postTitleIndex,
-                      titleController.text.split('+').last,
+                      productNameIndex,
+                      productController.text.split('+').last,
                     ),
                     onSelected: (title) {
                       final nextTitle = _applyTitleSuggestion(
-                        titleController.text,
+                        productController.text,
                         title,
                       );
-                      setState(() => titleController.text = nextTitle);
-                      titleController.selection = TextSelection.collapsed(
+                      setState(() => productController.text = nextTitle);
+                      productController.selection = TextSelection.collapsed(
                         offset: nextTitle.length,
                       );
                     },
                   ),
                 ],
-                if (titleController.text.trim().isNotEmpty) ...[
+                if (productController.text.trim().isNotEmpty) ...[
                   const SizedBox(height: 8),
                   ConvenienceProductTitle(
-                    title: titleController.text,
+                    title: productController.text,
                     contextText:
-                        '${titleController.text} ${contentController.text}',
+                        '${productController.text} ${titleController.text} ${contentController.text}',
                     maxLines: 2,
                     style: const TextStyle(
                       color: AppColors.ink,
@@ -8752,7 +8789,8 @@ class _PostDetailPageState extends State<PostDetailPage> {
                     ),
                     const SizedBox(height: 18),
                     _PostDetailsSection(details: _post.details),
-                    if (_post.details.eatingSteps.isNotEmpty ||
+                    if (_post.details.usedProducts.isNotEmpty ||
+                        _post.details.eatingSteps.isNotEmpty ||
                         _post.details.tips.isNotEmpty)
                       const SizedBox(height: 20),
                     const Divider(height: 1, color: Color(0xFFE7ECEF)),
@@ -8844,7 +8882,7 @@ class _PostDetailsSection extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final eatingTips = <String>[...details.eatingSteps, ...details.tips];
-    final hasAny = eatingTips.isNotEmpty;
+    final hasAny = details.usedProducts.isNotEmpty || eatingTips.isNotEmpty;
     if (!hasAny) {
       return const SizedBox.shrink();
     }
@@ -8852,7 +8890,14 @@ class _PostDetailsSection extends StatelessWidget {
       padding: const EdgeInsets.only(top: 2),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
-        children: [_DetailBlock(title: '먹는 법', items: eatingTips)],
+        children: [
+          if (details.usedProducts.isNotEmpty)
+            _DetailBlock(title: '사용한 상품', items: details.usedProducts),
+          if (details.usedProducts.isNotEmpty && eatingTips.isNotEmpty)
+            const SizedBox(height: 14),
+          if (eatingTips.isNotEmpty)
+            _DetailBlock(title: '먹는 법', items: eatingTips),
+        ],
       ),
     );
   }
