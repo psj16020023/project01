@@ -4,7 +4,9 @@ import 'dart:math' as math;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../data/mock_posts.dart';
+import '../data/mock_combination_battle.dart';
 import '../data/product_catalog.dart' as catalog;
+import '../models/combination_battle.dart';
 import '../models/post.dart';
 import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
@@ -14,18 +16,72 @@ import '../models/sort_mode.dart';
 import 'post_repository.dart';
 
 class MockPostRepository implements PostRepository {
-  MockPostRepository()
-    : _posts = mockPosts.map((post) => post.copyWith()).toList() {
+  MockPostRepository({
+    CombinationBattleState initialBattleState = const CombinationBattleState(),
+  }) : _posts = mockPosts.map((post) => post.copyWith()).toList(),
+       _battleState = initialBattleState {
     _applyTopFiveBadges();
   }
 
   final List<Post> _posts;
+  CombinationBattleState _battleState;
   static const _storageKey = 'pyeonpick_mock_posts_v3';
   static const _reactionStorageKey = 'pyeonpick_mock_post_reactions_v1';
   final Map<String, Set<String>> _likedPostIdsByUser = <String, Set<String>>{};
   final Map<String, Set<String>> _dislikedPostIdsByUser =
       <String, Set<String>>{};
   bool _loaded = false;
+
+  @override
+  Future<CombinationBattleState> fetchBattleState() async {
+    if (_battleState.matches.isEmpty) {
+      _battleState = mockCombinationBattleState(_posts, now: DateTime.now());
+    }
+    return _battleState;
+  }
+
+  @override
+  Future<BattleMatchEntry> createBattle(BattleMatchEntry match) async {
+    _battleState = _battleState.copyWith(
+      matches: <BattleMatchEntry>[match, ..._battleState.matches],
+    );
+    return match;
+  }
+
+  @override
+  Future<BattleMatchEntry> castBattleVote(
+    String matchId,
+    BattleVoteSide side,
+    String currentUserId,
+  ) async {
+    final index = _battleState.matches.indexWhere(
+      (match) => match.id == matchId,
+    );
+    if (index < 0) throw StateError('픽 쇼츠를 찾을 수 없어요.');
+    final match = _battleState.matches[index];
+    final updated = match.castVote(currentUserId, side);
+    final matches = [..._battleState.matches]..[index] = updated;
+    _battleState = _battleState.copyWith(matches: matches);
+    return updated;
+  }
+
+  @override
+  Future<BattleMatchEntry> updateBattle(BattleMatchEntry match) async {
+    final matches = _battleState.matches
+        .map((item) => item.id == match.id ? match : item)
+        .toList();
+    _battleState = _battleState.copyWith(matches: matches);
+    return match;
+  }
+
+  @override
+  Future<void> deleteBattle(String matchId) async {
+    _battleState = _battleState.copyWith(
+      matches: _battleState.matches
+          .where((match) => match.id != matchId)
+          .toList(),
+    );
+  }
 
   Future<void> _ensureLoaded() async {
     if (_loaded) return;

@@ -300,6 +300,29 @@ const crawlerScheduleSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+const battleMatchSchema = new mongoose.Schema(
+  {
+    id: { type: String, required: true, unique: true, index: true },
+    title: { type: String, required: true },
+    authorId: { type: String, required: true, index: true },
+    authorNickname: { type: String, default: "익명" },
+    leftPostId: { type: String, default: "" },
+    rightPostId: { type: String, default: "" },
+    leftColorValue: { type: Number, default: 0xffc91f2d },
+    rightColorValue: { type: Number, default: 0xff2e68d3 },
+    endsAt: { type: Date, default: null, index: true },
+    requiredTitleKey: { type: String, default: null },
+    leftCustomTitle: { type: String, default: null },
+    rightCustomTitle: { type: String, default: null },
+    leftCustomImageUrl: { type: String, default: null },
+    rightCustomImageUrl: { type: String, default: null },
+    leftVoterIds: { type: [String], default: [] },
+    rightVoterIds: { type: [String], default: [] },
+    createdAt: { type: Date, default: Date.now, index: true },
+  },
+  { timestamps: true }
+);
+
 const userSchema = new mongoose.Schema(
   {
     username: { type: String, required: true, unique: true, index: true },
@@ -327,6 +350,7 @@ const ProductLookupMiss = mongoose.model("ProductLookupMiss", productLookupMissS
 const CuProduct = mongoose.model("CuProduct", cuProductSchema);
 const ConvenienceProduct = mongoose.model("ConvenienceProduct", convenienceProductSchema);
 const CrawlerSchedule = mongoose.model("CrawlerSchedule", crawlerScheduleSchema);
+const BattleMatch = mongoose.model("BattleMatch", battleMatchSchema);
 const User = mongoose.model("User", userSchema);
 
 const seedUserIds = {
@@ -1007,6 +1031,57 @@ function serializePost(post, currentUser = null) {
     dislikedByMe: dislikedPostIds.has(postId),
     topFiveEnteredAt: post.topFiveEnteredAt,
     topWorstEnteredAt: post.topWorstEnteredAt,
+  };
+}
+
+function serializeBattleMatch(match, viewerId = "") {
+  const leftVoterIds = Array.isArray(match.leftVoterIds) ? match.leftVoterIds.map(String) : [];
+  const rightVoterIds = Array.isArray(match.rightVoterIds) ? match.rightVoterIds.map(String) : [];
+  return {
+    id: String(match.id || match._id || ""),
+    title: match.title,
+    authorId: match.authorId,
+    authorNickname: match.authorNickname,
+    leftPostId: match.leftPostId || "",
+    rightPostId: match.rightPostId || "",
+    leftColorValue: Number(match.leftColorValue || 0xffc91f2d),
+    rightColorValue: Number(match.rightColorValue || 0xff2e68d3),
+    endsAt: match.endsAt || null,
+    requiredTitleKey: match.requiredTitleKey || null,
+    leftCustomTitle: match.leftCustomTitle || null,
+    rightCustomTitle: match.rightCustomTitle || null,
+    leftCustomImageUrl: match.leftCustomImageUrl || null,
+    rightCustomImageUrl: match.rightCustomImageUrl || null,
+    createdAt: match.createdAt || new Date(),
+    leftVotes: leftVoterIds.length,
+    rightVotes: rightVoterIds.length,
+    viewerVoteSide: leftVoterIds.includes(String(viewerId))
+      ? "left"
+      : rightVoterIds.includes(String(viewerId))
+        ? "right"
+        : null,
+  };
+}
+
+function normalizeBattlePayload(raw) {
+  return {
+    id: String(raw.id || "").trim(),
+    title: String(raw.title || "").trim(),
+    authorId: String(raw.authorId || "").trim(),
+    authorNickname: String(raw.authorNickname || "익명").trim() || "익명",
+    leftPostId: String(raw.leftPostId || "").trim(),
+    rightPostId: String(raw.rightPostId || "").trim(),
+    leftColorValue: Number(raw.leftColorValue || 0xffc91f2d),
+    rightColorValue: Number(raw.rightColorValue || 0xff2e68d3),
+    endsAt: raw.endsAt ? new Date(raw.endsAt) : null,
+    requiredTitleKey: raw.requiredTitleKey || null,
+    leftCustomTitle: raw.leftCustomTitle || null,
+    rightCustomTitle: raw.rightCustomTitle || null,
+    leftCustomImageUrl: raw.leftCustomImageUrl || null,
+    rightCustomImageUrl: raw.rightCustomImageUrl || null,
+    createdAt: raw.createdAt ? new Date(raw.createdAt) : new Date(),
+    leftVoterIds: [...new Set((raw.leftVoterIds || []).map(String))],
+    rightVoterIds: [...new Set((raw.rightVoterIds || []).map(String))],
   };
 }
 
@@ -3678,6 +3753,11 @@ app.delete("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
 
   await Promise.all([
     Post.deleteMany({ authorId: userId }),
+    BattleMatch.deleteMany({ authorId: userId }),
+    BattleMatch.updateMany(
+      { authorId: { $ne: userId } },
+      { $pull: { leftVoterIds: userId, rightVoterIds: userId } },
+    ),
     Post.updateMany(
       { _id: { $in: likedPostObjectIds }, likes: { $gt: 0 } },
       { $inc: { likes: -1 }, $pull: { likeEvents: { userId } } },
@@ -3711,6 +3791,109 @@ app.delete("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
 
   await User.deleteOne({ _id: user._id });
   return res.json({ message: "계정을 삭제했어요." });
+});
+
+app.get("/api/battles", requireAuth, async (req, res) => {
+  const matches = await BattleMatch.find({})
+    .sort({ createdAt: -1, _id: -1 })
+    .limit(500)
+    .lean();
+  return res.json({
+    matches: matches.map((match) => serializeBattleMatch(match, req.auth.sub)),
+  });
+});
+
+app.post("/api/battles", requireAuth, async (req, res) => {
+  const payload = normalizeBattlePayload(req.body || {});
+  const user = await User.findById(req.auth.sub).select("nickname").lean();
+  if (!user) return res.status(401).json({ message: "로그인 사용자를 찾을 수 없습니다." });
+  payload.authorId = String(req.auth.sub);
+  payload.authorNickname = user.nickname;
+  payload.leftVoterIds = [];
+  payload.rightVoterIds = [];
+  if (!payload.id || !payload.title) {
+    return res.status(400).json({ message: "픽 쇼츠 제목이 필요합니다." });
+  }
+  if (!payload.endsAt || !payload.endsAt.getTime() || payload.endsAt <= new Date()) {
+    return res.status(400).json({ message: "투표 종료 시간을 확인해 주세요." });
+  }
+  try {
+    const match = await BattleMatch.create(payload);
+    return res.status(201).json({ match: serializeBattleMatch(match, req.auth.sub) });
+  } catch (error) {
+    if (error?.code === 11000) {
+      const existing = await BattleMatch.findOne({ id: payload.id }).lean();
+      if (String(existing?.authorId || "") !== String(req.auth.sub)) {
+        return res.status(409).json({ message: "이미 사용 중인 픽 쇼츠 ID입니다." });
+      }
+      return res.json({ match: serializeBattleMatch(existing, req.auth.sub) });
+    }
+    throw error;
+  }
+});
+
+app.post("/api/battles/:id/vote", requireAuth, async (req, res) => {
+  const userId = String(req.auth.sub);
+  const side = String(req.body.side || "").trim();
+  if (!["left", "right"].includes(side)) {
+    return res.status(400).json({ message: "선택 항목이 필요합니다." });
+  }
+
+  const now = new Date();
+  const match = await BattleMatch.findOneAndUpdate(
+    {
+      id: req.params.id,
+      $and: [
+        { leftVoterIds: { $ne: userId } },
+        { rightVoterIds: { $ne: userId } },
+        { $or: [{ endsAt: null }, { endsAt: { $gt: now } }] },
+      ],
+    },
+    { $addToSet: side === "left" ? { leftVoterIds: userId } : { rightVoterIds: userId } },
+    { returnDocument: "after" }
+  ).lean();
+
+  if (match) {
+    return res.json({ accepted: true, match: serializeBattleMatch(match, userId) });
+  }
+
+  const existing = await BattleMatch.findOne({ id: req.params.id }).lean();
+  if (!existing) return res.status(404).json({ message: "픽 쇼츠를 찾을 수 없습니다." });
+  if (existing.endsAt && existing.endsAt <= now) {
+    return res.status(410).json({ message: "이미 종료된 픽 쇼츠입니다." });
+  }
+  return res.json({ accepted: false, match: serializeBattleMatch(existing, userId) });
+});
+
+app.put("/api/battles/:id", requireAuth, async (req, res) => {
+  const payload = normalizeBattlePayload(req.body || {});
+  const existing = await BattleMatch.findOne({ id: req.params.id });
+  if (!existing) return res.status(404).json({ message: "픽 쇼츠를 찾을 수 없습니다." });
+  if (String(existing.authorId) !== String(req.auth.sub)) {
+    return res.status(403).json({ message: "작성자만 수정할 수 있습니다." });
+  }
+  const voterState = {
+    leftVoterIds: existing.leftVoterIds,
+    rightVoterIds: existing.rightVoterIds,
+  };
+  Object.assign(existing, payload, voterState, {
+    id: existing.id,
+    authorId: existing.authorId,
+    authorNickname: existing.authorNickname,
+  });
+  await existing.save();
+  return res.json({ match: serializeBattleMatch(existing, req.auth.sub) });
+});
+
+app.delete("/api/battles/:id", requireAuth, async (req, res) => {
+  const deleted = await BattleMatch.findOneAndDelete({
+    id: req.params.id,
+    authorId: String(req.auth.sub),
+  });
+  if (!deleted) {
+    return res.status(404).json({ message: "삭제할 픽 쇼츠를 찾을 수 없습니다." });
+  }
+  return res.json({ message: "픽 쇼츠를 삭제했습니다." });
 });
 
 app.get("/api/image-proxy", async (req, res) => {
@@ -4625,6 +4808,55 @@ app.get(/^(?!\/api).*/, (req, res) => {
   res.sendFile(path.join(webBuildPath, "index.html"));
 });
 
+async function seedGlobalBattlesIfNeeded() {
+  if (await BattleMatch.exists({})) return;
+
+  const users = await User.find({ "battleState.matches.0": { $exists: true } })
+    .select("battleState")
+    .lean();
+  const merged = new Map();
+  for (const user of users) {
+    for (const raw of user.battleState?.matches || []) {
+      const normalized = normalizeBattlePayload(raw);
+      if (!normalized.id || !normalized.title || !normalized.authorId) continue;
+      const previous = merged.get(normalized.id);
+      if (previous) {
+        normalized.leftVoterIds = [...new Set([...previous.leftVoterIds, ...normalized.leftVoterIds])];
+        normalized.rightVoterIds = [...new Set([...previous.rightVoterIds, ...normalized.rightVoterIds])]
+          .filter((id) => !normalized.leftVoterIds.includes(id));
+      }
+      merged.set(normalized.id, normalized);
+    }
+  }
+
+  if (merged.size === 0) {
+    const posts = await Post.find({}).sort({ createdAt: -1 }).limit(8).lean();
+    for (let index = 0; index + 1 < posts.length; index += 2) {
+      const left = posts[index];
+      const right = posts[index + 1];
+      const createdAt = new Date(Date.now() - index * 60 * 60 * 1000);
+      merged.set(`seed-battle-${left._id}-${right._id}`, {
+        id: `seed-battle-${left._id}-${right._id}`,
+        title: index === 0 ? "오늘 더 끌리는 편의점 조합은?" : "다시 먹고 싶은 조합은?",
+        authorId: String(left.authorId || "seed-author"),
+        authorNickname: String(left.authorNickname || "편pick"),
+        leftPostId: left._id.toString(),
+        rightPostId: right._id.toString(),
+        leftColorValue: 0xff49a9d8,
+        rightColorValue: 0xffff8b64,
+        endsAt: new Date(Date.now() + (index + 2) * 24 * 60 * 60 * 1000),
+        createdAt,
+        leftVoterIds: [],
+        rightVoterIds: [],
+      });
+    }
+  }
+
+  if (merged.size > 0) {
+    await BattleMatch.insertMany([...merged.values()], { ordered: false });
+  }
+}
+
 async function start() {
   if (process.env.NODE_ENV === "production" && usesDefaultJwtSecret) {
     throw new Error("JWT_SECRET is required when NODE_ENV=production.");
@@ -4645,6 +4877,7 @@ async function start() {
   await resetDemoDataIfRequested();
   await seedIfNeeded();
   await backfillLegacyPosts();
+  await seedGlobalBattlesIfNeeded();
   await backfillLegacyProducts();
   await Product.deleteMany({ source: "local-fallback-catalog" });
   await refreshTopFiveBadges();

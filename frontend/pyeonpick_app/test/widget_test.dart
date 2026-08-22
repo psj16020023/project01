@@ -40,7 +40,30 @@ void main() {
     expect(secondVote.rightVotes, 0);
   });
 
-  testWidgets('an already voted Pick Shorts card still advances', (
+  test('shared Pick Shorts counts keep only the current viewer choice', () {
+    final match = BattleMatchEntry.fromJson(<String, dynamic>{
+      'id': 'shared-battle',
+      'title': '공유 집계 테스트',
+      'authorId': 'author',
+      'authorNickname': '작성자',
+      'leftPostId': 'left',
+      'rightPostId': 'right',
+      'createdAt': DateTime.now().toIso8601String(),
+      'leftColorValue': 0xFF49A9D8,
+      'rightColorValue': 0xFFFF8B64,
+      'leftVotes': 12,
+      'rightVotes': 2,
+      'viewerVoteSide': 'left',
+    });
+
+    expect(match.leftVotes, 12);
+    expect(match.rightVotes, 2);
+    expect(match.voteSideOf('current-user'), BattleVoteSide.left);
+    expect(match.leftVoterIds, isEmpty);
+    expect(match.rightVoterIds, isEmpty);
+  });
+
+  testWidgets('an already voted Pick Shorts card is not offered again', (
     tester,
   ) async {
     SharedPreferences.setMockInitialValues({});
@@ -87,7 +110,9 @@ void main() {
           body: CombinationBattleScreen(
             currentUser: user,
             posts: const [],
-            repository: MockPostRepository(),
+            repository: MockPostRepository(
+              initialBattleState: user.battleState,
+            ),
             onUserChanged: (_) async {},
             onOpenPost: (_) async {},
             onOpenAuthor: (_, _) async {},
@@ -97,11 +122,7 @@ void main() {
     );
     await tester.pump();
 
-    expect(find.text('첫 번째 쇼츠'), findsOneWidget);
-    await tester.tap(find.text('첫 번째 쇼츠 왼쪽 A + B'));
-    await tester.pump(const Duration(milliseconds: 1100));
-    await tester.pump(const Duration(milliseconds: 400));
-
+    expect(find.text('첫 번째 쇼츠'), findsNothing);
     expect(find.text('두 번째 쇼츠'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });

@@ -21,6 +21,9 @@ class BattleMatchEntry {
     this.rightCustomImageUrl,
     this.leftVoterIds = const <String>[],
     this.rightVoterIds = const <String>[],
+    this.leftVoteCount,
+    this.rightVoteCount,
+    this.viewerVoteSide,
   });
 
   factory BattleMatchEntry.fromJson(Map<String, dynamic> json) {
@@ -50,6 +53,13 @@ class BattleMatchEntry {
           (json['rightVoterIds'] as List<dynamic>? ?? const <dynamic>[])
               .map((item) => item.toString())
               .toList(),
+      leftVoteCount: json['leftVotes'] as int?,
+      rightVoteCount: json['rightVotes'] as int?,
+      viewerVoteSide: switch (json['viewerVoteSide']) {
+        'left' => BattleVoteSide.left,
+        'right' => BattleVoteSide.right,
+        _ => null,
+      },
     );
   }
 
@@ -70,9 +80,12 @@ class BattleMatchEntry {
   final DateTime createdAt;
   final List<String> leftVoterIds;
   final List<String> rightVoterIds;
+  final int? leftVoteCount;
+  final int? rightVoteCount;
+  final BattleVoteSide? viewerVoteSide;
 
-  int get leftVotes => leftVoterIds.length;
-  int get rightVotes => rightVoterIds.length;
+  int get leftVotes => leftVoteCount ?? leftVoterIds.length;
+  int get rightVotes => rightVoteCount ?? rightVoterIds.length;
   int get totalVotes => leftVotes + rightVotes;
   String get createdAtLabel => DateFormat('yyyy.MM.dd').format(createdAt);
   String get endsAtLabel => endsAt == null
@@ -88,6 +101,7 @@ class BattleMatchEntry {
   }
 
   BattleVoteSide? voteSideOf(String userId) {
+    if (viewerVoteSide != null) return viewerVoteSide;
     if (leftVoterIds.contains(userId)) return BattleVoteSide.left;
     if (rightVoterIds.contains(userId)) return BattleVoteSide.right;
     return null;
@@ -103,7 +117,15 @@ class BattleMatchEntry {
     } else {
       right.add(userId);
     }
-    return copyWith(leftVoterIds: left.toList(), rightVoterIds: right.toList());
+    return copyWith(
+      leftVoterIds: left.toList(),
+      rightVoterIds: right.toList(),
+      leftVoteCount: side == BattleVoteSide.left ? leftVotes + 1 : leftVotes,
+      rightVoteCount: side == BattleVoteSide.right
+          ? rightVotes + 1
+          : rightVotes,
+      viewerVoteSide: side,
+    );
   }
 
   BattleMatchEntry copyWith({
@@ -119,6 +141,9 @@ class BattleMatchEntry {
     bool clearRequiredTitleKey = false,
     List<String>? leftVoterIds,
     List<String>? rightVoterIds,
+    int? leftVoteCount,
+    int? rightVoteCount,
+    BattleVoteSide? viewerVoteSide,
   }) {
     return BattleMatchEntry(
       id: id,
@@ -140,6 +165,9 @@ class BattleMatchEntry {
       createdAt: createdAt,
       leftVoterIds: leftVoterIds ?? this.leftVoterIds,
       rightVoterIds: rightVoterIds ?? this.rightVoterIds,
+      leftVoteCount: leftVoteCount ?? this.leftVoteCount,
+      rightVoteCount: rightVoteCount ?? this.rightVoteCount,
+      viewerVoteSide: viewerVoteSide ?? this.viewerVoteSide,
     );
   }
 
@@ -161,6 +189,9 @@ class BattleMatchEntry {
     'createdAt': createdAt.toIso8601String(),
     'leftVoterIds': leftVoterIds,
     'rightVoterIds': rightVoterIds,
+    'leftVotes': leftVotes,
+    'rightVotes': rightVotes,
+    'viewerVoteSide': viewerVoteSide?.name,
   };
 }
 

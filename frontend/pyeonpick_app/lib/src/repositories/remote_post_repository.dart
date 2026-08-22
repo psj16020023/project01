@@ -1,7 +1,9 @@
 import 'dart:convert';
 
 import 'package:http/http.dart' as http;
+import 'package:shared_preferences/shared_preferences.dart';
 
+import '../models/combination_battle.dart';
 import '../models/post.dart';
 import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
@@ -14,6 +16,87 @@ class RemotePostRepository implements PostRepository {
   RemotePostRepository({required this.baseUrl});
 
   final String baseUrl;
+  static const _authTokenKey = 'pyeonpick_auth_token_v1';
+
+  Future<Map<String, String>> _battleHeaders({bool contentType = false}) async {
+    final prefs = await SharedPreferences.getInstance();
+    final token = prefs.getString(_authTokenKey);
+    if (token == null || token.isEmpty) {
+      throw StateError('로그인이 필요합니다.');
+    }
+    return <String, String>{
+      if (contentType) 'Content-Type': 'application/json',
+      'Authorization': 'Bearer $token',
+    };
+  }
+
+  @override
+  Future<CombinationBattleState> fetchBattleState() async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/battles'),
+      headers: await _battleHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception('픽 쇼츠 조회 실패');
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return CombinationBattleState(
+      matches: (json['matches'] as List<dynamic>? ?? const <dynamic>[])
+          .map(
+            (item) => BattleMatchEntry.fromJson(item as Map<String, dynamic>),
+          )
+          .toList(),
+    );
+  }
+
+  @override
+  Future<BattleMatchEntry> createBattle(BattleMatchEntry match) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/battles'),
+      headers: await _battleHeaders(contentType: true),
+      body: jsonEncode(match.toJson()),
+    );
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception('픽 쇼츠 작성 실패');
+    }
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return BattleMatchEntry.fromJson(json['match'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<BattleMatchEntry> castBattleVote(
+    String matchId,
+    BattleVoteSide side,
+    String currentUserId,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/battles/$matchId/vote'),
+      headers: await _battleHeaders(contentType: true),
+      body: jsonEncode(<String, dynamic>{'side': side.name}),
+    );
+    if (response.statusCode != 200) throw Exception('픽 쇼츠 투표 실패');
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return BattleMatchEntry.fromJson(json['match'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<BattleMatchEntry> updateBattle(BattleMatchEntry match) async {
+    final response = await http.put(
+      Uri.parse('$baseUrl/battles/${match.id}'),
+      headers: await _battleHeaders(contentType: true),
+      body: jsonEncode(match.toJson()),
+    );
+    if (response.statusCode != 200) throw Exception('픽 쇼츠 수정 실패');
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return BattleMatchEntry.fromJson(json['match'] as Map<String, dynamic>);
+  }
+
+  @override
+  Future<void> deleteBattle(String matchId) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/battles/$matchId'),
+      headers: await _battleHeaders(),
+    );
+    if (response.statusCode != 200) throw Exception('픽 쇼츠 삭제 실패');
+  }
 
   @override
   Future<Post> addReview(String id, PostReview review) async {

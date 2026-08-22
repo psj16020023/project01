@@ -1,5 +1,6 @@
 import '../core/app_environment.dart';
 import '../models/post.dart';
+import '../models/combination_battle.dart';
 import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
 import '../models/post_page.dart';
@@ -9,6 +10,20 @@ import 'mock_post_repository.dart';
 import 'remote_post_repository.dart';
 
 abstract class PostRepository {
+  Future<CombinationBattleState> fetchBattleState();
+
+  Future<BattleMatchEntry> createBattle(BattleMatchEntry match);
+
+  Future<BattleMatchEntry> castBattleVote(
+    String matchId,
+    BattleVoteSide side,
+    String currentUserId,
+  );
+
+  Future<BattleMatchEntry> updateBattle(BattleMatchEntry match);
+
+  Future<void> deleteBattle(String matchId);
+
   Future<PostPage> fetchPosts({
     String? query,
     List<String>? selectedTags,

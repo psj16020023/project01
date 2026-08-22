@@ -150,55 +150,47 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     return mockCombinationBattleState(_sourcePosts, now: DateTime.now());
   }
 
-  CombinationBattleState _mergedState(
-    CombinationBattleState base,
-    CombinationBattleState extra,
-  ) {
-    final byId = <String, BattleMatchEntry>{
-      for (final match in extra.matches) match.id: match,
-    };
-    for (final match in base.matches) {
-      final previous = byId[match.id];
-      if (previous == null) {
-        byId[match.id] = match;
-        continue;
-      }
-      final leftVoters = <String>{
-        ...previous.leftVoterIds,
-        ...match.leftVoterIds,
-      };
-      final rightVoters = <String>{
-        ...previous.rightVoterIds,
-        ...match.rightVoterIds,
-      }..removeAll(leftVoters);
-      byId[match.id] = match.copyWith(
-        leftVoterIds: leftVoters.toList(),
-        rightVoterIds: rightVoters.toList(),
-      );
-    }
-    final merged = byId.values.toList()
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    return CombinationBattleState(matches: merged);
-  }
-
   Future<void> _loadSharedBattleState() async {
     try {
-      final shared = await BattleStateStore.load(
+      final cached = await BattleStateStore.load(
         fallback: widget.currentUser.battleState,
       );
-      final seeded = shared.matches.isNotEmpty
-          ? shared
-          : mockCombinationBattleState(_sourcePosts, now: DateTime.now());
+      final global = await widget.repository.fetchBattleState();
+      final matches = global.matches.isNotEmpty
+          ? global.matches
+          : cached.matches.isNotEmpty
+          ? cached.matches
+          : mockCombinationBattleState(
+              _sourcePosts,
+              now: DateTime.now(),
+            ).matches;
       if (!mounted) return;
-      final merged = _mergedState(seeded, widget.currentUser.battleState);
+      final loaded = CombinationBattleState(
+        matches: matches,
+        notifiedExpiredMatchIds:
+            widget.currentUser.battleState.notifiedExpiredMatchIds,
+        todayEndedSummarySeenMatchIds:
+            widget.currentUser.battleState.todayEndedSummarySeenMatchIds,
+      );
       setState(() {
-        _state = merged;
-        if (_shuffleRanks.isEmpty && merged.matches.isNotEmpty) {
-          _shuffleRanks = _buildShuffleRanks(merged.matches);
+        _state = loaded;
+        if (_shuffleRanks.isEmpty && loaded.matches.isNotEmpty) {
+          _shuffleRanks = _buildShuffleRanks(loaded.matches);
         }
       });
     } catch (_) {
       // Keep preview data when local persistence is unavailable.
+    }
+  }
+
+  Future<void> _refreshGlobalBattleState() async {
+    try {
+      final global = await widget.repository.fetchBattleState();
+      if (!mounted) return;
+      setState(() => _state = _state.copyWith(matches: global.matches));
+      unawaited(_saveSharedBattleState(_state));
+    } catch (_) {
+      if (mounted) setState(() {});
     }
   }
 
@@ -234,16 +226,6 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
       final pagePosts = await _fetchAllBattlePosts();
       if (!mounted) return;
       setState(() => _allPosts = pagePosts);
-      if (pagePosts.length >= 2) {
-        final repaired = _state.matches.isEmpty
-            ? mockCombinationBattleState(pagePosts, now: DateTime.now())
-            : _repairBattleStateForPosts(_state, pagePosts);
-        final oldIds = _state.matches.map((match) => match.id).join('|');
-        final newIds = repaired.matches.map((match) => match.id).join('|');
-        if (oldIds != newIds) {
-          await _persist(repaired);
-        }
-      }
     } catch (_) {
       // Fall back to communication page data.
     } finally {
@@ -283,34 +265,6 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     );
   }
 
-  bool _matchHasResolvableImages(BattleMatchEntry match, List<Post> posts) {
-    final postIds = posts.map((post) => post.id).toSet();
-    final leftOk = match.usesCustomLeft || postIds.contains(match.leftPostId);
-    final rightOk =
-        match.usesCustomRight || postIds.contains(match.rightPostId);
-    return leftOk && rightOk;
-  }
-
-  CombinationBattleState _repairBattleStateForPosts(
-    CombinationBattleState state,
-    List<Post> posts,
-  ) {
-    if (posts.length < 2) return state;
-    final kept = state.matches
-        .where((match) => _matchHasResolvableImages(match, posts))
-        .toList();
-    if (kept.length == state.matches.length && kept.isNotEmpty) return state;
-
-    final seeded = mockCombinationBattleState(posts, now: DateTime.now());
-    final existingIds = kept.map((match) => match.id).toSet();
-    return CombinationBattleState(
-      matches: <BattleMatchEntry>[
-        ...kept,
-        ...seeded.matches.where((match) => !existingIds.contains(match.id)),
-      ],
-    );
-  }
-
   List<BattleMatchEntry> get _sortedMatches {
     final matches = _filteredMatches();
     if (_shuffleRanks.isNotEmpty) {
@@ -332,6 +286,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   List<BattleMatchEntry> _filteredMatches() {
     return _state.matches.where((match) {
       if (match.isExpired) return false;
+      if (match.voteSideOf(widget.currentUser.id) != null) return false;
       return true;
     }).toList();
   }
@@ -349,12 +304,20 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
       _toast('이미 투표한 픽 쇼츠예요. 첫 선택은 바꾸지 않아요.');
       return match;
     }
-    final updated = match.castVote(userId, side);
-    await _replaceMatch(updated);
-    return updated;
+    try {
+      return await widget.repository.castBattleVote(match.id, side, userId);
+    } catch (_) {
+      _toast('투표를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      rethrow;
+    }
   }
 
   Future<void> _replaceMatch(BattleMatchEntry match) async {
+    final saved = await widget.repository.updateBattle(match);
+    await _replaceLocalMatch(saved);
+  }
+
+  Future<void> _replaceLocalMatch(BattleMatchEntry match) async {
     final matches = _state.matches
         .map((item) => item.id == match.id ? match : item)
         .toList();
@@ -362,6 +325,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   }
 
   Future<void> _deleteMatch(BattleMatchEntry match) async {
+    await widget.repository.deleteBattle(match.id);
     final matches = _state.matches
         .where((item) => item.id != match.id)
         .toList();
@@ -371,7 +335,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   void _startExpiryWatcher() {
     _expiryTimer?.cancel();
     _expiryTimer = Timer.periodic(const Duration(seconds: 15), (_) {
-      if (mounted) setState(() {});
+      unawaited(_refreshGlobalBattleState());
     });
   }
 
@@ -465,10 +429,11 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
           : null,
       createdAt: now,
     );
+    final created = await widget.repository.createBattle(match);
     await _persist(
-      _state.copyWith(matches: <BattleMatchEntry>[match, ..._state.matches]),
+      _state.copyWith(matches: <BattleMatchEntry>[created, ..._state.matches]),
     );
-    return match;
+    return created;
   }
 
   void _shuffleFeed() {
@@ -736,6 +701,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
         onOpenCreate: _openCreatePage,
         resolveSide: _resolvedSide,
         onVote: _vote,
+        onVoteFinished: _replaceLocalMatch,
         onOpenPost: widget.onOpenPost,
         onOpenAuthor: widget.onOpenAuthor,
         onOpenDetail: _openDetail,
@@ -753,6 +719,7 @@ class _BattleFeedPage extends StatefulWidget {
     required this.onOpenCreate,
     required this.resolveSide,
     required this.onVote,
+    required this.onVoteFinished,
     required this.onOpenPost,
     required this.onOpenAuthor,
     required this.onOpenDetail,
@@ -770,6 +737,7 @@ class _BattleFeedPage extends StatefulWidget {
     BattleVoteSide side,
   )
   onVote;
+  final Future<void> Function(BattleMatchEntry match) onVoteFinished;
   final Future<void> Function(Post post) onOpenPost;
   final Future<void> Function(String authorId, String authorNickname)
   onOpenAuthor;
@@ -819,30 +787,19 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
     super.dispose();
   }
 
-  Future<void> _goNextFrom(String matchId) async {
-    if (widget.matches.isEmpty || !_pageController.hasClients) return;
-    final resolvedIndex = widget.matches.indexWhere(
-      (match) => match.id == matchId,
-    );
-    final currentIndex = resolvedIndex >= 0 ? resolvedIndex : _pageIndex;
-    final nextIndex = (currentIndex + 1) % widget.matches.length;
-    if (nextIndex == currentIndex) return;
-    await _pageController.animateToPage(
-      nextIndex,
-      duration: const Duration(milliseconds: 260),
-      curve: Curves.easeOutCubic,
-    );
-    if (!mounted) return;
-    setState(() => _pageIndex = nextIndex);
-  }
-
   Future<BattleMatchEntry> _handleVote(
     BattleMatchEntry match,
     BattleVoteSide side,
   ) async {
     if (_processingVote) return match;
     setState(() => _processingVote = true);
-    final updated = await widget.onVote(match, side);
+    late final BattleMatchEntry updated;
+    try {
+      updated = await widget.onVote(match, side);
+    } catch (_) {
+      if (mounted) setState(() => _processingVote = false);
+      return match;
+    }
     if (!mounted) return updated;
     setState(() {
       _revealedMatchId = updated.id;
@@ -850,7 +807,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
     });
     await Future<void>.delayed(const Duration(seconds: 1));
     if (!mounted) return updated;
-    await _goNextFrom(updated.id);
+    await widget.onVoteFinished(updated);
     if (!mounted) return updated;
     setState(() {
       _revealedMatchId = null;
@@ -2135,7 +2092,7 @@ class _BattleVoteArena extends StatelessWidget {
                 color: leftColor,
                 darkColor: _darken(leftColor),
                 active: selectedSide == BattleVoteSide.left,
-                disabled: match.isExpired,
+                disabled: match.isExpired || selectedSide != null,
                 fullBleed: height == null,
                 showVotes: showVoteStats,
                 alignLeft: true,
@@ -2159,7 +2116,7 @@ class _BattleVoteArena extends StatelessWidget {
                 color: rightColor,
                 darkColor: _darken(rightColor),
                 active: selectedSide == BattleVoteSide.right,
-                disabled: match.isExpired,
+                disabled: match.isExpired || selectedSide != null,
                 fullBleed: height == null,
                 showVotes: showVoteStats,
                 alignLeft: false,
