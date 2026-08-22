@@ -30,6 +30,11 @@ bool _isCombinationTitle(String value) {
   return parts.length >= 2;
 }
 
+bool _isCombinationPost(Post post) {
+  if (post.details.usedProducts.length >= 2) return true;
+  return _isCombinationTitle(post.title);
+}
+
 String _battleDisplayImageUrl(String imageUrl) {
   final raw = imageUrl.trim();
   if (raw.isEmpty || raw.startsWith('data:')) return raw;
@@ -410,8 +415,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
         _toast('서로 다른 게시글을 골라주세요.');
         return null;
       }
-      if (!_isCombinationTitle(leftPost.title) ||
-          !_isCombinationTitle(rightPost.title)) {
+      if (!_isCombinationPost(leftPost) || !_isCombinationPost(rightPost)) {
         _toast('픽 쇼츠에는 상품 사이에 +가 있는 조합만 올릴 수 있어요.');
         return null;
       }
@@ -586,9 +590,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
                   builder: (context) => _BattlePostPickerSheet(
-                    posts: _sourcePosts
-                        .where((post) => _isCombinationTitle(post.title))
-                        .toList(),
+                    posts: _sourcePosts.where(_isCombinationPost).toList(),
                     initialPost: leftPost,
                   ),
                 );
@@ -602,9 +604,7 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
                   isScrollControlled: true,
                   backgroundColor: Colors.transparent,
                   builder: (context) => _BattlePostPickerSheet(
-                    posts: _sourcePosts
-                        .where((post) => _isCombinationTitle(post.title))
-                        .toList(),
+                    posts: _sourcePosts.where(_isCombinationPost).toList(),
                     initialPost: rightPost,
                   ),
                 );
@@ -841,14 +841,9 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
     BattleVoteSide side,
   ) async {
     if (_processingVote) return match;
-    final alreadyVoted = match.voteSideOf(widget.currentUserId) != null;
     setState(() => _processingVote = true);
     final updated = await widget.onVote(match, side);
     if (!mounted) return updated;
-    if (alreadyVoted) {
-      setState(() => _processingVote = false);
-      return updated;
-    }
     setState(() {
       _revealedMatchId = updated.id;
       _revealedMatch = updated;
@@ -2140,7 +2135,7 @@ class _BattleVoteArena extends StatelessWidget {
                 color: leftColor,
                 darkColor: _darken(leftColor),
                 active: selectedSide == BattleVoteSide.left,
-                disabled: match.isExpired || selectedSide != null,
+                disabled: match.isExpired,
                 fullBleed: height == null,
                 showVotes: showVoteStats,
                 alignLeft: true,
@@ -2164,7 +2159,7 @@ class _BattleVoteArena extends StatelessWidget {
                 color: rightColor,
                 darkColor: _darken(rightColor),
                 active: selectedSide == BattleVoteSide.right,
-                disabled: match.isExpired || selectedSide != null,
+                disabled: match.isExpired,
                 fullBleed: height == null,
                 showVotes: showVoteStats,
                 alignLeft: false,

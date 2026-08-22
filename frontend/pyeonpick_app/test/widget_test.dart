@@ -8,6 +8,8 @@ import 'package:pyeonpick_app/src/models/combination_battle.dart';
 import 'package:pyeonpick_app/src/models/post_feature_index.dart';
 import 'package:pyeonpick_app/src/models/pyeon_user.dart';
 import 'package:pyeonpick_app/src/models/sort_mode.dart';
+import 'package:pyeonpick_app/src/repositories/mock_post_repository.dart';
+import 'package:pyeonpick_app/src/screens/combination_battle_screen.dart';
 import 'package:pyeonpick_app/src/screens/home_screen.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
@@ -36,6 +38,72 @@ void main() {
     expect(secondVote.voteSideOf('user-1'), BattleVoteSide.left);
     expect(secondVote.leftVotes, 1);
     expect(secondVote.rightVotes, 0);
+  });
+
+  testWidgets('an already voted Pick Shorts card still advances', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+
+    final now = DateTime.now();
+    BattleMatchEntry match(String id, String title, {bool voted = false}) {
+      return BattleMatchEntry(
+        id: id,
+        title: title,
+        authorId: 'author',
+        authorNickname: '작성자',
+        leftPostId: '',
+        rightPostId: '',
+        createdAt: now,
+        endsAt: now.add(const Duration(hours: 1)),
+        leftColorValue: 0xFF49A9D8,
+        rightColorValue: 0xFFFF8B64,
+        leftCustomTitle: '$title 왼쪽 A + B',
+        rightCustomTitle: '$title 오른쪽 C + D',
+        leftVoterIds: voted ? const <String>['voter'] : const <String>[],
+      );
+    }
+
+    final user = PyeonUser(
+      id: 'voter',
+      username: 'voter',
+      password: '1234',
+      nickname: '투표자',
+      battleState: CombinationBattleState(
+        matches: <BattleMatchEntry>[
+          match('first', '첫 번째 쇼츠', voted: true),
+          match('second', '두 번째 쇼츠'),
+        ],
+      ),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CombinationBattleScreen(
+            currentUser: user,
+            posts: const [],
+            repository: MockPostRepository(),
+            onUserChanged: (_) async {},
+            onOpenPost: (_) async {},
+            onOpenAuthor: (_, _) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    expect(find.text('첫 번째 쇼츠'), findsOneWidget);
+    await tester.tap(find.text('첫 번째 쇼츠 왼쪽 A + B'));
+    await tester.pump(const Duration(milliseconds: 1100));
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.text('두 번째 쇼츠'), findsOneWidget);
+    expect(tester.takeException(), isNull);
   });
 
   testWidgets('app boots', (tester) async {
