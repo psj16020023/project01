@@ -3279,6 +3279,56 @@ async function backfillLegacyPosts() {
     "레몬탄산수 + 새우칩 상큼짭짤": 6,
     "쫀득빵 + 바닐라우유 야식 조합": 2,
   };
+  const sampleReviews = [
+    {
+      authorId: "sample-reviewer-1",
+      authorNickname: "편털러",
+      text: "생각보다 조합이 잘 맞아서 다음에도 다시 먹고 싶어요.",
+      rating: 4.5,
+      tags: ["기대 이상", "또 먹고 싶어요"],
+      sweet: 3,
+      salty: 3,
+      spicy: 2,
+      sour: 2,
+      caution: "처음에는 소스를 조금만 넣어 보세요.",
+    },
+    {
+      authorId: "sample-reviewer-2",
+      authorNickname: "야식연구소",
+      text: "가격 대비 만족도가 높고 편의점에서 바로 따라 하기 좋았어요.",
+      rating: 4,
+      tags: ["가성비", "간편해요"],
+      sweet: 2,
+      salty: 4,
+      spicy: 3,
+      sour: 1,
+      caution: "제품별 간이 달라 양을 조절하면 더 좋아요.",
+    },
+    {
+      authorId: "sample-reviewer-3",
+      authorNickname: "혼밥러",
+      text: "양도 적당하고 맛의 대비가 분명해서 재미있는 조합이에요.",
+      rating: 4.5,
+      tags: ["혼밥 추천", "맛 조화"],
+      sweet: 3,
+      salty: 3,
+      spicy: 3,
+      sour: 2,
+      caution: "매운맛에 약하면 매운 제품 비율을 줄이세요.",
+    },
+    {
+      authorId: "sample-reviewer-4",
+      authorNickname: "편의점출근러",
+      text: "준비 시간이 짧고 맛도 안정적이라 바쁜 날에 괜찮았어요.",
+      rating: 4,
+      tags: ["시간 절약", "재구매"],
+      sweet: 2,
+      salty: 3,
+      spicy: 2,
+      sour: 2,
+      caution: "전자레인지 시간은 제품 안내를 먼저 확인하세요.",
+    },
+  ];
   let aiIndex = 1;
   const legacyAiNames = new Set(["민지", "현우", "수빈", "지호", "다은", "준서", "예린", "도윤"]);
   for (const post of posts) {
@@ -3294,6 +3344,22 @@ async function backfillLegacyPosts() {
       post.authorId = `legacy-ai-${aiIndex}`;
       post.authorNickname = `ai${aiIndex}`;
       aiIndex += 1;
+      changed = true;
+    }
+    const isSamplePost =
+      String(post.authorId).startsWith("legacy-ai-") ||
+      /^ai\d+$/i.test(String(post.authorNickname || ""));
+    if (isSamplePost && (!Array.isArray(post.reviews) || post.reviews.length === 0)) {
+      const reviewOffset = Math.max(0, aiIndex - 2) % sampleReviews.length;
+      const createdAt = new Date(post.createdAt || Date.now());
+      post.reviews = [0, 1].map((offset) => {
+        const sample = sampleReviews[(reviewOffset + offset) % sampleReviews.length];
+        return {
+          ...sample,
+          id: `sample-review-${post._id}-${offset + 1}`,
+          createdAt: new Date(createdAt.getTime() + (offset + 1) * 60 * 60 * 1000),
+        };
+      });
       changed = true;
     }
     if (post.dislikes == null) {

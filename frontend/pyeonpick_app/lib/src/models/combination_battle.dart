@@ -93,6 +93,19 @@ class BattleMatchEntry {
     return null;
   }
 
+  BattleMatchEntry castVote(String userId, BattleVoteSide side) {
+    if (userId.isEmpty || isExpired || voteSideOf(userId) != null) return this;
+
+    final left = leftVoterIds.toSet();
+    final right = rightVoterIds.toSet();
+    if (side == BattleVoteSide.left) {
+      left.add(userId);
+    } else {
+      right.add(userId);
+    }
+    return copyWith(leftVoterIds: left.toList(), rightVoterIds: right.toList());
+  }
+
   BattleMatchEntry copyWith({
     String? title,
     int? leftColorValue,

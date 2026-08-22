@@ -4,6 +4,7 @@ import 'package:intl/date_symbol_data_local.dart';
 import 'package:pyeonpick_app/src/app.dart';
 import 'package:pyeonpick_app/src/data/mock_posts.dart';
 import 'package:pyeonpick_app/src/models/bot_message.dart';
+import 'package:pyeonpick_app/src/models/combination_battle.dart';
 import 'package:pyeonpick_app/src/models/post_feature_index.dart';
 import 'package:pyeonpick_app/src/models/pyeon_user.dart';
 import 'package:pyeonpick_app/src/models/sort_mode.dart';
@@ -13,6 +14,28 @@ import 'package:shared_preferences/shared_preferences.dart';
 void main() {
   setUpAll(() async {
     await initializeDateFormatting('ko');
+  });
+
+  test('a Pick Shorts vote is fixed after the first choice', () {
+    final match = BattleMatchEntry(
+      id: 'battle-1',
+      title: '첫 선택 고정 테스트',
+      authorId: 'author',
+      authorNickname: '작성자',
+      leftPostId: 'left',
+      rightPostId: 'right',
+      createdAt: DateTime(2026, 8, 22),
+      leftColorValue: 0xFF49A9D8,
+      rightColorValue: 0xFFFF8B64,
+    );
+
+    final firstVote = match.castVote('user-1', BattleVoteSide.left);
+    final secondVote = firstVote.castVote('user-1', BattleVoteSide.right);
+
+    expect(firstVote.voteSideOf('user-1'), BattleVoteSide.left);
+    expect(secondVote.voteSideOf('user-1'), BattleVoteSide.left);
+    expect(secondVote.leftVotes, 1);
+    expect(secondVote.rightVotes, 0);
   });
 
   testWidgets('app boots', (tester) async {

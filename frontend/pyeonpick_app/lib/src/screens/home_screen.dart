@@ -482,6 +482,7 @@ class _HomeScreenState extends State<HomeScreen> {
   final _maxFilterController = TextEditingController();
   final _communicationScrollController = ScrollController();
   final Set<String> _selectedSearchTags = <String>{};
+  final Set<String> _reactionRequests = <String>{};
 
   AppTab _selectedTab = AppTab.communication;
   SortMode _sortMode = SortMode.latest;
@@ -665,13 +666,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Post _withCurrentUserReaction(Post post) {
-    return post.copyWith(
-      likedByMe:
-          post.likedByMe || widget.currentUser.likedPostIds.contains(post.id),
-      dislikedByMe:
-          post.dislikedByMe ||
-          widget.currentUser.dislikedPostIds.contains(post.id),
-    );
+    return post;
   }
 
   Future<void> _mergeLoadedReactionsIntoUser(List<Post> posts) async {
@@ -679,8 +674,12 @@ class _HomeScreenState extends State<HomeScreen> {
     final dislikedIds = widget.currentUser.dislikedPostIds.toSet();
     var changed = false;
     for (final post in posts) {
-      if (post.likedByMe && likedIds.add(post.id)) changed = true;
-      if (post.dislikedByMe && dislikedIds.add(post.id)) changed = true;
+      changed = post.likedByMe
+          ? likedIds.add(post.id) || changed
+          : likedIds.remove(post.id) || changed;
+      changed = post.dislikedByMe
+          ? dislikedIds.add(post.id) || changed
+          : dislikedIds.remove(post.id) || changed;
     }
     if (!changed) return;
     await widget.onUserChanged(
@@ -794,6 +793,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _toggleLike(Post post) async {
+    if (_reactionRequests.isNotEmpty) return;
+    _reactionRequests.add(post.id);
     final optimistic = post.copyWith(
       likedByMe: !post.likedByMe,
       dislikedByMe: false,
@@ -804,7 +805,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     _applyUpdatedPost(optimistic);
-    unawaited(_syncPostReactionToUser(optimistic));
     try {
       final updated = await widget.repository.toggleLike(
         post.id,
@@ -812,19 +812,22 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (!mounted) return;
       _applyUpdatedPost(updated);
-      unawaited(_syncPostReactionToUser(updated));
+      await _syncPostReactionToUser(updated);
       unawaited(_loadPostFeatureIndex());
     } catch (_) {
       if (!mounted) return;
       _applyUpdatedPost(post);
-      unawaited(_syncPostReactionToUser(post));
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('하트를 반영하지 못했어요.')));
+    } finally {
+      _reactionRequests.remove(post.id);
     }
   }
 
   Future<void> _toggleDislike(Post post) async {
+    if (_reactionRequests.isNotEmpty) return;
+    _reactionRequests.add(post.id);
     final optimistic = post.copyWith(
       dislikedByMe: !post.dislikedByMe,
       likedByMe: false,
@@ -835,7 +838,6 @@ class _HomeScreenState extends State<HomeScreen> {
       ),
     );
     _applyUpdatedPost(optimistic);
-    unawaited(_syncPostReactionToUser(optimistic));
     try {
       final updated = await widget.repository.toggleDislike(
         post.id,
@@ -843,15 +845,16 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (!mounted) return;
       _applyUpdatedPost(updated);
-      unawaited(_syncPostReactionToUser(updated));
+      await _syncPostReactionToUser(updated);
       unawaited(_loadPostFeatureIndex());
     } catch (_) {
       if (!mounted) return;
       _applyUpdatedPost(post);
-      unawaited(_syncPostReactionToUser(post));
       ScaffoldMessenger.of(
         context,
       ).showSnackBar(const SnackBar(content: Text('싫어요를 반영하지 못했어요.')));
+    } finally {
+      _reactionRequests.remove(post.id);
     }
   }
 

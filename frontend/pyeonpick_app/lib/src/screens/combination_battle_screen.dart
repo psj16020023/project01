@@ -150,9 +150,27 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     CombinationBattleState extra,
   ) {
     final byId = <String, BattleMatchEntry>{
-      for (final match in base.matches) match.id: match,
       for (final match in extra.matches) match.id: match,
     };
+    for (final match in base.matches) {
+      final previous = byId[match.id];
+      if (previous == null) {
+        byId[match.id] = match;
+        continue;
+      }
+      final leftVoters = <String>{
+        ...previous.leftVoterIds,
+        ...match.leftVoterIds,
+      };
+      final rightVoters = <String>{
+        ...previous.rightVoterIds,
+        ...match.rightVoterIds,
+      }..removeAll(leftVoters);
+      byId[match.id] = match.copyWith(
+        leftVoterIds: leftVoters.toList(),
+        rightVoterIds: rightVoters.toList(),
+      );
+    }
     final merged = byId.values.toList()
       ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
     return CombinationBattleState(matches: merged);
@@ -322,22 +340,12 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
       return match;
     }
     final userId = widget.currentUser.id;
-    final left = match.leftVoterIds.toSet();
-    final right = match.rightVoterIds.toSet();
-
-    left.remove(userId);
-    right.remove(userId);
-    if (side == BattleVoteSide.left) {
-      left.add(userId);
-    } else {
-      right.add(userId);
+    if (match.voteSideOf(userId) != null) {
+      _toast('이미 투표한 픽 쇼츠예요. 첫 선택은 바꾸지 않아요.');
+      return match;
     }
-
-    final updated = match.copyWith(
-      leftVoterIds: left.toList(),
-      rightVoterIds: right.toList(),
-    );
-    unawaited(_replaceMatch(updated));
+    final updated = match.castVote(userId, side);
+    await _replaceMatch(updated);
     return updated;
   }
 
@@ -833,9 +841,14 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
     BattleVoteSide side,
   ) async {
     if (_processingVote) return match;
+    final alreadyVoted = match.voteSideOf(widget.currentUserId) != null;
     setState(() => _processingVote = true);
     final updated = await widget.onVote(match, side);
     if (!mounted) return updated;
+    if (alreadyVoted) {
+      setState(() => _processingVote = false);
+      return updated;
+    }
     setState(() {
       _revealedMatchId = updated.id;
       _revealedMatch = updated;
@@ -870,22 +883,24 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
                   ),
                 ),
               ),
-              const Text(
-                '오늘',
-                style: TextStyle(
-                  color: _battleSubtle,
-                  fontSize: 12,
-                  fontWeight: FontWeight.w700,
+              if (widget.todayWinCount > 0) ...[
+                const Text(
+                  '오늘',
+                  style: TextStyle(
+                    color: _battleSubtle,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
-              ),
-              Text(
-                ' ${widget.todayWinCount}승',
-                style: const TextStyle(
-                  color: _battleInk,
-                  fontSize: 13,
-                  fontWeight: FontWeight.w900,
+                Text(
+                  ' ${widget.todayWinCount}승',
+                  style: const TextStyle(
+                    color: _battleInk,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w900,
+                  ),
                 ),
-              ),
+              ],
               const SizedBox(width: 10),
               Tooltip(
                 message: '새로 섞기',
@@ -1051,12 +1066,7 @@ class _BattleCreatePage extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(16, 4, 16, 28),
       children: [
         Container(
-          padding: const EdgeInsets.all(18),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: _battleLine),
-          ),
+          padding: const EdgeInsets.symmetric(horizontal: 2, vertical: 8),
           child: Column(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
@@ -1088,6 +1098,17 @@ class _BattleCreatePage extends StatelessWidget {
                 decoration: const InputDecoration(
                   labelText: '대결 제목',
                   hintText: '예: 야식으로 더 끌리는 조합은?',
+                  filled: false,
+                  contentPadding: EdgeInsets.symmetric(vertical: 12),
+                  border: UnderlineInputBorder(
+                    borderSide: BorderSide(color: _battleLine),
+                  ),
+                  enabledBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: _battleLine),
+                  ),
+                  focusedBorder: UnderlineInputBorder(
+                    borderSide: BorderSide(color: Color(0xFF49A9D8), width: 2),
+                  ),
                 ),
               ),
               const SizedBox(height: 18),
@@ -1112,16 +1133,8 @@ class _BattleCreatePage extends StatelessWidget {
                   height: 66,
                   alignment: Alignment.center,
                   decoration: BoxDecoration(
-                    color: Colors.white,
+                    color: const Color(0xFFEAF6FB),
                     shape: BoxShape.circle,
-                    border: Border.all(color: _battleLine),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(16),
-                        blurRadius: 18,
-                        offset: const Offset(0, 8),
-                      ),
-                    ],
                   ),
                   child: const Text(
                     'VS',
@@ -1160,11 +1173,11 @@ class _BattleCreatePage extends StatelessWidget {
                 child: FilledButton(
                   onPressed: onSubmit,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF2458B6),
+                    backgroundColor: const Color(0xFF49A9D8),
                     foregroundColor: Colors.white,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
-                      borderRadius: BorderRadius.circular(18),
+                      borderRadius: BorderRadius.circular(12),
                     ),
                   ),
                   child: const Text(
@@ -1196,12 +1209,7 @@ class _BattleDurationPicker extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: const Color(0xFFF8FBFE),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: _battleLine, width: 1.4),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1310,12 +1318,7 @@ class _BattleManualCreateSlot extends StatelessWidget {
     final hasImage = imageUrl != null && imageUrl!.trim().isNotEmpty;
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.all(14),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(20),
-        border: Border.all(color: _battleLine, width: 1.4),
-      ),
+      padding: const EdgeInsets.symmetric(vertical: 8),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
@@ -1381,14 +1384,15 @@ class _BattleManualCreateSlot extends StatelessWidget {
           const SizedBox(height: 10),
           SizedBox(
             width: double.infinity,
-            child: FilledButton.icon(
+            child: OutlinedButton.icon(
               onPressed: onPickImage,
-              style: FilledButton.styleFrom(
-                backgroundColor: const Color(0xFF7E8994),
-                foregroundColor: Colors.white,
+              style: OutlinedButton.styleFrom(
+                backgroundColor: const Color(0xFFF5FAFC),
+                foregroundColor: const Color(0xFF276A85),
+                side: const BorderSide(color: Color(0xFFCFE4EC)),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
               icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
@@ -1408,7 +1412,7 @@ class _BattleManualCreateSlot extends StatelessWidget {
                 side: const BorderSide(color: Color(0xFFD4E2EA)),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(18),
+                  borderRadius: BorderRadius.circular(12),
                 ),
               ),
               icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
@@ -1439,14 +1443,12 @@ class _BattleCreateSlot extends StatelessWidget {
   Widget build(BuildContext context) {
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(20),
+      borderRadius: BorderRadius.circular(10),
       child: Container(
         width: double.infinity,
-        padding: const EdgeInsets.all(14),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(20),
-          border: Border.all(color: _battleLine, width: 1.4),
+        padding: const EdgeInsets.symmetric(vertical: 12),
+        decoration: const BoxDecoration(
+          border: Border(bottom: BorderSide(color: _battleLine)),
         ),
         child: post == null
             ? Row(
@@ -2138,7 +2140,7 @@ class _BattleVoteArena extends StatelessWidget {
                 color: leftColor,
                 darkColor: _darken(leftColor),
                 active: selectedSide == BattleVoteSide.left,
-                disabled: match.isExpired,
+                disabled: match.isExpired || selectedSide != null,
                 fullBleed: height == null,
                 showVotes: showVoteStats,
                 alignLeft: true,
@@ -2162,7 +2164,7 @@ class _BattleVoteArena extends StatelessWidget {
                 color: rightColor,
                 darkColor: _darken(rightColor),
                 active: selectedSide == BattleVoteSide.right,
-                disabled: match.isExpired,
+                disabled: match.isExpired || selectedSide != null,
                 fullBleed: height == null,
                 showVotes: showVoteStats,
                 alignLeft: false,
@@ -2532,24 +2534,32 @@ class _BattleVoteHero extends StatelessWidget {
             Positioned(
               left: alignLeft ? 14 : 8,
               right: alignLeft ? 8 : 14,
-              bottom: 22,
-              child: Text(
-                title!,
-                maxLines: 3,
-                overflow: TextOverflow.ellipsis,
-                textAlign: textAlign,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 15,
-                  fontWeight: FontWeight.w900,
-                  height: 1.2,
-                  shadows: [
-                    Shadow(
-                      color: Color(0xB0000000),
-                      blurRadius: 10,
-                      offset: Offset(0, 2),
+              bottom: 14,
+              child: Align(
+                alignment: alignLeft
+                    ? Alignment.centerLeft
+                    : Alignment.centerRight,
+                child: Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 10,
+                    vertical: 7,
+                  ),
+                  decoration: BoxDecoration(
+                    color: Colors.white.withAlpha(226),
+                    borderRadius: BorderRadius.circular(10),
+                  ),
+                  child: Text(
+                    title!,
+                    maxLines: 3,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: textAlign,
+                    style: const TextStyle(
+                      color: _battleInk,
+                      fontSize: 14,
+                      fontWeight: FontWeight.w900,
+                      height: 1.2,
                     ),
-                  ],
+                  ),
                 ),
               ),
             ),
@@ -3139,15 +3149,15 @@ class _BattleSourceModeToggle extends StatelessWidget {
           icon: Icon(icon, size: 18),
           style: FilledButton.styleFrom(
             backgroundColor: active
-                ? const Color(0xFF2458B6)
-                : const Color(0xFFF3F6FA),
-            foregroundColor: active ? Colors.white : _battleInk,
+                ? const Color(0xFFDFF3FA)
+                : Colors.transparent,
+            foregroundColor: active ? const Color(0xFF276A85) : _battleSubtle,
             elevation: 0,
             padding: const EdgeInsets.symmetric(vertical: 14),
             shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(16),
+              borderRadius: BorderRadius.circular(12),
               side: BorderSide(
-                color: active ? const Color(0xFF2458B6) : _battleLine,
+                color: active ? const Color(0xFFAED9E8) : _battleLine,
               ),
             ),
           ),
