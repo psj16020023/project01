@@ -4,6 +4,7 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../models/combination_battle.dart';
+import '../models/battle_results.dart';
 import '../models/post.dart';
 import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
@@ -28,6 +29,38 @@ class RemotePostRepository implements PostRepository {
       if (contentType) 'Content-Type': 'application/json',
       'Authorization': 'Bearer $token',
     };
+  }
+
+  @override
+  Future<BattleResultsPage> fetchBattleResults(String currentUserId) async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/battles/results'),
+          headers: await _battleHeaders(),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) throw Exception('픽쇼츠 결과 조회 실패');
+    return BattleResultsPage.fromJson(
+      jsonDecode(response.body) as Map<String, dynamic>,
+    );
+  }
+
+  @override
+  Future<List<String>> markBattleResultsRead(
+    String currentUserId,
+    List<String> matchIds,
+  ) async {
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/battles/results/read'),
+          headers: await _battleHeaders(contentType: true),
+          body: jsonEncode({'matchIds': matchIds}),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) throw Exception('픽쇼츠 결과 확인 실패');
+    return ((jsonDecode(response.body) as Map<String, dynamic>)['readIds']
+            as List<dynamic>)
+        .cast<String>();
   }
 
   @override

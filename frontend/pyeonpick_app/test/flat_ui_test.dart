@@ -3,6 +3,8 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:pyeonpick_app/src/data/mock_posts.dart';
 import 'package:pyeonpick_app/src/models/pyeon_user.dart';
+import 'package:pyeonpick_app/src/models/combination_battle.dart';
+import 'package:pyeonpick_app/src/repositories/mock_post_repository.dart';
 import 'package:pyeonpick_app/src/screens/home_screen.dart';
 import 'package:pyeonpick_app/src/screens/post_reviews_screen.dart';
 
@@ -16,7 +18,7 @@ void main() {
   );
 
   testWidgets(
-    'profile has account controls but no Pick Shorts section on mobile',
+    'profile keeps account controls and offers private Pick Shorts results on mobile',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -27,6 +29,9 @@ void main() {
           home: Scaffold(
             body: ProfilePage(
               currentUser: user,
+              repository: MockPostRepository(
+                initialBattleState: const CombinationBattleState(),
+              ),
               posts: const [],
               onUserChanged: (_) async {},
               onResetBotSetup: () async {},
@@ -39,7 +44,7 @@ void main() {
           ),
         ),
       );
-      expect(find.textContaining('픽 쇼츠'), findsNothing);
+      expect(find.text('픽 쇼츠'), findsOneWidget);
       expect(find.text('로그아웃'), findsOneWidget);
       expect(find.text('계정 삭제'), findsOneWidget);
       await tester.tap(find.text('프로필 공개 설정'));

@@ -71,4 +71,48 @@ test('shared immutable votes feed only the authenticated user taste profile', { 
   assert.equal((await api('/api/bot/reply', a.token, { prompt: '대화 테스트' })).source, 'local-fallback');
   const unauthorized = await fetch(base + '/api/bot/reply', { method: 'POST' });
   assert.equal(unauthorized.status, 401);
+
+  await t.test('only authors receive ended results and read state persists', async () => {
+    const ends = Date.now() + 2500;
+    const source = (await api('/api/posts?limit=1', null, null, 'GET')).posts[0];
+    for (const id of ['result-win', 'result-tie', 'result-zero']) {
+      await api('/api/battles', a.token, { ...match, id,
+        leftPostId: source.id, leftCustomTitle: null, endsAt: new Date(ends).toISOString() });
+    }
+    await api('/api/battles/result-win/vote', a.token, { side: 'left' });
+    await api('/api/battles/result-win/vote', b.token, { side: 'left' });
+    await api('/api/battles/result-tie/vote', a.token, { side: 'left' });
+    await api('/api/battles/result-tie/vote', b.token, { side: 'right' });
+    const before = await api('/api/battles/results', a.token, null, 'GET');
+    assert.deepEqual(before.results, []);
+    assert.ok(before.refreshAfterMs <= 2700);
+    assert.deepEqual((await api('/api/battles/results/read', a.token, { matchIds: ['result-win'] })).readIds, []);
+    await new Promise((resolve) => setTimeout(resolve, Math.max(0, ends - Date.now()) + 80));
+    const results = (await api('/api/battles/results', a.token, null, 'GET')).results;
+    assert.equal(results.length, 3);
+    const win = results.find((result) => result.id === 'result-win');
+    assert.equal(win.leftVotes, 2);
+    assert.equal(win.rightVotes, 0);
+    assert.equal(win.leftTitle, source.title);
+    assert.equal(win.unread, true);
+    assert.equal(win.leftVoterIds, undefined);
+    const tie = results.find((result) => result.id === 'result-tie');
+    assert.equal(tie.leftVotes, tie.rightVotes);
+    const zero = results.find((result) => result.id === 'result-zero');
+    assert.equal(zero.leftVotes + zero.rightVotes, 0);
+    assert.deepEqual((await api(`/api/battles/results?authorId=${a.user.id}`, b.token, null, 'GET')).results, []);
+    assert.deepEqual((await api('/api/battles/results/read', b.token, { matchIds: ['result-win'], authorId: a.user.id })).readIds, []);
+    const othersFeed = await api('/api/battles', b.token, null, 'GET');
+    assert.equal(othersFeed.matches.some((item) => item.id === 'result-win'), false);
+    const acknowledged = await api('/api/battles/results/read', a.token, { matchIds: ['result-win', 'test-battle', 'unknown'] });
+    assert.deepEqual(acknowledged.readIds, ['result-win']);
+    const again = (await api('/api/battles/results', a.token, null, 'GET')).results;
+    assert.equal(again.find((result) => result.id === 'result-win').unread, false);
+    assert.equal(again.find((result) => result.id === 'result-tie').unread, true);
+    assert.equal((await fetch(base + '/api/battles/results')).status, 401);
+    assert.equal((await fetch(base + '/api/battles/results/read', { method: 'POST' })).status, 401);
+    const late = await fetch(base + '/api/battles/result-zero/vote', { method: 'POST',
+      headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${b.token}` }, body: JSON.stringify({ side: 'right' }) });
+    assert.equal(late.status, 410);
+  });
 });

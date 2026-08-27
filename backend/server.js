@@ -345,6 +345,7 @@ const userSchema = new mongoose.Schema(
     savedPostIds: { type: [String], default: [] },
     pickedAuthorIds: { type: [String], default: [] },
     battleState: { type: mongoose.Schema.Types.Mixed, default: () => ({}) },
+    battleResultReadIds: { type: [String], default: [] },
     profilePublic: { type: Boolean, default: true },
     profileVisibility: { type: profileVisibilitySchema, default: () => ({}) },
   },
@@ -3851,8 +3852,66 @@ app.delete("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
   return res.json({ message: "계정을 삭제했어요." });
 });
 
+app.get("/api/battles/results", requireAuth, async (req, res) => {
+  const authorId = String(req.auth.sub);
+  const now = new Date();
+  try {
+    const [matches, next, user] = await Promise.all([
+      BattleMatch.find({ authorId, endsAt: { $ne: null, $lte: now } })
+        .select("id title endsAt leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds")
+        .sort({ endsAt: -1, _id: -1 }).lean(),
+      BattleMatch.findOne({ authorId, endsAt: { $gt: now } }).sort({ endsAt: 1 }).select("endsAt").lean(),
+      User.findById(authorId).select("battleResultReadIds").lean(),
+    ]);
+    if (!user) return res.status(401).json({ message: "로그인이 필요해요." });
+    const ids = matches.flatMap((match) => [match.leftPostId, match.rightPostId]).filter(isValidObjectId);
+    const posts = await Post.find({ _id: { $in: ids } }).select("title").lean();
+    const titles = new Map(posts.map((post) => [String(post._id), post.title]));
+    const readIds = new Set(user.battleResultReadIds || []);
+    res.setHeader("Cache-Control", "no-store");
+    return res.json({
+      // Schedule the next check from server time, not the device's clock.
+      refreshAfterMs: next ? Math.min(15000, Math.max(300, next.endsAt - now + 200)) : 15000,
+      results: matches.map((match) => ({
+        id: match.id,
+        title: match.title,
+        endsAt: match.endsAt,
+        leftTitle: match.leftCustomTitle || titles.get(match.leftPostId) || "첫 번째 조합",
+        rightTitle: match.rightCustomTitle || titles.get(match.rightPostId) || "두 번째 조합",
+        leftVotes: match.leftVoterIds.length,
+        rightVotes: match.rightVoterIds.length,
+        unread: !readIds.has(match.id),
+      })),
+    });
+  } catch (_) {
+    return res.status(503).json({ message: "픽쇼츠 결과를 불러오지 못했어요." });
+  }
+});
+
+app.post("/api/battles/results/read", requireAuth, async (req, res) => {
+  const authorId = String(req.auth.sub);
+  const ids = (Array.isArray(req.body.matchIds) ? req.body.matchIds : [])
+    .filter((id) => typeof id === "string").slice(0, 500);
+  try {
+    const owned = await BattleMatch.find({
+      authorId, id: { $in: ids }, endsAt: { $ne: null, $lte: new Date() },
+    }).select("id").lean();
+    const readIds = owned.map((match) => match.id);
+    await User.updateOne({ _id: authorId }, {
+      $addToSet: { battleResultReadIds: { $each: readIds } },
+    });
+    return res.json({ readIds });
+  } catch (_) {
+    return res.status(503).json({ message: "결과 확인 상태를 저장하지 못했어요." });
+  }
+});
+
 app.get("/api/battles", requireAuth, async (req, res) => {
-  const matches = await BattleMatch.find({})
+  const matches = await BattleMatch.find({ $or: [
+    { authorId: String(req.auth.sub) },
+    { endsAt: null },
+    { endsAt: { $gt: new Date() } },
+  ] })
     .sort({ createdAt: -1, _id: -1 })
     .limit(500)
     .lean();

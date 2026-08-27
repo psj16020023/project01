@@ -13,6 +13,7 @@ import '../core/app_environment.dart';
 import '../core/image_url.dart';
 import '../data/cu_product_catalog.dart';
 import '../models/app_tab.dart';
+import '../models/battle_results.dart';
 import '../models/bot_conversation.dart';
 import '../models/bot_message.dart';
 import '../models/post.dart';
@@ -2815,6 +2816,7 @@ class _HomeScreenState extends State<HomeScreen> {
       case AppTab.profile:
         return ProfilePage(
           currentUser: widget.currentUser,
+          repository: widget.repository,
           posts: _allFunctionalPosts,
           onUserChanged: widget.onUserChanged,
           onResetBotSetup: _resetBotSetup,
@@ -6793,6 +6795,7 @@ class ProfilePage extends StatefulWidget {
   const ProfilePage({
     super.key,
     required this.currentUser,
+    required this.repository,
     required this.posts,
     required this.onUserChanged,
     required this.onResetBotSetup,
@@ -6804,6 +6807,7 @@ class ProfilePage extends StatefulWidget {
   });
 
   final PyeonUser currentUser;
+  final PostRepository repository;
   final List<Post> posts;
   final Future<void> Function(PyeonUser user) onUserChanged;
   final Future<void> Function() onResetBotSetup;
@@ -6817,11 +6821,123 @@ class ProfilePage extends StatefulWidget {
   State<ProfilePage> createState() => _ProfilePageState();
 }
 
-class _ProfilePageState extends State<ProfilePage> {
+class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   _ProfileViewMode _mode = _ProfileViewMode.overview;
   SortMode _postSortMode = SortMode.latest;
   final ImagePicker _picker = ImagePicker();
   bool _deletingAccount = false;
+  BattleResultsPage _battleResults = const BattleResultsPage();
+  Timer? _resultTimer;
+  bool _loadingResults = true;
+  bool _fetchingResults = false;
+  bool _resultError = false;
+  bool _markingResultsRead = false;
+  int _resultGeneration = 0;
+  final Set<String> _confirmedReadIds = {};
+
+  int get _unreadResultCount => _battleResults.results
+      .where(
+        (result) => result.unread && !_confirmedReadIds.contains(result.id),
+      )
+      .length;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+    unawaited(_loadBattleResults());
+  }
+
+  @override
+  void didUpdateWidget(covariant ProfilePage oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.currentUser.id != widget.currentUser.id ||
+        oldWidget.repository != widget.repository) {
+      _resultGeneration++;
+      _resultTimer?.cancel();
+      _battleResults = const BattleResultsPage();
+      _confirmedReadIds.clear();
+      _fetchingResults = false;
+      _markingResultsRead = false;
+      _loadingResults = true;
+      _resultError = false;
+      _mode = _ProfileViewMode.overview;
+      unawaited(_loadBattleResults());
+    }
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state == AppLifecycleState.resumed) unawaited(_loadBattleResults());
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    _resultTimer?.cancel();
+    super.dispose();
+  }
+
+  Future<void> _loadBattleResults() async {
+    if (_fetchingResults) return;
+    final generation = _resultGeneration;
+    _fetchingResults = true;
+    _resultTimer?.cancel();
+    var delay = const Duration(seconds: 15);
+    try {
+      final results = await widget.repository.fetchBattleResults(
+        widget.currentUser.id,
+      );
+      if (!mounted || generation != _resultGeneration) return;
+      delay = results.refreshAfter;
+      setState(() {
+        _battleResults = results;
+        _loadingResults = false;
+        _resultError = false;
+      });
+      if (_mode == _ProfileViewMode.battleResults) {
+        unawaited(_markResultsRead());
+      }
+    } catch (_) {
+      if (!mounted || generation != _resultGeneration) return;
+      setState(() {
+        _loadingResults = false;
+        _resultError = true;
+      });
+    } finally {
+      if (mounted && generation == _resultGeneration) {
+        _fetchingResults = false;
+        _resultTimer = Timer(delay, _loadBattleResults);
+      }
+    }
+  }
+
+  Future<void> _markResultsRead() async {
+    if (_markingResultsRead) return;
+    final ids = _battleResults.results
+        .where(
+          (result) => result.unread && !_confirmedReadIds.contains(result.id),
+        )
+        .map((result) => result.id)
+        .toList();
+    if (ids.isEmpty) return;
+    final generation = _resultGeneration;
+    _markingResultsRead = true;
+    try {
+      final readIds = await widget.repository.markBattleResultsRead(
+        widget.currentUser.id,
+        ids,
+      );
+      if (!mounted || generation != _resultGeneration) return;
+      setState(() => _confirmedReadIds.addAll(readIds));
+    } catch (_) {
+      // Keep the badge until the server confirms receipt; the next refresh retries.
+    } finally {
+      if (mounted && generation == _resultGeneration) {
+        _markingResultsRead = false;
+      }
+    }
+  }
 
   Future<void> _changeProfileImage() async {
     final picked = await _picker.pickImage(
@@ -7002,6 +7118,10 @@ class _ProfilePageState extends State<ProfilePage> {
     final tabs = [
       (_ProfileViewMode.overview, '설정'),
       (_ProfileViewMode.myPosts, '내 글 ${mine.length}'),
+      (
+        _ProfileViewMode.battleResults,
+        _unreadResultCount == 0 ? '픽 쇼츠' : '픽 쇼츠 · 새 결과 $_unreadResultCount',
+      ),
       (_ProfileViewMode.likes, '하트 ${liked.length}'),
       (_ProfileViewMode.saved, '보관 ${saved.length}'),
       (_ProfileViewMode.dislikes, '싫어요 ${disliked.length}'),
@@ -7080,7 +7200,13 @@ class _ProfilePageState extends State<ProfilePage> {
                   (tab) => _ProfileModeChip(
                     label: tab.$2,
                     active: _mode == tab.$1,
-                    onTap: () => setState(() => _mode = tab.$1),
+                    onTap: () {
+                      setState(() => _mode = tab.$1);
+                      if (_mode == _ProfileViewMode.battleResults) {
+                        unawaited(_markResultsRead());
+                        unawaited(_loadBattleResults());
+                      }
+                    },
                   ),
                 )
                 .toList(),
@@ -7240,6 +7366,47 @@ class _ProfilePageState extends State<ProfilePage> {
             ),
             onTap: _deletingAccount ? null : _deleteAccount,
           ),
+        ] else if (_mode == _ProfileViewMode.battleResults) ...[
+          Row(
+            children: [
+              const Expanded(
+                child: Text(
+                  '내 픽 쇼츠 결과',
+                  style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+                ),
+              ),
+              IconButton(
+                tooltip: '결과 새로고침',
+                onPressed: _fetchingResults ? null : _loadBattleResults,
+                icon: const Icon(Icons.refresh_rounded, size: 20),
+              ),
+            ],
+          ),
+          if (_loadingResults)
+            const Center(
+              child: Padding(
+                padding: EdgeInsets.all(24),
+                child: CircularProgressIndicator(),
+              ),
+            )
+          else ...[
+            if (_resultError)
+              const Text(
+                '결과를 불러오지 못했어요. 새로고침해 주세요.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+            if (!_resultError && _battleResults.results.isEmpty)
+              const Padding(
+                padding: EdgeInsets.symmetric(vertical: 24),
+                child: Text(
+                  '내가 올린 픽 쇼츠가 종료되면 여기에 결과가 표시돼요.',
+                  style: TextStyle(color: AppColors.muted),
+                ),
+              ),
+            ..._battleResults.results.map(
+              (result) => _ProfileBattleResult(result: result),
+            ),
+          ],
         ] else if (_mode == _ProfileViewMode.picks) ...[
           if (authors.isEmpty)
             const Padding(
@@ -7291,7 +7458,75 @@ class _ProfilePageState extends State<ProfilePage> {
   }
 }
 
-enum _ProfileViewMode { overview, likes, saved, dislikes, myPosts, picks }
+enum _ProfileViewMode {
+  overview,
+  likes,
+  saved,
+  dislikes,
+  myPosts,
+  picks,
+  battleResults,
+}
+
+class _ProfileBattleResult extends StatelessWidget {
+  const _ProfileBattleResult({required this.result});
+
+  final BattleResultEntry result;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget score(String title, int votes) => Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Expanded(
+            child: Text(
+              title,
+              style: const TextStyle(fontSize: 14, color: AppColors.muted),
+            ),
+          ),
+          const SizedBox(width: 16),
+          Text(
+            '$votes표',
+            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
+          ),
+        ],
+      ),
+    );
+    return Column(
+      key: ValueKey('battle-result-${result.id}'),
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        const SizedBox(height: 18),
+        Text(
+          result.title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 5),
+        Text(
+          '${DateFormat('M.d HH:mm').format(result.endsAt)} 종료',
+          style: const TextStyle(fontSize: 12, color: AppColors.muted),
+        ),
+        const SizedBox(height: 14),
+        Text(
+          result.outcome,
+          style: const TextStyle(
+            fontSize: 15,
+            color: AppColors.ink,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+        score(result.leftTitle, result.leftVotes),
+        score(result.rightTitle, result.rightVotes),
+        const SizedBox(height: 20),
+        const Divider(height: 1, color: AppColors.line),
+      ],
+    );
+  }
+}
 
 class _ProfileModeChip extends StatelessWidget {
   const _ProfileModeChip({

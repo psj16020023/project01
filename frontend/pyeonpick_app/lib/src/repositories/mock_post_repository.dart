@@ -7,6 +7,7 @@ import '../data/mock_posts.dart';
 import '../data/mock_combination_battle.dart';
 import '../data/product_catalog.dart' as catalog;
 import '../models/combination_battle.dart';
+import '../models/battle_results.dart';
 import '../models/post.dart';
 import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
@@ -34,6 +35,77 @@ class MockPostRepository implements PostRepository {
   final Map<String, Set<String>> _dislikedPostIdsByUser =
       <String, Set<String>>{};
   bool _loaded = false;
+
+  @override
+  Future<BattleResultsPage> fetchBattleResults(String currentUserId) async {
+    final state = await fetchBattleState();
+    final prefs = await SharedPreferences.getInstance();
+    final read =
+        prefs.getStringList('pyeonpick_battle_results_read_$currentUserId') ??
+        [];
+    final now = DateTime.now();
+    final owned = state.matches.where(
+      (match) => match.authorId == currentUserId && match.endsAt != null,
+    );
+    final ended = owned.where((match) => !match.endsAt!.isAfter(now)).toList()
+      ..sort((a, b) => b.endsAt!.compareTo(a.endsAt!));
+    final upcoming = owned.where((match) => match.endsAt!.isAfter(now)).toList()
+      ..sort((a, b) => a.endsAt!.compareTo(b.endsAt!));
+    String title(String? custom, String postId, String fallback) =>
+        custom ??
+        _posts.where((post) => post.id == postId).firstOrNull?.title ??
+        fallback;
+    return BattleResultsPage(
+      refreshAfter: upcoming.isEmpty
+          ? const Duration(seconds: 15)
+          : Duration(
+              milliseconds:
+                  (upcoming.first.endsAt!.difference(now).inMilliseconds + 200)
+                      .clamp(300, 15000),
+            ),
+      results: ended
+          .map(
+            (match) => BattleResultEntry(
+              id: match.id,
+              title: match.title,
+              endsAt: match.endsAt!,
+              leftTitle: title(
+                match.leftCustomTitle,
+                match.leftPostId,
+                '첫 번째 조합',
+              ),
+              rightTitle: title(
+                match.rightCustomTitle,
+                match.rightPostId,
+                '두 번째 조합',
+              ),
+              leftVotes: match.leftVotes,
+              rightVotes: match.rightVotes,
+              unread: !read.contains(match.id),
+            ),
+          )
+          .toList(),
+    );
+  }
+
+  @override
+  Future<List<String>> markBattleResultsRead(
+    String currentUserId,
+    List<String> matchIds,
+  ) async {
+    final page = await fetchBattleResults(currentUserId);
+    final owned = page.results
+        .where((result) => matchIds.contains(result.id))
+        .map((result) => result.id)
+        .toList();
+    final prefs = await SharedPreferences.getInstance();
+    final key = 'pyeonpick_battle_results_read_$currentUserId';
+    await prefs.setStringList(
+      key,
+      {...?prefs.getStringList(key), ...owned}.toList(),
+    );
+    return owned;
+  }
 
   @override
   Future<CombinationBattleState> fetchBattleState() async {

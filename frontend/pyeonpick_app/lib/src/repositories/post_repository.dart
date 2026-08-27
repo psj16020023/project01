@@ -1,6 +1,7 @@
 import '../core/app_environment.dart';
 import '../models/post.dart';
 import '../models/combination_battle.dart';
+import '../models/battle_results.dart';
 import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
 import '../models/post_page.dart';
@@ -10,6 +11,13 @@ import 'mock_post_repository.dart';
 import 'remote_post_repository.dart';
 
 abstract class PostRepository {
+  Future<BattleResultsPage> fetchBattleResults(String currentUserId);
+
+  Future<List<String>> markBattleResultsRead(
+    String currentUserId,
+    List<String> matchIds,
+  );
+
   Future<CombinationBattleState> fetchBattleState();
 
   Future<BattleMatchEntry> createBattle(BattleMatchEntry match);
