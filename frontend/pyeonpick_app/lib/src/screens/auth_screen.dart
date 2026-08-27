@@ -137,15 +137,6 @@ class _AuthScreenState extends State<AuthScreen> {
                         _error = null;
                       }),
                     ),
-                    const SizedBox(height: 12),
-                    const Text(
-                      '테스트 계정  demo / 1234   test / 1111',
-                      style: TextStyle(
-                        color: Color(0xFF7C8B97),
-                        fontSize: 12,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
                     const SizedBox(height: 22),
                     if (_signupMode) ...[
                       _AuthField(
