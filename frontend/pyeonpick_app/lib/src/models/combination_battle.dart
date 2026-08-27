@@ -24,6 +24,7 @@ class BattleMatchEntry {
     this.leftVoteCount,
     this.rightVoteCount,
     this.viewerVoteSide,
+    this.viewerId,
   });
 
   factory BattleMatchEntry.fromJson(Map<String, dynamic> json) {
@@ -55,6 +56,7 @@ class BattleMatchEntry {
               .toList(),
       leftVoteCount: json['leftVotes'] as int?,
       rightVoteCount: json['rightVotes'] as int?,
+      viewerId: json['viewerId'] as String?,
       viewerVoteSide: switch (json['viewerVoteSide']) {
         'left' => BattleVoteSide.left,
         'right' => BattleVoteSide.right,
@@ -83,6 +85,7 @@ class BattleMatchEntry {
   final int? leftVoteCount;
   final int? rightVoteCount;
   final BattleVoteSide? viewerVoteSide;
+  final String? viewerId;
 
   int get leftVotes => leftVoteCount ?? leftVoterIds.length;
   int get rightVotes => rightVoteCount ?? rightVoterIds.length;
@@ -101,7 +104,7 @@ class BattleMatchEntry {
   }
 
   BattleVoteSide? voteSideOf(String userId) {
-    if (viewerVoteSide != null) return viewerVoteSide;
+    if (userId == viewerId && viewerVoteSide != null) return viewerVoteSide;
     if (leftVoterIds.contains(userId)) return BattleVoteSide.left;
     if (rightVoterIds.contains(userId)) return BattleVoteSide.right;
     return null;
@@ -125,6 +128,7 @@ class BattleMatchEntry {
           ? rightVotes + 1
           : rightVotes,
       viewerVoteSide: side,
+      viewerId: userId,
     );
   }
 
@@ -144,6 +148,7 @@ class BattleMatchEntry {
     int? leftVoteCount,
     int? rightVoteCount,
     BattleVoteSide? viewerVoteSide,
+    String? viewerId,
   }) {
     return BattleMatchEntry(
       id: id,
@@ -168,6 +173,7 @@ class BattleMatchEntry {
       leftVoteCount: leftVoteCount ?? this.leftVoteCount,
       rightVoteCount: rightVoteCount ?? this.rightVoteCount,
       viewerVoteSide: viewerVoteSide ?? this.viewerVoteSide,
+      viewerId: viewerId ?? this.viewerId,
     );
   }
 
@@ -192,6 +198,7 @@ class BattleMatchEntry {
     'leftVotes': leftVotes,
     'rightVotes': rightVotes,
     'viewerVoteSide': viewerVoteSide?.name,
+    'viewerId': viewerId,
   };
 }
 

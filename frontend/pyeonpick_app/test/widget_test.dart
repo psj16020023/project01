@@ -54,11 +54,13 @@ void main() {
       'leftVotes': 12,
       'rightVotes': 2,
       'viewerVoteSide': 'left',
+      'viewerId': 'current-user',
     });
 
     expect(match.leftVotes, 12);
     expect(match.rightVotes, 2);
     expect(match.voteSideOf('current-user'), BattleVoteSide.left);
+    expect(match.voteSideOf('other-user'), isNull);
     expect(match.leftVoterIds, isEmpty);
     expect(match.rightVoterIds, isEmpty);
   });
@@ -383,13 +385,13 @@ void main() {
       ),
     );
 
-    expect(find.text('취향 필터'), findsNothing);
+    expect(find.text('취향 필터'), findsOneWidget);
     expect(find.text('이번 주 인기'), findsOneWidget);
     expect(find.text('남자들이 많이 고른 조합'), findsOneWidget);
     expect(find.text('여자들이 많이 고른 조합'), findsOneWidget);
     expect(find.text('새로 들어온 조합'), findsOneWidget);
     expect(find.text('PB로 만든 조합'), findsOneWidget);
-    expect(find.text('다시 보는 조합'), findsOneWidget);
+    expect(find.text('재평가'), findsOneWidget);
     expect(find.text('하트 성비'), findsNothing);
     expect(
       find.byKey(const Key('discovery-horizontal-이번 주 인기')),
@@ -406,12 +408,14 @@ void main() {
         .getSize(find.byKey(const Key('discovery-topic-3')))
         .height;
     expect(expandedHeight, greaterThan(collapsedHeight));
-    await tester.ensureVisible(find.byTooltip('상세 필터'));
+    await tester.ensureVisible(
+      find.byKey(const Key('preference-filter-toggle')),
+    );
     await tester.pumpAndSettle();
-    await tester.tap(find.byTooltip('상세 필터'));
+    await tester.tap(find.byKey(const Key('preference-filter-toggle')));
     await tester.pump();
     expect(find.text('취향 필터'), findsOneWidget);
-    expect(find.text('섞기'), findsOneWidget);
+    expect(find.byKey(const Key('preference-filter-options')), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 }

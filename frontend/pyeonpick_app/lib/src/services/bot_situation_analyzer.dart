@@ -4,6 +4,35 @@ import 'package:http/http.dart' as http;
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../core/app_environment.dart';
+import '../models/bot_message.dart';
+
+class BotVotePreferences {
+  const BotVotePreferences({
+    this.sampleCount = 0,
+    this.categoryWeights = const {},
+  });
+
+  factory BotVotePreferences.fromJson(Map<String, dynamic>? json) {
+    return BotVotePreferences(
+      sampleCount: (json?['sampleCount'] as num?)?.toInt() ?? 0,
+      categoryWeights: ((json?['categoryWeights'] as Map?) ?? {}).map(
+        (key, value) => MapEntry(key.toString(), (value as num).toDouble()),
+      ),
+    );
+  }
+
+  final int sampleCount;
+  final Map<String, double> categoryWeights;
+
+  int score(Iterable<String> categories) {
+    if (sampleCount == 0) return 0;
+    final affinity = categories.toSet().fold<double>(
+      0,
+      (sum, category) => sum + (categoryWeights[category] ?? 0),
+    );
+    return (affinity * 3 * (sampleCount / 5).clamp(0, 1)).round().clamp(0, 6);
+  }
+}
 
 class BotSituationContext {
   const BotSituationContext({
@@ -16,6 +45,7 @@ class BotSituationContext {
     this.timeAvailableMinutes,
     this.mealPurpose,
     this.bodyCondition,
+    this.preferences = const BotVotePreferences(),
   });
 
   factory BotSituationContext.fromJson(Map<String, dynamic> json) {
@@ -35,6 +65,9 @@ class BotSituationContext {
               .map((item) => item.toString())
               .toList(),
       summary: json['summary'] as String? ?? '',
+      preferences: BotVotePreferences.fromJson(
+        json['preferences'] as Map<String, dynamic>?,
+      ),
     );
   }
 
@@ -47,6 +80,7 @@ class BotSituationContext {
   final List<String> wantedTastes;
   final List<String> avoidConditions;
   final String summary;
+  final BotVotePreferences preferences;
 }
 
 abstract final class BotSituationAnalyzer {
@@ -74,12 +108,60 @@ abstract final class BotSituationAnalyzer {
               'memoryNotes': memoryNotes.take(6).toList(),
             }),
           )
-          .timeout(const Duration(milliseconds: 2200));
+          .timeout(const Duration(seconds: 15));
       if (response.statusCode != 200) return null;
       final payload = jsonDecode(response.body) as Map<String, dynamic>;
       return BotSituationContext.fromJson(
         payload['analysis'] as Map<String, dynamic>,
       );
+    } catch (_) {
+      return null;
+    }
+  }
+
+  static Future<String?> reply({
+    required AppEnvironment environment,
+    required String prompt,
+    required List<BotMessage> history,
+    required List<String> candidateIds,
+    required String draft,
+    int? maximumBudget,
+    int? minimumPrice,
+    String? pendingClarification,
+  }) async {
+    if (environment.dataMode != DataMode.remote) return null;
+    try {
+      final prefs = await SharedPreferences.getInstance();
+      final token = prefs.getString(_authTokenKey);
+      if (token == null || token.isEmpty) return null;
+      final response = await http
+          .post(
+            Uri.parse('${environment.apiBaseUrl}/bot/reply'),
+            headers: {
+              'Content-Type': 'application/json',
+              'Authorization': 'Bearer $token',
+            },
+            body: jsonEncode({
+              'prompt': prompt,
+              'history': history.reversed
+                  .take(10)
+                  .toList()
+                  .reversed
+                  .map(
+                    (message) => {'role': message.role, 'text': message.text},
+                  )
+                  .toList(),
+              'candidateIds': candidateIds,
+              'draft': draft,
+              'maximumBudget': maximumBudget,
+              'minimumPrice': minimumPrice,
+              'pendingClarification': pendingClarification,
+            }),
+          )
+          .timeout(const Duration(seconds: 22));
+      if (response.statusCode != 200) return null;
+      return (jsonDecode(response.body) as Map<String, dynamic>)['text']
+          as String?;
     } catch (_) {
       return null;
     }

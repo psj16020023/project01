@@ -8,6 +8,8 @@ const path = require("path");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
+const { buildVotePreferences, eligibleCandidates, dialogueInput } = require("./bot_dialogue");
+const { imageProxy } = require("./image_proxy");
 
 const app = express();
 const PORT = Number(process.env.PORT || 3000);
@@ -20,6 +22,11 @@ const CRAWLER_REFRESH_SECRET = String(process.env.CRAWLER_REFRESH_SECRET || "").
 
 app.use(cors());
 app.use(express.json({ limit: "15mb" }));
+
+app.get("/api/version", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  res.json({ revision: process.env.RENDER_GIT_COMMIT || "local" });
+});
 
 function isValidObjectId(value) {
   return mongoose.Types.ObjectId.isValid(String(value || ""));
@@ -1055,6 +1062,7 @@ function serializeBattleMatch(match, viewerId = "") {
     createdAt: match.createdAt || new Date(),
     leftVotes: leftVoterIds.length,
     rightVotes: rightVoterIds.length,
+    viewerId: String(viewerId),
     viewerVoteSide: leftVoterIds.includes(String(viewerId))
       ? "left"
       : rightVoterIds.includes(String(viewerId))
@@ -3578,6 +3586,16 @@ app.post("/api/auth/signin", async (req, res) => {
   });
 });
 
+async function loadVotePreferences(userId) {
+  const matches = await BattleMatch.find({
+    $or: [{ leftVoterIds: String(userId) }, { rightVoterIds: String(userId) }],
+  }).sort({ createdAt: -1 }).limit(200)
+    .select("leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds").lean();
+  const ids = matches.flatMap((match) => [match.leftPostId, match.rightPostId]).filter(isValidObjectId);
+  const posts = await Post.find({ _id: { $in: ids } }).select("title categories").lean();
+  return buildVotePreferences(matches, posts, userId);
+}
+
 app.post("/api/bot/analyze", requireAuth, async (req, res) => {
   const prompt = String(req.body.prompt || "").trim();
   const memoryNotes = Array.isArray(req.body.memoryNotes)
@@ -3586,9 +3604,10 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
   if (!prompt) {
     return res.status(400).json({ message: "분석할 문장이 필요해요." });
   }
+  const preferences = await loadVotePreferences(req.auth.sub);
   const localAnalysis = analyzeBotPromptLocally(prompt);
   if (!OPENAI_API_KEY) {
-    return res.json({ analysis: localAnalysis, source: "local-fallback" });
+    return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
   }
 
   try {
@@ -3600,6 +3619,7 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
       },
       body: JSON.stringify({
         model: OPENAI_BOT_MODEL,
+        store: false,
         input: [
           {
             role: "developer",
@@ -3680,20 +3700,58 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
           },
         },
       }),
-      signal: AbortSignal.timeout(4000),
+      signal: AbortSignal.timeout(12000),
     });
 
     if (!response.ok) {
-      return res.json({ analysis: localAnalysis, source: "local-fallback" });
+      return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
     }
     const payload = await response.json();
     const analysis = tryParseJsonObject(extractResponsesText(payload));
     if (!analysis) {
-      return res.json({ analysis: localAnalysis, source: "local-fallback" });
+      return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
     }
-    return res.json({ analysis, source: "openai" });
+    return res.json({ analysis: { ...analysis, preferences }, source: "openai" });
   } catch (_) {
-    return res.json({ analysis: localAnalysis, source: "local-fallback" });
+    return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
+  }
+});
+
+app.post("/api/bot/reply", requireAuth, async (req, res) => {
+  const prompt = String(req.body.prompt || "").trim().slice(0, 2000);
+  if (!prompt) return res.status(400).json({ message: "대화 내용을 입력해줘." });
+  if (!OPENAI_API_KEY) return res.json({ text: null, source: "local-fallback" });
+  try {
+    const ids = (Array.isArray(req.body.candidateIds) ? req.body.candidateIds : [])
+      .filter(isValidObjectId).slice(0, 3);
+    const posts = await Post.find({ _id: { $in: ids } })
+      .select("title priceMin priceMax categories details.usedProducts").lean();
+    const candidates = eligibleCandidates(posts, req.body.maximumBudget, req.body.minimumPrice);
+    const preferences = await loadVotePreferences(req.auth.sub);
+    const user = await User.findById(req.auth.sub).select("botSetup").lean();
+    const input = dialogueInput({
+      prompt, history: req.body.history, candidates, preferences,
+      setup: user?.botSetup ? {
+        tasteRatings: user.botSetup.tasteRatings,
+        priorityValues: user.botSetup.priorityValues,
+        favoriteTastes: user.botSetup.favoriteTastes,
+      } : null,
+      draft: req.body.draft,
+      pendingClarification: String(req.body.pendingClarification || "").slice(0, 80),
+      maximumBudget: req.body.maximumBudget,
+      minimumPrice: req.body.minimumPrice,
+    });
+    const response = await fetch("https://api.openai.com/v1/responses", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Authorization: `Bearer ${OPENAI_API_KEY}` },
+      body: JSON.stringify({ model: OPENAI_BOT_MODEL, store: false, input, max_output_tokens: 900 }),
+      signal: AbortSignal.timeout(18000),
+    });
+    if (!response.ok) return res.json({ text: null, source: "local-fallback" });
+    const text = extractResponsesText(await response.json()).trim();
+    return res.json({ text: text || null, source: text ? "openai" : "local-fallback" });
+  } catch (_) {
+    return res.json({ text: null, source: "local-fallback" });
   }
 });
 
@@ -3872,17 +3930,19 @@ app.put("/api/battles/:id", requireAuth, async (req, res) => {
   if (String(existing.authorId) !== String(req.auth.sub)) {
     return res.status(403).json({ message: "작성자만 수정할 수 있습니다." });
   }
-  const voterState = {
-    leftVoterIds: existing.leftVoterIds,
-    rightVoterIds: existing.rightVoterIds,
-  };
-  Object.assign(existing, payload, voterState, {
-    id: existing.id,
-    authorId: existing.authorId,
-    authorNickname: existing.authorNickname,
-  });
-  await existing.save();
-  return res.json({ match: serializeBattleMatch(existing, req.auth.sub) });
+  const editable = Object.fromEntries([
+    "title", "leftPostId", "rightPostId", "leftColorValue", "rightColorValue",
+    "endsAt", "requiredTitleKey", "leftCustomTitle", "rightCustomTitle",
+    "leftCustomImageUrl", "rightCustomImageUrl",
+  ].map((key) => [key, payload[key]]));
+  // Never write voter arrays from a stale read over a concurrent vote.
+  const updated = await BattleMatch.findOneAndUpdate(
+    { id: req.params.id, authorId: String(req.auth.sub) },
+    { $set: editable },
+    { returnDocument: "after", runValidators: true },
+  ).lean();
+  if (!updated) return res.status(404).json({ message: "픽 쇼츠를 찾을 수 없습니다." });
+  return res.json({ match: serializeBattleMatch(updated, req.auth.sub) });
 });
 
 app.delete("/api/battles/:id", requireAuth, async (req, res) => {
@@ -3896,40 +3956,7 @@ app.delete("/api/battles/:id", requireAuth, async (req, res) => {
   return res.json({ message: "픽 쇼츠를 삭제했습니다." });
 });
 
-app.get("/api/image-proxy", async (req, res) => {
-  const rawUrl = String(req.query.url || "").trim();
-  if (!/^https?:\/\//i.test(rawUrl)) {
-    return res.status(400).send("Invalid image URL");
-  }
-
-  try {
-    const upstream = await fetch(rawUrl, {
-      headers: {
-        "User-Agent":
-          "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/126 Safari/537.36",
-        Accept: "image/avif,image/webp,image/apng,image/svg+xml,image/*,*/*;q=0.8",
-      },
-      signal: AbortSignal.timeout(8000),
-    });
-
-    if (!upstream.ok) {
-      return res.status(502).send("Image upstream error");
-    }
-
-    const contentType = upstream.headers.get("content-type") || "image/jpeg";
-    if (!contentType.toLowerCase().startsWith("image/")) {
-      return res.status(415).send("URL is not an image");
-    }
-
-    const buffer = Buffer.from(await upstream.arrayBuffer());
-    res.setHeader("Content-Type", contentType);
-    res.setHeader("Cache-Control", "public, max-age=86400");
-    res.setHeader("Access-Control-Allow-Origin", "*");
-    return res.send(buffer);
-  } catch (_) {
-    return res.status(502).send("Image proxy failed");
-  }
-});
+app.get("/api/image-proxy", imageProxy());
 
 app.get("/api/posts", async (req, res) => {
   const {

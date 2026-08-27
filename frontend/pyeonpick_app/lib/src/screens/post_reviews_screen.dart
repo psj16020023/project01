@@ -12,6 +12,7 @@ class PostReviewsScreen extends StatefulWidget {
     required this.onAddReview,
     required this.onUpdateReview,
     required this.onDeleteReview,
+    this.scrollController,
   });
 
   final Post post;
@@ -19,6 +20,7 @@ class PostReviewsScreen extends StatefulWidget {
   final Future<Post> Function(PostReview review) onAddReview;
   final Future<Post> Function(PostReview review) onUpdateReview;
   final Future<Post> Function(PostReview review) onDeleteReview;
+  final ScrollController? scrollController;
 
   @override
   State<PostReviewsScreen> createState() => _PostReviewsScreenState();
@@ -26,6 +28,7 @@ class PostReviewsScreen extends StatefulWidget {
 
 class _PostReviewsScreenState extends State<PostReviewsScreen> {
   late Post _post;
+  bool _sortByRating = false;
 
   @override
   void initState() {
@@ -34,16 +37,24 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
   }
 
   Future<void> _writeReview() async {
-    final review = await Navigator.of(context).push<PostReview>(
-      MaterialPageRoute<PostReview>(
-        builder: (context) =>
-            ReviewComposerPage(currentUser: widget.currentUser),
-      ),
+    final review = await showModalBottomSheet<PostReview>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      builder: (context) =>
+          ReviewComposerSheet(currentUser: widget.currentUser),
     );
     if (review == null) return;
-    final updated = await widget.onAddReview(review);
-    if (!mounted) return;
-    setState(() => _post = updated);
+    try {
+      final updated = await widget.onAddReview(review);
+      if (mounted) setState(() => _post = updated);
+    } catch (_) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('후기를 저장하지 못했어요. 다시 시도해 주세요.')),
+        );
+      }
+    }
   }
 
   Future<void> _openReview(PostReview review) async {
@@ -65,209 +76,154 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
     );
   }
 
-  double _average(double Function(PostReview review) value) {
-    if (_post.reviews.isEmpty) return 0;
-    return _post.reviews.fold<double>(0, (sum, item) => sum + value(item)) /
-        _post.reviews.length;
-  }
-
   @override
   Widget build(BuildContext context) {
-    final tagCounts = <String, int>{
-      for (final tag in communityReviewTags) tag: 0,
-    };
-    for (final review in _post.reviews) {
-      for (final tag in review.tags) {
-        if (tagCounts.containsKey(tag)) tagCounts[tag] = tagCounts[tag]! + 1;
-      }
-    }
-    final rankedTags = tagCounts.entries.toList()
-      ..sort((a, b) {
-        final count = b.value.compareTo(a.value);
-        return count != 0
-            ? count
-            : communityReviewTags
-                  .indexOf(a.key)
-                  .compareTo(communityReviewTags.indexOf(b.key));
-      });
-    final rating = _average((review) => review.rating);
-
-    return Scaffold(
-      backgroundColor: const Color(0xFFF7FBFD),
-      appBar: AppBar(
-        backgroundColor: Colors.white,
-        foregroundColor: AppColors.ink,
-        title: const Text(
-          '후기 모아보기',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-      ),
-      floatingActionButton: FloatingActionButton.extended(
-        onPressed: _writeReview,
-        backgroundColor: AppColors.navy,
-        foregroundColor: Colors.white,
-        icon: const Icon(Icons.rate_review_rounded),
-        label: const Text(
-          '후기 쓰기',
-          style: TextStyle(fontWeight: FontWeight.w900),
-        ),
-      ),
-      body: ListView(
-        padding: const EdgeInsets.fromLTRB(18, 18, 18, 110),
-        children: [
-          Text(
-            _post.title,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontSize: 24,
-              fontWeight: FontWeight.w900,
+    final reviews = [..._post.reviews]
+      ..sort(
+        (a, b) => _sortByRating && a.rating != b.rating
+            ? b.rating.compareTo(a.rating)
+            : b.createdAt.compareTo(a.createdAt),
+      );
+    return Material(
+      key: const Key('reviews-bottom-sheet'),
+      color: Colors.white,
+      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      clipBehavior: Clip.antiAlias,
+      child: SafeArea(
+        top: false,
+        child: Column(
+          children: [
+            const SizedBox(height: 8),
+            Container(
+              width: 32,
+              height: 4,
+              decoration: BoxDecoration(
+                color: const Color(0xFFD8DADC),
+                borderRadius: BorderRadius.circular(3),
+              ),
             ),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(26),
-              border: Border.all(color: const Color(0xFFE3EDF2)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
+              child: Row(
+                children: [
+                  Text(
+                    '후기 ${reviews.length}',
+                    style: const TextStyle(
+                      fontSize: 19,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const Spacer(),
+                  IconButton(
+                    onPressed: () => Navigator.of(context).pop(),
+                    tooltip: '닫기',
+                    icon: const Icon(Icons.close_rounded),
+                  ),
+                ],
+              ),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '후기 평균 데이터',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-                const SizedBox(height: 7),
-                Text(
-                  _post.reviews.isEmpty
-                      ? '아직 등록된 후기가 없어요.'
-                      : '후기 ${_post.reviews.length}개 기준',
-                  style: const TextStyle(
-                    color: Color(0xFF768A9B),
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 18),
-                Row(
-                  children: [
-                    Text(
-                      rating == 0 ? '-' : rating.toStringAsFixed(1),
-                      style: const TextStyle(
-                        color: AppColors.ink,
-                        fontSize: 38,
-                        fontWeight: FontWeight.w900,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: Row(
+                children: [
+                  TextButton(
+                    onPressed: () => setState(() => _sortByRating = false),
+                    child: Text(
+                      '최신순',
+                      style: TextStyle(
+                        color: !_sortByRating ? AppColors.ink : AppColors.muted,
+                        fontWeight: !_sortByRating
+                            ? FontWeight.w700
+                            : FontWeight.w400,
                       ),
                     ),
-                    const SizedBox(width: 10),
-                    _Stars(value: rating),
-                  ],
-                ),
-                const SizedBox(height: 22),
-                _TasteBar(
-                  label: '달달',
-                  value: _average((item) => item.sweet.toDouble()),
-                ),
-                _TasteBar(
-                  label: '짭짤',
-                  value: _average((item) => item.salty.toDouble()),
-                ),
-                _TasteBar(
-                  label: '매운',
-                  value: _average((item) => item.spicy.toDouble()),
-                ),
-                _TasteBar(
-                  label: '새콤',
-                  value: _average((item) => item.sour.toDouble()),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 14),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF1F8E7),
-              borderRadius: BorderRadius.circular(26),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '후기 태그 순위',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontSize: 19,
-                    fontWeight: FontWeight.w900,
                   ),
-                ),
-                const SizedBox(height: 14),
-                ...rankedTags.asMap().entries.map(
-                  (entry) => Padding(
-                    padding: const EdgeInsets.only(bottom: 9),
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: 46,
-                          child: Text(
-                            '${entry.key + 1}등',
-                            style: const TextStyle(
-                              color: Color(0xFF668318),
-                              fontWeight: FontWeight.w900,
-                            ),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            entry.value.key,
-                            style: const TextStyle(
-                              color: AppColors.ink,
-                              fontWeight: FontWeight.w800,
-                            ),
-                          ),
-                        ),
-                        Text(
-                          '${entry.value.value}표',
-                          style: const TextStyle(
-                            color: Color(0xFF718394),
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                      ],
+                  TextButton(
+                    onPressed: () => setState(() => _sortByRating = true),
+                    child: Text(
+                      '평점순',
+                      style: TextStyle(
+                        color: _sortByRating ? AppColors.ink : AppColors.muted,
+                        fontWeight: _sortByRating
+                            ? FontWeight.w700
+                            : FontWeight.w400,
+                      ),
                     ),
                   ),
-                ),
-              ],
-            ),
-          ),
-          const SizedBox(height: 20),
-          const Text(
-            '모든 후기',
-            style: TextStyle(
-              color: AppColors.ink,
-              fontSize: 20,
-              fontWeight: FontWeight.w900,
-            ),
-          ),
-          const SizedBox(height: 12),
-          if (_post.reviews.isEmpty)
-            const Text(
-              '첫 번째 후기를 남겨보세요.',
-              style: TextStyle(
-                color: Color(0xFF7D90A0),
-                fontWeight: FontWeight.w700,
+                ],
               ),
-            )
-          else
-            ..._post.reviews.reversed.map(
-              (review) =>
-                  _ReviewCard(review: review, onTap: () => _openReview(review)),
             ),
-        ],
+            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+            Expanded(
+              child: ListView(
+                controller: widget.scrollController,
+                padding: const EdgeInsets.fromLTRB(18, 18, 14, 20),
+                children: reviews.isEmpty
+                    ? const [
+                        Padding(
+                          padding: EdgeInsets.only(top: 48),
+                          child: Center(
+                            child: Text(
+                              '첫 후기를 남겨보세요.',
+                              style: TextStyle(color: AppColors.muted),
+                            ),
+                          ),
+                        ),
+                      ]
+                    : reviews
+                          .map(
+                            (review) => _ReviewCard(
+                              review: review,
+                              onTap: () => _openReview(review),
+                            ),
+                          )
+                          .toList(),
+              ),
+            ),
+            const Divider(height: 1, color: Color(0xFFEEEEEE)),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+              child: Row(
+                children: [
+                  CircleAvatar(
+                    radius: 17,
+                    backgroundColor: const Color(0xFFF0F1F2),
+                    child: Text(
+                      widget.currentUser.nickname.isEmpty
+                          ? '?'
+                          : widget.currentUser.nickname.characters.first,
+                      style: const TextStyle(
+                        color: AppColors.muted,
+                        fontSize: 13,
+                      ),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: TextField(
+                      key: const Key('review-compose-input'),
+                      readOnly: true,
+                      onTap: _writeReview,
+                      decoration: const InputDecoration(
+                        hintText: '후기 남기기...',
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        isDense: true,
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _writeReview,
+                    tooltip: '후기 쓰기',
+                    icon: const Icon(Icons.edit_outlined, size: 21),
+                  ),
+                ],
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -646,87 +602,105 @@ class _TasteBar extends StatelessWidget {
 
 class _ReviewCard extends StatelessWidget {
   const _ReviewCard({required this.review, required this.onTap});
-
   final PostReview review;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: onTap,
-      borderRadius: BorderRadius.circular(22),
-      child: Container(
-        margin: const EdgeInsets.only(bottom: 12),
-        padding: const EdgeInsets.all(17),
-        decoration: BoxDecoration(
-          color: Colors.white,
-          borderRadius: BorderRadius.circular(22),
-          border: Border.all(color: const Color(0xFFE5EDF2)),
-        ),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Row(
+    final date = review.createdAt.toLocal();
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 24),
+      child: Row(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          CircleAvatar(
+            radius: 18,
+            backgroundColor: const Color(0xFFF0F1F2),
+            child: Text(
+              review.authorNickname.isEmpty
+                  ? '?'
+                  : review.authorNickname.characters.first,
+              style: const TextStyle(color: AppColors.muted, fontSize: 14),
+            ),
+          ),
+          const SizedBox(width: 12),
+          Expanded(
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                Expanded(
-                  child: Text(
-                    review.authorNickname,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w900,
-                    ),
+                Text(
+                  '@${review.authorNickname} · ${date.month}.${date.day}',
+                  style: const TextStyle(fontSize: 12, color: AppColors.muted),
+                ),
+                const SizedBox(height: 6),
+                Text(
+                  review.text,
+                  style: const TextStyle(
+                    fontSize: 14,
+                    height: 1.5,
+                    color: AppColors.ink,
                   ),
                 ),
-                _Stars(value: review.rating),
+                const SizedBox(height: 8),
+                Row(
+                  children: [
+                    const Icon(
+                      Icons.star_rounded,
+                      size: 14,
+                      color: Color(0xFF8A9298),
+                    ),
+                    const SizedBox(width: 3),
+                    Text(
+                      review.rating.toStringAsFixed(1),
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                    if (review.tags.isNotEmpty) ...[
+                      const SizedBox(width: 10),
+                      Expanded(
+                        child: Text(
+                          review.tags.join(' · '),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            fontSize: 12,
+                            color: AppColors.muted,
+                          ),
+                        ),
+                      ),
+                    ],
+                  ],
+                ),
+                if (review.caution.isNotEmpty)
+                  Padding(
+                    padding: const EdgeInsets.only(top: 6),
+                    child: Text(
+                      review.caution,
+                      style: const TextStyle(
+                        fontSize: 12,
+                        color: AppColors.muted,
+                      ),
+                    ),
+                  ),
               ],
             ),
-            const SizedBox(height: 10),
-            Text(
-              review.text,
-              style: const TextStyle(
-                color: AppColors.ink,
-                height: 1.5,
-                fontWeight: FontWeight.w600,
+          ),
+          SizedBox(
+            width: 32,
+            child: IconButton(
+              onPressed: onTap,
+              tooltip: '후기 상세',
+              padding: EdgeInsets.zero,
+              icon: const Icon(
+                Icons.more_vert_rounded,
+                size: 19,
+                color: AppColors.muted,
               ),
             ),
-            if (review.tags.isNotEmpty) ...[
-              const SizedBox(height: 10),
-              Wrap(
-                spacing: 6,
-                runSpacing: 6,
-                children: review.tags
-                    .map(
-                      (tag) => Chip(
-                        label: Text(tag),
-                        visualDensity: VisualDensity.compact,
-                      ),
-                    )
-                    .toList(),
-              ),
-            ],
-            if (review.caution.isNotEmpty) ...[
-              const SizedBox(height: 8),
-              Text(
-                '주의: ${review.caution}',
-                style: const TextStyle(
-                  color: Color(0xFFD0614E),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ],
-            const SizedBox(height: 8),
-            const Align(
-              alignment: Alignment.centerRight,
-              child: Text(
-                '세부사항 보기 ›',
-                style: TextStyle(
-                  color: AppColors.navy,
-                  fontWeight: FontWeight.w900,
-                ),
-              ),
-            ),
-          ],
-        ),
+          ),
+        ],
       ),
     );
   }

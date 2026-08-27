@@ -7,7 +7,7 @@ import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
-import '../data/mock_combination_battle.dart';
+import '../core/image_url.dart';
 import '../models/combination_battle.dart';
 import '../models/post.dart';
 import '../models/pyeon_user.dart';
@@ -17,7 +17,7 @@ import '../services/battle_state_store.dart';
 import '../widgets/cu_product_badges.dart';
 
 const _battleInk = Color(0xFF203447);
-const _battleCanvas = Color(0xFFF6F8FC);
+const _battleCanvas = Colors.white;
 const _battleLine = Color(0xFFDCE6F0);
 const _battleSubtle = Color(0xFF72869B);
 
@@ -36,12 +36,7 @@ bool _isCombinationPost(Post post) {
 }
 
 String _battleDisplayImageUrl(String imageUrl) {
-  final raw = imageUrl.trim();
-  if (raw.isEmpty || raw.startsWith('data:')) return raw;
-  if (kIsWeb && raw.startsWith(RegExp(r'https?://'))) {
-    return '${Uri.base.origin}/api/image-proxy?url=${Uri.encodeComponent(raw)}';
-  }
-  return raw;
+  return displayImageUrl(imageUrl);
 }
 
 enum _BattleCreateSourceMode { community, custom }
@@ -113,6 +108,11 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   Timer? _expiryTimer;
   List<Post> _allPosts = <Post>[];
   bool _loadingAllPosts = false;
+  bool _loadingBattles = true;
+  bool _battleLoadFailed = false;
+  bool _refreshingBattles = false;
+  String? _pendingVoteId;
+  int _battleRevision = 0;
   Map<String, int> _shuffleRanks = const <String, int>{};
   final double _leftHue = 355;
   final double _rightHue = 218;
@@ -132,6 +132,9 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
   void didUpdateWidget(covariant CombinationBattleScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.currentUser.id != widget.currentUser.id) {
+      _battleRevision++;
+      _pendingVoteId = null;
+      _state = const CombinationBattleState();
       _loadSharedBattleState();
     }
   }
@@ -143,54 +146,54 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     super.dispose();
   }
 
-  CombinationBattleState _initialState() {
-    if (widget.currentUser.battleState.matches.isNotEmpty) {
-      return widget.currentUser.battleState;
-    }
-    return mockCombinationBattleState(_sourcePosts, now: DateTime.now());
-  }
+  CombinationBattleState _initialState() => const CombinationBattleState();
 
   Future<void> _loadSharedBattleState() async {
+    final userId = widget.currentUser.id;
+    setState(() {
+      _loadingBattles = true;
+      _battleLoadFailed = false;
+    });
     try {
-      final cached = await BattleStateStore.load(
-        fallback: widget.currentUser.battleState,
-      );
       final global = await widget.repository.fetchBattleState();
-      final matches = global.matches.isNotEmpty
-          ? global.matches
-          : cached.matches.isNotEmpty
-          ? cached.matches
-          : mockCombinationBattleState(
-              _sourcePosts,
-              now: DateTime.now(),
-            ).matches;
-      if (!mounted) return;
-      final loaded = CombinationBattleState(
-        matches: matches,
-        notifiedExpiredMatchIds:
-            widget.currentUser.battleState.notifiedExpiredMatchIds,
-        todayEndedSummarySeenMatchIds:
-            widget.currentUser.battleState.todayEndedSummarySeenMatchIds,
-      );
+      if (!mounted || widget.currentUser.id != userId) return;
       setState(() {
-        _state = loaded;
-        if (_shuffleRanks.isEmpty && loaded.matches.isNotEmpty) {
-          _shuffleRanks = _buildShuffleRanks(loaded.matches);
-        }
+        _state = global.copyWith(
+          notifiedExpiredMatchIds:
+              widget.currentUser.battleState.notifiedExpiredMatchIds,
+          todayEndedSummarySeenMatchIds:
+              widget.currentUser.battleState.todayEndedSummarySeenMatchIds,
+        );
+        _shuffleRanks = _buildShuffleRanks(global.matches);
+        _loadingBattles = false;
       });
     } catch (_) {
-      // Keep preview data when local persistence is unavailable.
+      if (mounted && widget.currentUser.id == userId) {
+        setState(() {
+          _loadingBattles = false;
+          _battleLoadFailed = true;
+        });
+      }
     }
   }
 
   Future<void> _refreshGlobalBattleState() async {
+    if (_pendingVoteId != null || _loadingBattles || _refreshingBattles) return;
+    final revision = _battleRevision;
+    final userId = widget.currentUser.id;
+    _refreshingBattles = true;
     try {
       final global = await widget.repository.fetchBattleState();
-      if (!mounted) return;
+      if (!mounted ||
+          revision != _battleRevision ||
+          userId != widget.currentUser.id) {
+        return;
+      }
       setState(() => _state = _state.copyWith(matches: global.matches));
-      unawaited(_saveSharedBattleState(_state));
     } catch (_) {
-      if (mounted) setState(() {});
+      // Keep the last confirmed server state if a refresh fails.
+    } finally {
+      _refreshingBattles = false;
     }
   }
 
@@ -285,8 +288,11 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
 
   List<BattleMatchEntry> _filteredMatches() {
     return _state.matches.where((match) {
-      if (match.isExpired) return false;
-      if (match.voteSideOf(widget.currentUser.id) != null) return false;
+      if (match.isExpired && match.id != _pendingVoteId) return false;
+      if (match.voteSideOf(widget.currentUser.id) != null &&
+          match.id != _pendingVoteId) {
+        return false;
+      }
       return true;
     }).toList();
   }
@@ -305,9 +311,27 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
       return match;
     }
     try {
-      return await widget.repository.castBattleVote(match.id, side, userId);
+      _pendingVoteId = match.id;
+      _battleRevision++;
+      final updated = await widget.repository.castBattleVote(
+        match.id,
+        side,
+        userId,
+      );
+      if (mounted && widget.currentUser.id == userId) {
+        final matches = _state.matches
+            .map((item) => item.id == updated.id ? updated : item)
+            .toList();
+        unawaited(
+          _persist(_state.copyWith(matches: matches)).catchError((Object _) {
+            // The vote is already saved in MongoDB; local profile caching may retry later.
+          }),
+        );
+      }
+      return updated;
     } catch (_) {
-      _toast('투표를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
+      _pendingVoteId = null;
+      if (mounted) _toast('투표를 저장하지 못했어요. 잠시 후 다시 시도해 주세요.');
       rethrow;
     }
   }
@@ -322,6 +346,14 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
         .map((item) => item.id == match.id ? match : item)
         .toList();
     await _persist(_state.copyWith(matches: matches));
+  }
+
+  Future<void> _finishVote(BattleMatchEntry match) async {
+    if (!mounted) return;
+    setState(() {
+      _pendingVoteId = null;
+      _battleRevision++;
+    });
   }
 
   Future<void> _deleteMatch(BattleMatchEntry match) async {
@@ -677,31 +709,30 @@ class _CombinationBattleScreenState extends State<CombinationBattleScreen> {
     return HSVColor.fromAHSV(1, hue, 0.82, 0.82).toColor();
   }
 
-  int get _todayWinCount {
-    final userId = widget.currentUser.id;
-    return _state.matches.where((match) {
-      if (!_hasEndedToday(match.endsAt)) return false;
-      final votedSide = match.voteSideOf(userId);
-      if (votedSide == null) return false;
-      final winner = match.winnerSide;
-      if (winner == null) return false;
-      return winner == votedSide;
-    }).length;
-  }
-
   @override
   Widget build(BuildContext context) {
+    if (_loadingBattles) {
+      return const Center(child: CircularProgressIndicator(strokeWidth: 2));
+    }
+    if (_battleLoadFailed) {
+      return Center(
+        child: TextButton.icon(
+          onPressed: _loadSharedBattleState,
+          icon: const Icon(Icons.refresh_rounded),
+          label: const Text('투표 다시 불러오기'),
+        ),
+      );
+    }
     return DecoratedBox(
       decoration: const BoxDecoration(color: _battleCanvas),
       child: _BattleFeedPage(
         matches: _sortedMatches,
         currentUserId: widget.currentUser.id,
-        todayWinCount: _todayWinCount,
         onShuffle: _shuffleFeed,
         onOpenCreate: _openCreatePage,
         resolveSide: _resolvedSide,
         onVote: _vote,
-        onVoteFinished: _replaceLocalMatch,
+        onVoteFinished: _finishVote,
         onOpenPost: widget.onOpenPost,
         onOpenAuthor: widget.onOpenAuthor,
         onOpenDetail: _openDetail,
@@ -714,7 +745,6 @@ class _BattleFeedPage extends StatefulWidget {
   const _BattleFeedPage({
     required this.matches,
     required this.currentUserId,
-    required this.todayWinCount,
     required this.onShuffle,
     required this.onOpenCreate,
     required this.resolveSide,
@@ -727,7 +757,6 @@ class _BattleFeedPage extends StatefulWidget {
 
   final List<BattleMatchEntry> matches;
   final String currentUserId;
-  final int todayWinCount;
   final VoidCallback onShuffle;
   final VoidCallback onOpenCreate;
   final _BattleResolvedSide Function(BattleMatchEntry match, bool isLeft)
@@ -807,7 +836,11 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
     });
     await Future<void>.delayed(const Duration(seconds: 1));
     if (!mounted) return updated;
-    await widget.onVoteFinished(updated);
+    try {
+      await widget.onVoteFinished(updated);
+    } finally {
+      if (mounted) setState(() => _processingVote = false);
+    }
     if (!mounted) return updated;
     setState(() {
       _revealedMatchId = null;
@@ -820,57 +853,35 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
   @override
   Widget build(BuildContext context) {
     return Padding(
-      padding: const EdgeInsets.fromLTRB(12, 12, 12, 10),
+      padding: const EdgeInsets.fromLTRB(8, 0, 8, 4),
       child: Column(
         children: [
           Row(
             children: [
-              const Expanded(
-                child: Text(
-                  '픽 쇼츠',
-                  style: TextStyle(
-                    color: _battleInk,
-                    fontSize: 24,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ),
-              if (widget.todayWinCount > 0) ...[
-                const Text(
-                  '오늘',
-                  style: TextStyle(
-                    color: _battleSubtle,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  ' ${widget.todayWinCount}승',
-                  style: const TextStyle(
-                    color: _battleInk,
-                    fontSize: 13,
-                    fontWeight: FontWeight.w900,
-                  ),
-                ),
-              ],
-              const SizedBox(width: 10),
+              const Spacer(),
               Tooltip(
                 message: '새로 섞기',
                 child: IconButton(
-                  onPressed: () {
-                    widget.onShuffle();
-                    if (_pageController.hasClients) {
-                      _pageController.jumpToPage(0);
-                    }
-                    setState(() => _pageIndex = 0);
-                  },
+                  onPressed: _processingVote
+                      ? null
+                      : () {
+                          widget.onShuffle();
+                          if (_pageController.hasClients) {
+                            _pageController.jumpToPage(0);
+                          }
+                          setState(() => _pageIndex = 0);
+                        },
                   icon: const Icon(Icons.shuffle_rounded),
                   color: _battleInk,
                 ),
               ),
               const SizedBox(width: 4),
-              FilledButton.icon(
+              FilledButton.tonalIcon(
                 onPressed: widget.onOpenCreate,
+                style: FilledButton.styleFrom(
+                  backgroundColor: const Color(0xFFEEF3F6),
+                  foregroundColor: _battleInk,
+                ),
                 icon: const Icon(Icons.add_rounded, size: 18),
                 label: const Text(
                   '올리기',
@@ -884,7 +895,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
             child: widget.matches.isEmpty
                 ? const Center(
                     child: Text(
-                      '아직 올라온 픽 쇼츠가 없어요.\n첫 번째 대결을 만들어보세요.',
+                      '새로운 투표를 기다리고 있어요.',
                       textAlign: TextAlign.center,
                       style: TextStyle(
                         color: _battleSubtle,
@@ -2054,7 +2065,6 @@ class _BattleVoteArena extends StatelessWidget {
     required this.onVote,
     this.height = 204,
   });
-
   final BattleMatchEntry match;
   final String matchTitle;
   final _BattleResolvedSide leftSide;
@@ -2074,234 +2084,168 @@ class _BattleVoteArena extends StatelessWidget {
   Widget build(BuildContext context) {
     final content = LayoutBuilder(
       builder: (context, constraints) {
-        const vsSize = 62.0;
-        final arenaHeight = constraints.maxHeight;
-        final seamX = constraints.maxWidth / 2;
-        final sideWidth = constraints.maxWidth / 2;
+        final vertical = height == null && constraints.maxWidth < 680;
+        Widget option(
+          _BattleResolvedSide side,
+          BattleVoteSide choice,
+          int votes,
+        ) {
+          return Expanded(
+            child: _BattleVoteSideCard(
+              side: side,
+              choice: choice,
+              votes: votes,
+              active: selectedSide == choice,
+              disabled: match.isExpired || selectedSide != null,
+              showVotes: showVoteStats,
+              leading: match.winnerSide == choice,
+              tied: match.winnerSide == null,
+              onTap: () => onVote(match, choice),
+            ),
+          );
+        }
 
-        return Stack(
+        return Column(
           children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              bottom: 0,
-              width: sideWidth,
-              child: _BattleVoteSideCard(
-                side: leftSide,
-                votes: match.leftVotes,
-                color: leftColor,
-                darkColor: _darken(leftColor),
-                active: selectedSide == BattleVoteSide.left,
-                disabled: match.isExpired || selectedSide != null,
-                fullBleed: height == null,
-                showVotes: showVoteStats,
-                alignLeft: true,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.circular(20),
-                  bottomLeft: Radius.circular(20),
-                  topRight: Radius.zero,
-                  bottomRight: Radius.zero,
-                ),
-                onTap: () => onVote(match, BattleVoteSide.left),
-              ),
-            ),
-            Positioned(
-              right: 0,
-              top: 0,
-              bottom: 0,
-              width: sideWidth,
-              child: _BattleVoteSideCard(
-                side: rightSide,
-                votes: match.rightVotes,
-                color: rightColor,
-                darkColor: _darken(rightColor),
-                active: selectedSide == BattleVoteSide.right,
-                disabled: match.isExpired || selectedSide != null,
-                fullBleed: height == null,
-                showVotes: showVoteStats,
-                alignLeft: false,
-                borderRadius: const BorderRadius.only(
-                  topLeft: Radius.zero,
-                  bottomLeft: Radius.zero,
-                  topRight: Radius.circular(20),
-                  bottomRight: Radius.circular(20),
-                ),
-                onTap: () => onVote(match, BattleVoteSide.right),
-              ),
-            ),
-            Positioned(
-              left: seamX - (vsSize / 2),
-              top: (arenaHeight - vsSize) / 2,
-              child: Container(
-                width: vsSize,
-                height: vsSize,
-                alignment: Alignment.center,
-                decoration: BoxDecoration(
-                  color: Colors.white.withAlpha(238),
-                  shape: BoxShape.circle,
-                  boxShadow: [
-                    BoxShadow(
-                      color: Colors.black.withAlpha(14),
-                      blurRadius: 12,
-                      offset: const Offset(0, 5),
-                    ),
-                  ],
-                ),
-                child: const Text(
-                  'VS',
-                  style: TextStyle(
-                    color: Color(0xFF8D99A7),
-                    fontSize: 20,
-                    fontWeight: FontWeight.w900,
-                  ),
+            Padding(
+              padding: const EdgeInsets.fromLTRB(8, 2, 8, 8),
+              child: Text(
+                matchTitle,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 15,
+                  fontWeight: FontWeight.w600,
+                  color: _battleInk,
                 ),
               ),
             ),
-            Positioned(
-              left: 10,
-              right: 10,
-              top: 10,
-              child: IgnorePointer(
-                child: Container(
-                  padding: const EdgeInsets.fromLTRB(12, 9, 12, 10),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(238),
-                    borderRadius: BorderRadius.circular(16),
-                    boxShadow: [
-                      BoxShadow(
-                        color: Colors.black.withAlpha(16),
-                        blurRadius: 14,
-                        offset: const Offset(0, 6),
-                      ),
-                    ],
-                  ),
-                  child: Text(
-                    matchTitle,
-                    maxLines: 2,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
-                    style: const TextStyle(
-                      color: _battleInk,
-                      fontSize: 15,
-                      fontWeight: FontWeight.w900,
-                      height: 1.18,
-                      letterSpacing: -0.3,
-                    ),
-                  ),
+            Expanded(
+              child: Flex(
+                key: Key(
+                  vertical
+                      ? 'battle-vertical-options'
+                      : 'battle-horizontal-options',
                 ),
+                direction: vertical ? Axis.vertical : Axis.horizontal,
+                children: [
+                  option(leftSide, BattleVoteSide.left, match.leftVotes),
+                  SizedBox(width: vertical ? 0 : 8, height: vertical ? 8 : 0),
+                  option(rightSide, BattleVoteSide.right, match.rightVotes),
+                ],
               ),
             ),
           ],
         );
       },
     );
-    if (height == null) return content;
-    return SizedBox(height: height, child: content);
+    return height == null ? content : SizedBox(height: height, child: content);
   }
 }
 
 class _BattleVoteSideCard extends StatelessWidget {
   const _BattleVoteSideCard({
     required this.side,
+    required this.choice,
     required this.votes,
-    required this.color,
-    required this.darkColor,
     required this.active,
     required this.disabled,
-    required this.fullBleed,
     required this.showVotes,
-    required this.alignLeft,
-    required this.borderRadius,
+    required this.leading,
+    required this.tied,
     required this.onTap,
   });
-
   final _BattleResolvedSide side;
+  final BattleVoteSide choice;
   final int votes;
-  final Color color;
-  final Color darkColor;
-  final bool active;
-  final bool disabled;
-  final bool fullBleed;
-  final bool showVotes;
-  final bool alignLeft;
-  final BorderRadius borderRadius;
+  final bool active, disabled, showVotes, leading, tied;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: disabled ? null : onTap,
-      borderRadius: borderRadius,
-      child: AnimatedContainer(
-        duration: const Duration(milliseconds: 220),
-        padding: EdgeInsets.all(fullBleed ? 0 : 5),
-        decoration: BoxDecoration(
-          color: fullBleed ? Colors.transparent : Colors.white,
-          borderRadius: borderRadius,
-          border: fullBleed ? null : Border.all(color: const Color(0xFFE5E9ED)),
-          boxShadow: fullBleed
-              ? const []
-              : [
-                  BoxShadow(
-                    color: Colors.black.withAlpha(active ? 24 : 12),
-                    blurRadius: active ? 20 : 14,
-                    offset: const Offset(0, 10),
+    return Semantics(
+      button: true,
+      selected: active,
+      enabled: !disabled,
+      label: '${side.title} 선택',
+      child: Material(
+        color: const Color(0xFFFAFAFA),
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          key: Key('battle-vote-${choice.name}'),
+          onTap: disabled ? null : onTap,
+          child: Column(
+            children: [
+              Expanded(
+                child: SizedBox(
+                  width: double.infinity,
+                  child: _BattleImageFill(
+                    imageUrl: side.imageUrl,
+                    fallbackImageUrls: side.fallbackImageUrls,
+                    fallbackColor: const Color(0xFFF6F7F8),
+                    iconColor: const Color(0xFFA5ADB4),
                   ),
-                ],
-        ),
-        child: fullBleed
-            ? _BattleVoteHero(
-                imageUrl: side.imageUrl,
-                fallbackImageUrls: side.fallbackImageUrls,
-                title: side.title,
-                votes: _formatVotes(votes),
-                color: color,
-                showVotes: showVotes,
-                alignLeft: alignLeft,
-                borderRadius: borderRadius,
-              )
-            : Column(
-                children: [
-                  Expanded(
-                    child: _BattleVoteHero(
-                      imageUrl: side.imageUrl,
-                      fallbackImageUrls: side.fallbackImageUrls,
-                      votes: _formatVotes(votes),
-                      color: color,
-                      showVotes: true,
-                      alignLeft: alignLeft,
-                      borderRadius: BorderRadius.only(
-                        topLeft: borderRadius.topLeft,
-                        topRight: borderRadius.topRight,
-                        bottomLeft: const Radius.circular(10),
-                        bottomRight: const Radius.circular(10),
-                      ),
+                ),
+              ),
+              Container(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 9,
+                ),
+                color: active ? const Color(0xFFEEF4F7) : Colors.white,
+                child: Row(
+                  children: [
+                    Icon(
+                      active
+                          ? Icons.check_circle_rounded
+                          : Icons.radio_button_unchecked_rounded,
+                      size: 21,
+                      color: active
+                          ? const Color(0xFF567583)
+                          : const Color(0xFFADB5BC),
                     ),
-                  ),
-                  const SizedBox(height: 6),
-                  SizedBox(
-                    height: 38,
-                    child: Align(
-                      alignment: alignLeft
-                          ? Alignment.centerLeft
-                          : Alignment.centerRight,
+                    const SizedBox(width: 9),
+                    Expanded(
                       child: Text(
                         side.title,
-                        maxLines: 2,
+                        maxLines: 1,
                         overflow: TextOverflow.ellipsis,
-                        textAlign: alignLeft ? TextAlign.left : TextAlign.right,
                         style: const TextStyle(
+                          fontSize: 14,
+                          fontWeight: FontWeight.w500,
                           color: _battleInk,
-                          fontSize: 11.5,
-                          fontWeight: FontWeight.w900,
-                          height: 1.15,
-                          letterSpacing: -0.2,
                         ),
                       ),
                     ),
-                  ),
-                ],
+                    if (showVotes) ...[
+                      const SizedBox(width: 8),
+                      Text(
+                        '${_formatVotes(votes)}표',
+                        key: Key('battle-count-${choice.name}'),
+                        style: const TextStyle(
+                          fontSize: 15,
+                          fontWeight: FontWeight.w700,
+                          color: _battleInk,
+                        ),
+                      ),
+                      if (leading || tied) ...[
+                        const SizedBox(width: 6),
+                        Text(
+                          tied ? '동률' : '더 많이 선택됨',
+                          style: const TextStyle(
+                            fontSize: 10,
+                            color: _battleSubtle,
+                          ),
+                        ),
+                      ],
+                    ],
+                  ],
+                ),
               ),
+            ],
+          ),
+        ),
       ),
     );
   }
@@ -2434,109 +2378,6 @@ class _BattleImageFill extends StatelessWidget {
               fontWeight: FontWeight.w900,
             ),
           ),
-        ],
-      ),
-    );
-  }
-}
-
-class _BattleVoteHero extends StatelessWidget {
-  const _BattleVoteHero({
-    required this.imageUrl,
-    this.fallbackImageUrls = const <String>[],
-    this.title,
-    required this.votes,
-    required this.color,
-    required this.showVotes,
-    required this.alignLeft,
-    required this.borderRadius,
-  });
-
-  final String? imageUrl;
-  final List<String> fallbackImageUrls;
-  final String? title;
-  final String votes;
-  final Color color;
-  final bool showVotes;
-  final bool alignLeft;
-  final BorderRadius borderRadius;
-
-  @override
-  Widget build(BuildContext context) {
-    final textAlign = alignLeft ? TextAlign.left : TextAlign.right;
-
-    return Container(
-      height: double.infinity,
-      width: double.infinity,
-      clipBehavior: Clip.antiAlias,
-      decoration: BoxDecoration(
-        borderRadius: borderRadius,
-        color: const Color(0xFFF0F1F2),
-      ),
-      child: Stack(
-        fit: StackFit.expand,
-        children: [
-          _BattleImageFill(
-            imageUrl: imageUrl,
-            fallbackImageUrls: fallbackImageUrls,
-            fallbackColor: color,
-            iconColor: color,
-          ),
-          if (title != null)
-            Positioned(
-              left: alignLeft ? 14 : 8,
-              right: alignLeft ? 8 : 14,
-              bottom: 14,
-              child: Align(
-                alignment: alignLeft
-                    ? Alignment.centerLeft
-                    : Alignment.centerRight,
-                child: Container(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 10,
-                    vertical: 7,
-                  ),
-                  decoration: BoxDecoration(
-                    color: Colors.white.withAlpha(226),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    title!,
-                    maxLines: 3,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: textAlign,
-                    style: const TextStyle(
-                      color: _battleInk,
-                      fontSize: 14,
-                      fontWeight: FontWeight.w900,
-                      height: 1.2,
-                    ),
-                  ),
-                ),
-              ),
-            ),
-          if (showVotes)
-            Center(
-              child: IgnorePointer(
-                child: Text(
-                  '$votes\n표',
-                  textAlign: TextAlign.center,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 48,
-                    fontWeight: FontWeight.w900,
-                    height: 0.92,
-                    shadows: [
-                      Shadow(
-                        color: Color(0x99000000),
-                        blurRadius: 18,
-                        offset: Offset(0, 4),
-                      ),
-                    ],
-                  ),
-                ),
-              ),
-            ),
         ],
       ),
     );
@@ -2972,6 +2813,10 @@ class _BattleMatchDetailPageState extends State<_BattleMatchDetailPage> {
       rightCustomImageUrl: _previewMatch.rightCustomImageUrl,
       leftVoterIds: _previewMatch.leftVoterIds,
       rightVoterIds: _previewMatch.rightVoterIds,
+      leftVoteCount: _previewMatch.leftVotes,
+      rightVoteCount: _previewMatch.rightVotes,
+      viewerVoteSide: _previewMatch.viewerVoteSide,
+      viewerId: _previewMatch.viewerId,
     );
     final leftSide = _resolvedSide(true);
     final rightSide = _resolvedSide(false);
@@ -3161,15 +3006,6 @@ String _formatBattleRemaining(DateTime endsAt) {
   if (hours >= 1) return '$hours시간';
   final minutes = math.max(1, remaining.inMinutes);
   return '$minutes분';
-}
-
-bool _hasEndedToday(DateTime? endsAt) {
-  if (endsAt == null) return false;
-  final now = DateTime.now();
-  if (endsAt.isAfter(now)) return false;
-  return endsAt.year == now.year &&
-      endsAt.month == now.month &&
-      endsAt.day == now.day;
 }
 
 String _formatVotes(int value) {

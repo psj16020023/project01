@@ -10,11 +10,11 @@ import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../core/app_colors.dart';
 import '../core/app_environment.dart';
+import '../core/image_url.dart';
 import '../data/cu_product_catalog.dart';
 import '../models/app_tab.dart';
 import '../models/bot_conversation.dart';
 import '../models/bot_message.dart';
-import '../models/combination_battle.dart';
 import '../models/post.dart';
 import '../models/post_feature_index.dart';
 import '../models/post_draft.dart';
@@ -22,7 +22,6 @@ import '../models/product_lookup_result.dart';
 import '../models/pyeon_user.dart';
 import '../models/sort_mode.dart';
 import '../repositories/post_repository.dart';
-import '../services/battle_state_store.dart';
 import '../services/bot_budget_rules.dart';
 import '../services/bot_situation_analyzer.dart';
 import '../services/local_account_store.dart';
@@ -147,12 +146,7 @@ String _formatWon(int amount) {
 }
 
 String _displayImageUrl(String imageUrl) {
-  final raw = imageUrl.trim();
-  if (raw.isEmpty || raw.startsWith('data:')) return raw;
-  if (kIsWeb && raw.startsWith(RegExp(r'https?://'))) {
-    return '${Uri.base.origin}/api/image-proxy?url=${Uri.encodeComponent(raw)}';
-  }
-  return raw;
+  return displayImageUrl(imageUrl);
 }
 
 String _contentWithoutBarcodeLines(String content) {
@@ -453,7 +447,7 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       collectionType: HighlightCollectionType.pbProduct,
     ),
     _DiscoveryTopic(
-      label: '다시 보는 조합',
+      label: '재평가',
       caption: '묻혀 있다가 최근 다시 반응이 붙은 조합',
       icon: Icons.replay_circle_filled_rounded,
       color: const Color(0xFF8FA7FF),
@@ -1115,6 +1109,7 @@ class _HomeScreenState extends State<HomeScreen> {
     bool useAgeCalorieGuide,
     int? currentBudget,
   ) async {
+    final userId = widget.currentUser.id;
     final setup = widget.currentUser.botSetup;
     if (setup == null) return const BotTurnResult();
     final previousMessages = List<BotMessage>.from(
@@ -1126,19 +1121,29 @@ class _HomeScreenState extends State<HomeScreen> {
       text: prompt,
       createdAt: DateTime.now(),
     );
-    final userMessageSave = widget.onUserChanged(
-      widget.currentUser.copyWith(
-        botMessages: <BotMessage>[...previousMessages, userMessage],
-      ),
-    );
+    final userMessageSave = widget
+        .onUserChanged(
+          widget.currentUser.copyWith(
+            botMessages: <BotMessage>[...previousMessages, userMessage],
+          ),
+        )
+        .catchError((Object _) {
+          // The complete turn save below retries a failed draft save.
+        });
     if (_botRecommendationPosts.isEmpty) {
       await _loadBotRecommendationPool(reset: true);
+    }
+    if (!mounted || widget.currentUser.id != userId) {
+      return const BotTurnResult();
     }
     final aiSituation = await BotSituationAnalyzer.analyze(
       environment: widget.environment,
       prompt: prompt,
       memoryNotes: widget.currentUser.memoryNotes,
     );
+    if (!mounted || widget.currentUser.id != userId) {
+      return const BotTurnResult();
+    }
     final reply = _buildBotReply(
       prompt,
       setup,
@@ -1146,9 +1151,17 @@ class _HomeScreenState extends State<HomeScreen> {
       useAgeCalorieGuide: useAgeCalorieGuide,
       currentBudget: currentBudget,
     );
+    final conversationalText = await _conversationalBotReply(
+      prompt,
+      previousMessages,
+      reply,
+    );
+    if (!mounted || widget.currentUser.id != userId) {
+      return const BotTurnResult();
+    }
     final assistantMessage = BotMessage(
       role: 'assistant',
-      text: reply.text,
+      text: conversationalText,
       createdAt: DateTime.now(),
       recommendedPostIds: reply.recommendedPostIds,
       resolvedBudget: reply.resolvedBudget,
@@ -1189,9 +1202,11 @@ class _HomeScreenState extends State<HomeScreen> {
     bool useAgeCalorieGuide,
     int? currentBudget,
   ) async {
+    final userId = widget.currentUser.id;
     final setup = widget.currentUser.botSetup;
     if (setup == null) return;
     await _loadBotRecommendationPool();
+    if (!mounted || widget.currentUser.id != userId) return;
 
     String? prompt;
     BotMessage? latestContext;
@@ -1221,6 +1236,7 @@ class _HomeScreenState extends State<HomeScreen> {
       prompt: prompt,
       memoryNotes: widget.currentUser.memoryNotes,
     );
+    if (!mounted || widget.currentUser.id != userId) return;
     final reply = _buildBotReply(
       prompt,
       setup,
@@ -1231,11 +1247,15 @@ class _HomeScreenState extends State<HomeScreen> {
       currentBudget: latestContext?.resolvedBudget ?? currentBudget,
       currentMinimumPrice: latestContext?.minimumPrice,
     );
+    final conversationalText = await _conversationalBotReply(
+      '$prompt\n앞에서 본 후보를 제외하고 다른 조합을 추천해줘.',
+      widget.currentUser.botMessages,
+      reply,
+    );
+    if (!mounted || widget.currentUser.id != userId) return;
     final assistantMessage = BotMessage(
       role: 'assistant',
-      text: reply.recommendedPostIds.isEmpty
-          ? reply.text
-          : '앞에서 본 조합은 빼고 다음 추천을 골랐어.\n\n${reply.text}',
+      text: conversationalText,
       createdAt: DateTime.now(),
       recommendedPostIds: reply.recommendedPostIds,
       resolvedBudget: reply.resolvedBudget,
@@ -1251,6 +1271,24 @@ class _HomeScreenState extends State<HomeScreen> {
         ],
       ),
     );
+  }
+
+  Future<String> _conversationalBotReply(
+    String prompt,
+    List<BotMessage> history,
+    _BotReply reply,
+  ) async {
+    final text = await BotSituationAnalyzer.reply(
+      environment: widget.environment,
+      prompt: prompt,
+      history: history,
+      candidateIds: reply.recommendedPostIds,
+      draft: reply.text,
+      maximumBudget: reply.resolvedBudget,
+      minimumPrice: reply.minimumPrice,
+      pendingClarification: reply.pendingClarification,
+    );
+    return text?.trim().isNotEmpty == true ? text! : reply.text;
   }
 
   Future<void> _resetCurrentConversation() async {
@@ -1870,6 +1908,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   likedPosts,
                   targetCategories.toList(),
                   prompt: recommendationPrompt,
+                  votePreferences: aiSituation?.preferences,
                   useAgeCalorieGuide: useAgeCalorieGuide,
                 ) -
                 _scorePost(
@@ -1878,6 +1917,7 @@ class _HomeScreenState extends State<HomeScreen> {
                   likedPosts,
                   targetCategories.toList(),
                   prompt: recommendationPrompt,
+                  votePreferences: aiSituation?.preferences,
                   useAgeCalorieGuide: useAgeCalorieGuide,
                 ),
           );
@@ -1932,8 +1972,9 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String> targetCategories, {
     required String prompt,
     required bool useAgeCalorieGuide,
+    BotVotePreferences? votePreferences,
   }) {
-    var score = 0;
+    var score = votePreferences?.score(post.categories) ?? 0;
     final normalizedCategories = post.categories
         .map(_normalizeCategory)
         .toSet();
@@ -2605,70 +2646,73 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              Container(height: 3, color: AppColors.skyBlue),
-              Container(
-                width: double.infinity,
-                color: Colors.white,
-                child: Center(
-                  child: ConstrainedBox(
-                    constraints: const BoxConstraints(maxWidth: 1760),
-                    child: Padding(
-                      padding: EdgeInsets.fromLTRB(
-                        desktop ? 34 : 16,
-                        desktop ? 18 : 12,
-                        desktop ? 34 : 12,
-                        desktop ? 14 : 10,
-                      ),
-                      child: Column(
-                        crossAxisAlignment: CrossAxisAlignment.start,
-                        children: [
-                          Row(
-                            crossAxisAlignment: CrossAxisAlignment.center,
-                            children: [
-                              Expanded(
-                                child: Column(
-                                  crossAxisAlignment: CrossAxisAlignment.start,
-                                  children: [
-                                    Text(
-                                      '편pick!',
-                                      style: TextStyle(
-                                        color: AppColors.navy,
-                                        fontWeight: FontWeight.w900,
-                                        fontSize: desktop ? 38 : 22,
-                                        letterSpacing: -0.8,
+              if (_selectedTab != AppTab.battle) ...[
+                Container(height: 1, color: AppColors.line),
+                Container(
+                  width: double.infinity,
+                  color: Colors.white,
+                  child: Center(
+                    child: ConstrainedBox(
+                      constraints: const BoxConstraints(maxWidth: 1760),
+                      child: Padding(
+                        padding: EdgeInsets.fromLTRB(
+                          desktop ? 34 : 16,
+                          desktop ? 18 : 12,
+                          desktop ? 34 : 12,
+                          desktop ? 14 : 10,
+                        ),
+                        child: Column(
+                          crossAxisAlignment: CrossAxisAlignment.start,
+                          children: [
+                            Row(
+                              crossAxisAlignment: CrossAxisAlignment.center,
+                              children: [
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        '편pick!',
+                                        style: TextStyle(
+                                          color: AppColors.navy,
+                                          fontWeight: FontWeight.w900,
+                                          fontSize: desktop ? 38 : 22,
+                                          letterSpacing: -0.8,
+                                        ),
                                       ),
-                                    ),
-                                    const SizedBox(height: 2),
-                                    Text(
-                                      '24H CONVENIENCE PICKS',
-                                      style: TextStyle(
-                                        color: AppColors.skyBlueDeep,
-                                        fontSize: desktop ? 10 : 8.5,
-                                        fontWeight: FontWeight.w900,
-                                        letterSpacing: desktop ? 1.1 : 0.7,
+                                      const SizedBox(height: 2),
+                                      Text(
+                                        '24H CONVENIENCE PICKS',
+                                        style: TextStyle(
+                                          color: AppColors.skyBlueDeep,
+                                          fontSize: desktop ? 10 : 8.5,
+                                          fontWeight: FontWeight.w900,
+                                          letterSpacing: desktop ? 1.1 : 0.7,
+                                        ),
                                       ),
-                                    ),
-                                  ],
+                                    ],
+                                  ),
                                 ),
-                              ),
-                              _UserPill(
-                                user: widget.currentUser,
-                                onTap: _showOwnProfileTab,
-                              ),
-                            ],
-                          ),
-                          SizedBox(height: desktop ? 14 : 8),
-                          FeatureTabs(
-                            selectedTab: _selectedTab,
-                            onChanged: (tab) =>
-                                setState(() => _selectedTab = tab),
-                          ),
-                        ],
+                                _UserPill(
+                                  user: widget.currentUser,
+                                  onTap: _showOwnProfileTab,
+                                ),
+                              ],
+                            ),
+                            SizedBox(height: desktop ? 14 : 8),
+                            FeatureTabs(
+                              selectedTab: _selectedTab,
+                              onChanged: (tab) =>
+                                  setState(() => _selectedTab = tab),
+                            ),
+                          ],
+                        ),
                       ),
                     ),
                   ),
                 ),
-              ),
+              ],
               Expanded(
                 child: Container(
                   color: Colors.white,
@@ -2676,9 +2720,9 @@ class _HomeScreenState extends State<HomeScreen> {
                     builder: (context, constraints) {
                       final maxWidth = switch (_selectedTab) {
                         AppTab.communication => 1680.0,
-                        AppTab.battle => 1760.0,
+                        AppTab.battle => 1100.0,
                         AppTab.bot => 1880.0,
-                        AppTab.profile => 1520.0,
+                        AppTab.profile => 840.0,
                       };
                       return Align(
                         alignment: Alignment.topCenter,
@@ -2696,6 +2740,11 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
+              if (_selectedTab == AppTab.battle)
+                FeatureTabs(
+                  selectedTab: _selectedTab,
+                  onChanged: (tab) => setState(() => _selectedTab = tab),
+                ),
             ],
           ),
         ),
@@ -3387,8 +3436,7 @@ class _DiscoveryTopicShelf extends StatelessWidget {
         final cardWidth = wide ? 224.0 : 172.0;
         final shelfHeight = wide ? 252.0 : 220.0;
         return Container(
-          padding: EdgeInsets.only(bottom: wide ? 30 : 24),
-          margin: EdgeInsets.only(bottom: wide ? 26 : 20),
+          padding: EdgeInsets.only(bottom: expanded ? 12 : 0),
           decoration: const BoxDecoration(
             border: Border(bottom: BorderSide(color: AppColors.divider)),
           ),
@@ -3398,19 +3446,12 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                 onTap: onToggle,
                 borderRadius: BorderRadius.circular(8),
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(vertical: 2),
+                  padding: const EdgeInsets.symmetric(vertical: 12),
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Container(
-                        width: 4,
-                        height: 34,
-                        decoration: BoxDecoration(
-                          color: topic.color,
-                          borderRadius: BorderRadius.circular(999),
-                        ),
-                      ),
-                      const SizedBox(width: 11),
+                      Icon(topic.icon, size: 19, color: AppColors.muted),
+                      const SizedBox(width: 10),
                       Expanded(
                         child: Column(
                           crossAxisAlignment: CrossAxisAlignment.start,
@@ -3419,20 +3460,9 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                               topic.label,
                               style: TextStyle(
                                 color: AppColors.ink,
-                                fontSize: wide ? 19 : 16,
-                                fontWeight: FontWeight.w900,
-                                letterSpacing: -0.4,
-                              ),
-                            ),
-                            const SizedBox(height: 3),
-                            Text(
-                              topic.caption,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: const TextStyle(
-                                color: AppColors.muted,
-                                fontSize: 10.5,
+                                fontSize: wide ? 16 : 14,
                                 fontWeight: FontWeight.w600,
+                                letterSpacing: -0.4,
                               ),
                             ),
                           ],
@@ -3466,10 +3496,10 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                 alignment: Alignment.topCenter,
                 child: expanded
                     ? Padding(
-                        padding: const EdgeInsets.only(top: 16),
+                        padding: const EdgeInsets.only(top: 4),
                         child: topic.posts.isEmpty
                             ? Container(
-                                height: 92,
+                                height: 40,
                                 width: double.infinity,
                                 alignment: Alignment.centerLeft,
                                 child: const Text(
@@ -4039,119 +4069,44 @@ class _ToolbarState extends State<Toolbar> {
 
   @override
   Widget build(BuildContext context) {
-    InputDecoration compactInput(String hint, {IconData? icon}) {
-      return inputDecoration(hint).copyWith(
-        isDense: true,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 12,
-          vertical: 10,
-        ),
-        prefixIcon: icon == null
-            ? null
-            : Icon(icon, size: 18, color: AppColors.muted),
-        prefixIconConstraints: icon == null
-            ? null
-            : const BoxConstraints(minWidth: 36, minHeight: 36),
-      );
-    }
-
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
         Row(
-          crossAxisAlignment: CrossAxisAlignment.center,
           children: [
             Expanded(
               child: TextField(
                 controller: widget.searchController,
-                style: const TextStyle(fontSize: 12),
-                decoration: compactInput(
-                  '조합명, 재료, 맛, 오늘 기분으로 검색',
-                  icon: Icons.search_rounded,
+                decoration: inputDecoration('조합이나 상품 검색').copyWith(
+                  prefixIcon: const Icon(Icons.search_rounded, size: 21),
+                  filled: true,
+                  fillColor: const Color(0xFFF5F6F7),
+                  border: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
+                  enabledBorder: OutlineInputBorder(
+                    borderRadius: BorderRadius.circular(12),
+                    borderSide: BorderSide.none,
+                  ),
                 ),
                 onChanged: (_) => setState(() {}),
                 onSubmitted: (_) => widget.onSearch(),
               ),
             ),
-            const SizedBox(width: 6),
-            SizedBox(
-              width: 38,
-              height: 38,
-              child: IconButton.outlined(
-                onPressed: widget.onScanBarcode,
-                style: IconButton.styleFrom(
-                  foregroundColor: AppColors.navy,
-                  backgroundColor: Colors.white,
-                  side: const BorderSide(color: AppColors.line),
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(38, 38),
-                  fixedSize: const Size(38, 38),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                tooltip: '바코드 스캔',
-                icon: const Icon(Icons.qr_code_scanner_rounded, size: 18),
-              ),
+            IconButton(
+              onPressed: widget.onScanBarcode,
+              tooltip: '바코드 스캔',
+              icon: const Icon(Icons.qr_code_scanner_rounded, size: 22),
             ),
-            const SizedBox(width: 6),
-            SizedBox(
-              width: 38,
-              height: 38,
-              child: IconButton(
-                onPressed: () =>
-                    setState(() => _categoriesVisible = !_categoriesVisible),
-                style: IconButton.styleFrom(
-                  backgroundColor: _categoriesVisible
-                      ? const Color(0xFFEAF7FD)
-                      : Colors.white,
-                  foregroundColor: _categoriesVisible
-                      ? AppColors.skyBlueDeep
-                      : AppColors.muted,
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(38, 38),
-                  fixedSize: const Size(38, 38),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                    side: const BorderSide(color: AppColors.line),
-                  ),
-                ),
-                tooltip: '상세 필터',
-                icon: Icon(
-                  _categoriesVisible ? Icons.tune_rounded : Icons.tune_outlined,
-                  size: 18,
-                ),
-              ),
-            ),
-            const SizedBox(width: 6),
-            SizedBox(
-              width: 38,
-              height: 38,
-              child: IconButton.filled(
-                onPressed: widget.onSearch,
-                style: IconButton.styleFrom(
-                  backgroundColor: AppColors.skyBlue,
-                  foregroundColor: Colors.white,
-                  padding: EdgeInsets.zero,
-                  minimumSize: const Size(38, 38),
-                  fixedSize: const Size(38, 38),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                  visualDensity: VisualDensity.compact,
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                ),
-                tooltip: '검색',
-                icon: const Icon(Icons.search_rounded, size: 18),
-              ),
+            IconButton(
+              onPressed: widget.onSearch,
+              tooltip: '검색',
+              icon: const Icon(Icons.arrow_forward_rounded, size: 22),
             ),
           ],
         ),
-        if (widget.searchController.text.trim().isNotEmpty) ...[
-          const SizedBox(height: 7),
+        if (widget.searchController.text.trim().isNotEmpty)
           _LiveTitleSuggestions(
             suggestions: _matchingTitleSuggestions(
               widget.titleSuggestions,
@@ -4159,164 +4114,150 @@ class _ToolbarState extends State<Toolbar> {
             ),
             onSelected: (title) {
               widget.searchController.text = title;
-              widget.searchController.selection = TextSelection.collapsed(
-                offset: title.length,
-              );
               setState(() {});
               unawaited(widget.onSearch());
             },
           ),
-        ],
-        if (_categoriesVisible) ...[
-          const SizedBox(height: 10),
-          Container(
-            width: double.infinity,
-            padding: const EdgeInsets.fromLTRB(12, 10, 12, 11),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF7FAFC),
-              borderRadius: BorderRadius.circular(14),
-              border: Border.all(color: AppColors.line),
-            ),
-            child: Column(
-              children: [
-                Row(
-                  children: [
-                    const Text(
-                      '취향 필터',
-                      style: TextStyle(
-                        color: AppColors.ink,
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                      ),
-                    ),
-                    const Spacer(),
-                    TextButton.icon(
-                      onPressed: () =>
-                          setState(() => _categoriesVisible = false),
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.muted,
-                        visualDensity: VisualDensity.compact,
-                        padding: const EdgeInsets.symmetric(horizontal: 6),
-                      ),
-                      icon: const Icon(Icons.expand_less_rounded, size: 16),
-                      label: const Text(
-                        '접기',
-                        style: TextStyle(
-                          fontSize: 10,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                    ),
-                  ],
+        Row(
+          children: [
+            TextButton.icon(
+              key: const Key('preference-filter-toggle'),
+              onPressed: () =>
+                  setState(() => _categoriesVisible = !_categoriesVisible),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.ink,
+                minimumSize: const Size(44, 48),
+                padding: const EdgeInsets.only(right: 12),
+              ),
+              icon: const Icon(Icons.tune_rounded, size: 20),
+              label: Text(
+                widget.selectedTags.isEmpty
+                    ? '취향 필터'
+                    : '취향 필터 ${widget.selectedTags.length}',
+                style: const TextStyle(
+                  fontSize: 16,
+                  fontWeight: FontWeight.w600,
                 ),
-                SizedBox(
-                  height: 30,
-                  child: ListView.separated(
-                    scrollDirection: Axis.horizontal,
-                    itemCount: _suggestedSearchCategories.length + 1,
-                    separatorBuilder: (_, _) => const SizedBox(width: 5),
-                    itemBuilder: (context, index) {
-                      final category = index == 0
-                          ? '전체'
-                          : _suggestedSearchCategories[index - 1];
-                      final isAll = index == 0;
-                      final selected = isAll
-                          ? widget.selectedTags.isEmpty
-                          : widget.selectedTags.contains(category);
-                      return InkWell(
-                        borderRadius: BorderRadius.circular(999),
-                        onTap: () => unawaited(
+              ),
+            ),
+            Icon(
+              _categoriesVisible ? Icons.expand_less : Icons.expand_more,
+              size: 20,
+              color: AppColors.muted,
+            ),
+            const Spacer(),
+            IconButton(
+              onPressed: widget.onShuffle,
+              tooltip: '섞기',
+              icon: const Icon(Icons.shuffle_rounded, size: 20),
+            ),
+          ],
+        ),
+        if (_categoriesVisible)
+          Padding(
+            key: const Key('preference-filter-options'),
+            padding: const EdgeInsets.only(bottom: 16),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Wrap(
+                  spacing: 4,
+                  runSpacing: 2,
+                  children: ['전체', ..._suggestedSearchCategories].map((
+                    category,
+                  ) {
+                    final isAll = category == '전체';
+                    final selected = isAll
+                        ? widget.selectedTags.isEmpty
+                        : widget.selectedTags.contains(category);
+                    return Semantics(
+                      selected: selected,
+                      child: TextButton(
+                        onPressed: () => unawaited(
                           widget.onToggleTag(isAll ? '' : category),
                         ),
-                        child: Container(
-                          alignment: Alignment.center,
-                          padding: const EdgeInsets.symmetric(horizontal: 9),
-                          decoration: BoxDecoration(
-                            color: selected
-                                ? const Color(0xFFE4F4FD)
-                                : Colors.white,
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
-                              color: selected
-                                  ? const Color(0xFF93D1F1)
-                                  : AppColors.line,
-                            ),
-                          ),
-                          child: Text(
-                            isAll ? category : '#$category',
-                            style: TextStyle(
-                              color: selected
-                                  ? const Color(0xFF5B7715)
-                                  : AppColors.muted,
-                              fontWeight: FontWeight.w800,
-                              fontSize: 9,
-                            ),
-                          ),
+                        style: TextButton.styleFrom(
+                          minimumSize: const Size(70, 46),
+                          foregroundColor: selected
+                              ? AppColors.ink
+                              : AppColors.muted,
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
                         ),
-                      );
-                    },
-                  ),
+                        child: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (selected) ...[
+                              const Icon(Icons.check_rounded, size: 17),
+                              const SizedBox(width: 4),
+                            ],
+                            Text(
+                              category,
+                              style: TextStyle(
+                                fontSize: 16,
+                                fontWeight: selected
+                                    ? FontWeight.w700
+                                    : FontWeight.w400,
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    );
+                  }).toList(),
                 ),
                 const SizedBox(height: 10),
                 Row(
                   children: [
+                    const Text(
+                      '가격',
+                      style: TextStyle(fontSize: 14, color: AppColors.muted),
+                    ),
+                    const SizedBox(width: 16),
                     Expanded(
                       child: TextField(
                         controller: widget.minFilterController,
                         keyboardType: TextInputType.number,
-                        style: const TextStyle(fontSize: 11),
-                        decoration: compactInput('최소 금액'),
+                        decoration: const InputDecoration(
+                          hintText: '최소',
+                          suffixText: '원',
+                          filled: false,
+                          border: UnderlineInputBorder(),
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: AppColors.line),
+                          ),
+                        ),
                         onSubmitted: (_) => widget.onSearch(),
                       ),
                     ),
                     const Padding(
-                      padding: EdgeInsets.symmetric(horizontal: 8),
-                      child: Text(
-                        '~',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontWeight: FontWeight.w900,
-                        ),
-                      ),
+                      padding: EdgeInsets.symmetric(horizontal: 12),
+                      child: Text('~'),
                     ),
                     Expanded(
                       child: TextField(
                         controller: widget.maxFilterController,
                         keyboardType: TextInputType.number,
-                        style: const TextStyle(fontSize: 11),
-                        decoration: compactInput('최대 금액'),
+                        decoration: const InputDecoration(
+                          hintText: '최대',
+                          suffixText: '원',
+                          filled: false,
+                          border: UnderlineInputBorder(),
+                          enabledBorder: UnderlineInputBorder(
+                            borderSide: BorderSide(color: AppColors.line),
+                          ),
+                        ),
                         onSubmitted: (_) => widget.onSearch(),
                       ),
                     ),
-                    const SizedBox(width: 8),
-                    TextButton.icon(
-                      onPressed: widget.onShuffle,
-                      style: TextButton.styleFrom(
-                        foregroundColor: AppColors.navy,
-                        backgroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(
-                          horizontal: 10,
-                          vertical: 9,
-                        ),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(10),
-                        ),
-                      ),
-                      icon: const Icon(Icons.shuffle_rounded, size: 15),
-                      label: const Text(
-                        '섞기',
-                        style: TextStyle(
-                          fontWeight: FontWeight.w900,
-                          fontSize: 10,
-                        ),
-                      ),
+                    TextButton(
+                      onPressed: widget.onSearch,
+                      child: const Text('적용'),
                     ),
                   ],
                 ),
               ],
             ),
           ),
-        ],
       ],
     );
   }
@@ -5238,13 +5179,17 @@ class _GalleryArrow extends StatelessWidget {
 List<Widget> _buildPostImages(Post post) {
   final widgets = <Widget>[];
   for (final imageData in post.allImageDatas) {
-    widgets.add(
-      Image.memory(
-        base64Decode(imageData),
-        fit: BoxFit.cover,
-        errorBuilder: (_, _, _) => const _ImageErrorPlaceholder(),
-      ),
-    );
+    try {
+      widgets.add(
+        Image.memory(
+          base64Decode(imageData.split(',').last),
+          fit: BoxFit.cover,
+          errorBuilder: (_, _, _) => const _ImageErrorPlaceholder(),
+        ),
+      );
+    } on FormatException {
+      widgets.add(const _ImageErrorPlaceholder());
+    }
   }
   for (final imageUrl in post.allImageUrls) {
     widgets.add(
@@ -5256,7 +5201,7 @@ List<Widget> _buildPostImages(Post post) {
           return Stack(
             fit: StackFit.expand,
             children: [
-              GradientPhoto(title: post.title),
+              const ColoredBox(color: Color(0xFFF2F5F8)),
               const Center(
                 child: CircularProgressIndicator(color: AppColors.skyBlueDeep),
               ),
@@ -6876,36 +6821,7 @@ class _ProfilePageState extends State<ProfilePage> {
   _ProfileViewMode _mode = _ProfileViewMode.overview;
   SortMode _postSortMode = SortMode.latest;
   final ImagePicker _picker = ImagePicker();
-  CombinationBattleState _sharedBattleState = const CombinationBattleState();
   bool _deletingAccount = false;
-
-  @override
-  void initState() {
-    super.initState();
-    _sharedBattleState = widget.currentUser.battleState;
-    _loadSharedBattleState();
-  }
-
-  @override
-  void didUpdateWidget(covariant ProfilePage oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.currentUser.id != widget.currentUser.id) {
-      _sharedBattleState = widget.currentUser.battleState;
-      _loadSharedBattleState();
-    }
-  }
-
-  Future<void> _loadSharedBattleState() async {
-    try {
-      final shared = await BattleStateStore.load(
-        fallback: widget.currentUser.battleState,
-      );
-      if (!mounted) return;
-      setState(() => _sharedBattleState = shared);
-    } catch (_) {
-      // Keep using the current user snapshot when local storage is unavailable.
-    }
-  }
 
   Future<void> _changeProfileImage() async {
     final picked = await _picker.pickImage(
@@ -7058,813 +6974,324 @@ class _ProfilePageState extends State<ProfilePage> {
 
   @override
   Widget build(BuildContext context) {
-    final currentUser = widget.currentUser;
-    final setup = currentUser.botSetup;
-    final likedPosts = _sortPosts(
+    final user = widget.currentUser;
+    final setup = user.botSetup;
+    final liked = _sortPosts(
       widget.posts
-          .where((post) => currentUser.likedPostIds.contains(post.id))
+          .where((post) => user.likedPostIds.contains(post.id))
           .toList(),
     );
-    final likedTasteAverages = _likedTasteAverages(likedPosts);
-    final dislikedPosts = _sortPosts(
+    final saved = _sortPosts(
       widget.posts
-          .where((post) => currentUser.dislikedPostIds.contains(post.id))
+          .where((post) => user.savedPostIds.contains(post.id))
           .toList(),
     );
-    final savedPosts = _sortPosts(
+    final disliked = _sortPosts(
       widget.posts
-          .where((post) => currentUser.savedPostIds.contains(post.id))
+          .where((post) => user.dislikedPostIds.contains(post.id))
           .toList(),
     );
-    final battleMatches = [..._sharedBattleState.matches]
-      ..sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final authoredBattleMatches = battleMatches
-        .where((match) => match.authorId == currentUser.id)
-        .toList();
-    final endedAuthoredBattleMatches = authoredBattleMatches
-        .where((match) => match.isExpired)
-        .toList();
-    final activeAuthoredBattleMatches = authoredBattleMatches
-        .where((match) => !match.isExpired)
-        .toList();
-    final votedBattleMatches = battleMatches
-        .where(
-          (match) =>
-              match.authorId != currentUser.id &&
-              match.voteSideOf(currentUser.id) != null,
-        )
-        .toList();
-    final myPosts = _sortPosts(
-      widget.posts.where((post) => post.authorId == currentUser.id).toList(),
+    final mine = _sortPosts(
+      widget.posts.where((post) => post.authorId == user.id).toList(),
     );
-    final pickedAuthorPosts = widget.posts
-        .where((post) => currentUser.pickedAuthorIds.contains(post.authorId))
-        .fold<Map<String, Post>>(<String, Post>{}, (map, post) {
-          map.putIfAbsent(post.authorId, () => post);
-          return map;
-        })
-        .values
-        .toList();
+    final authors = <String, Post>{
+      for (final post in widget.posts)
+        if (user.pickedAuthorIds.contains(post.authorId)) post.authorId: post,
+    }.values.toList();
+    final averages = _likedTasteAverages(liked);
+    final tabs = [
+      (_ProfileViewMode.overview, '설정'),
+      (_ProfileViewMode.myPosts, '내 글 ${mine.length}'),
+      (_ProfileViewMode.likes, '하트 ${liked.length}'),
+      (_ProfileViewMode.saved, '보관 ${saved.length}'),
+      (_ProfileViewMode.dislikes, '싫어요 ${disliked.length}'),
+      (_ProfileViewMode.picks, '픽 ${authors.length}'),
+    ];
+    final selectedPosts = switch (_mode) {
+      _ProfileViewMode.likes => liked,
+      _ProfileViewMode.saved => saved,
+      _ProfileViewMode.dislikes => disliked,
+      _ProfileViewMode.myPosts => mine,
+      _ => <Post>[],
+    };
     return ListView(
-      padding: const EdgeInsets.all(18),
+      key: const Key('profile-page'),
+      padding: const EdgeInsets.fromLTRB(20, 24, 20, 32),
       children: [
-        Container(
-          padding: const EdgeInsets.all(22),
-          decoration: BoxDecoration(
-            color: Colors.white,
-            borderRadius: BorderRadius.circular(30),
-            boxShadow: [
-              BoxShadow(
-                color: Colors.black.withAlpha(12),
-                blurRadius: 24,
-                offset: const Offset(0, 16),
-              ),
-            ],
-          ),
-          child: Column(
-            children: [
-              GestureDetector(
+        Row(
+          children: [
+            Semantics(
+              button: true,
+              label: '프로필 사진 변경',
+              child: InkWell(
                 onTap: _changeProfileImage,
-                child: Stack(
-                  clipBehavior: Clip.none,
-                  children: [
-                    _UserAvatar(
-                      imageSource: currentUser.profileImageUrl,
-                      radius: 42,
-                    ),
-                    Positioned(
-                      right: -2,
-                      bottom: -2,
-                      child: Container(
-                        padding: const EdgeInsets.all(6),
-                        decoration: BoxDecoration(
-                          color: AppColors.navy,
-                          borderRadius: BorderRadius.circular(999),
-                          border: Border.all(color: Colors.white, width: 2),
-                        ),
-                        child: const Icon(
-                          Icons.edit_rounded,
-                          size: 14,
-                          color: Colors.white,
-                        ),
-                      ),
-                    ),
-                  ],
+                customBorder: const CircleBorder(),
+                child: _UserAvatar(
+                  imageSource: user.profileImageUrl,
+                  radius: 32,
                 ),
               ),
-              const SizedBox(height: 14),
-              Text(
-                currentUser.nickname,
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w900,
-                  fontSize: 22,
-                ),
-              ),
-              const SizedBox(height: 6),
-              Text(
-                '@${currentUser.username}',
-                style: const TextStyle(
-                  color: Color(0xFF8092A3),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 10),
-              Text(
-                '픽한 작성자 ${currentUser.pickedAuthorIds.length} · 나를 픽한 사람 ${currentUser.pickedByCount}',
-                style: const TextStyle(
-                  color: Color(0xFF6F8498),
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-              const SizedBox(height: 14),
-              FilledButton.tonal(
-                onPressed: _openRandomPost,
-                style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFEAF6FF),
-                  foregroundColor: AppColors.navy,
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 18,
-                    vertical: 12,
-                  ),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(999),
-                  ),
-                ),
-                child: const Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.casino_rounded, size: 18),
-                    SizedBox(width: 8),
-                    Text(
-                      '무작위 추천',
-                      style: TextStyle(fontWeight: FontWeight.w900),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        SingleChildScrollView(
-          scrollDirection: Axis.horizontal,
-          child: Row(
-            children: [
-              _ProfileModeChip(
-                label: '개요',
-                active: _mode == _ProfileViewMode.overview,
-                onTap: () => setState(() => _mode = _ProfileViewMode.overview),
-              ),
-              const SizedBox(width: 8),
-              _ProfileModeChip(
-                label: '♥ 하트 ${likedPosts.length}',
-                active: _mode == _ProfileViewMode.likes,
-                onTap: () => setState(() => _mode = _ProfileViewMode.likes),
-              ),
-              const SizedBox(width: 8),
-              _ProfileModeChip(
-                label: '보관함 ${savedPosts.length}',
-                active: _mode == _ProfileViewMode.saved,
-                onTap: () => setState(() => _mode = _ProfileViewMode.saved),
-              ),
-              const SizedBox(width: 8),
-              _ProfileModeChip(
-                label: '👎 싫어요 ${dislikedPosts.length}',
-                active: _mode == _ProfileViewMode.dislikes,
-                onTap: () => setState(() => _mode = _ProfileViewMode.dislikes),
-              ),
-              const SizedBox(width: 8),
-              _ProfileModeChip(
-                label: '내 게시물 ${myPosts.length}',
-                active: _mode == _ProfileViewMode.myPosts,
-                onTap: () => setState(() => _mode = _ProfileViewMode.myPosts),
-              ),
-              const SizedBox(width: 8),
-              _ProfileModeChip(
-                label: '픽 ${currentUser.pickedAuthorIds.length}',
-                active: _mode == _ProfileViewMode.picks,
-                onTap: () => setState(() => _mode = _ProfileViewMode.picks),
-              ),
-              const SizedBox(width: 8),
-              _ProfileModeChip(
-                label:
-                    '픽 쇼츠 ${authoredBattleMatches.length + votedBattleMatches.length}',
-                active: _mode == _ProfileViewMode.votes,
-                onTap: () => setState(() => _mode = _ProfileViewMode.votes),
-              ),
-            ],
-          ),
-        ),
-        const SizedBox(height: 16),
-        if (_mode == _ProfileViewMode.overview && setup != null)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9FCFE),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE2EDF4)),
             ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '편봇 설정',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                Text(
-                  '나이: 만 ${setup.age}세',
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                Text(
-                  '성별: ${setup.gender}',
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                if (setup.mealCalorieRange case final range?)
+            const SizedBox(width: 16),
+            Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
                   Text(
-                    '한 끼 참고 칼로리: ${range.label}',
+                    user.nickname,
                     style: const TextStyle(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
                       color: AppColors.ink,
-                      fontWeight: FontWeight.w700,
                     ),
                   ),
-                Text(
-                  '맛 취향: ${setup.tasteRatings.entries.map((entry) => '${entry.key} ${entry.value}').join(' · ')}',
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-                Text(
-                  '추천 우선순위: ${setup.priorityValues.asMap().entries.map((entry) => '${entry.key + 1}위 ${entry.value}').join(' · ')}',
-                  style: const TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w700,
-                  ),
-                ),
-              ],
-            ),
-          ),
-        if (_mode == _ProfileViewMode.overview &&
-            likedTasteAverages != null) ...[
-          const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '내가 하트 누른 게시글 기준 취향 평균',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 8),
-                const Text(
-                  '좋아요 누른 게시글들의 평균 맛 성향이에요.',
-                  style: TextStyle(
-                    color: Color(0xFF73889B),
-                    fontWeight: FontWeight.w600,
-                    height: 1.5,
-                  ),
-                ),
-                const SizedBox(height: 14),
-                _ReadOnlyTasteAverages(averages: likedTasteAverages),
-              ],
-            ),
-          ),
-        ],
-        if (_mode == _ProfileViewMode.overview) ...[
-          if (setup != null) const SizedBox(height: 16),
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: const Color(0xFFF9FCFE),
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE2EDF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '프로필 공개 설정',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                _VisibilitySwitchRow(
-                  label: '프로필 전체 공개',
-                  value: currentUser.profilePublic,
-                  onChanged: (value) => widget.onToggleProfilePublic(value),
-                ),
-                _VisibilitySwitchRow(
-                  label: '아이디 공개',
-                  value: currentUser.profileVisibility.username,
-                  onChanged: (value) => widget.onUserChanged(
-                    currentUser.copyWith(
-                      profileVisibility: currentUser.profileVisibility.copyWith(
-                        username: value,
-                      ),
+                  const SizedBox(height: 4),
+                  Text(
+                    '@${user.username}',
+                    style: const TextStyle(
+                      color: AppColors.muted,
+                      fontSize: 13,
                     ),
                   ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '좋아요 공개',
-                  value: currentUser.profileVisibility.likes,
-                  onChanged: (value) => widget.onUserChanged(
-                    currentUser.copyWith(
-                      profileVisibility: currentUser.profileVisibility.copyWith(
-                        likes: value,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '싫어요 공개',
-                  value: currentUser.profileVisibility.dislikes,
-                  onChanged: (value) => widget.onUserChanged(
-                    currentUser.copyWith(
-                      profileVisibility: currentUser.profileVisibility.copyWith(
-                        dislikes: value,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '보관함 공개',
-                  value: currentUser.profileVisibility.saved,
-                  onChanged: (value) => widget.onUserChanged(
-                    currentUser.copyWith(
-                      profileVisibility: currentUser.profileVisibility.copyWith(
-                        saved: value,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '내 게시물 공개',
-                  value: currentUser.profileVisibility.myPosts,
-                  onChanged: (value) => widget.onUserChanged(
-                    currentUser.copyWith(
-                      profileVisibility: currentUser.profileVisibility.copyWith(
-                        myPosts: value,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '픽한 작성자 공개',
-                  value: currentUser.profileVisibility.picks,
-                  onChanged: (value) => widget.onUserChanged(
-                    currentUser.copyWith(
-                      profileVisibility: currentUser.profileVisibility.copyWith(
-                        picks: value,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '나를 픽한 사람 수 공개',
-                  value: currentUser.profileVisibility.pickedBy,
-                  onChanged: (value) => widget.onUserChanged(
-                    currentUser.copyWith(
-                      profileVisibility: currentUser.profileVisibility.copyWith(
-                        pickedBy: value,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
-        ],
-        const SizedBox(height: 16),
-        if (_mode != _ProfileViewMode.overview &&
-            _mode != _ProfileViewMode.picks &&
-            _mode != _ProfileViewMode.saved &&
-            _mode != _ProfileViewMode.votes)
-          Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              mainAxisAlignment: MainAxisAlignment.end,
-              children: [
-                SortSelector(
-                  sortMode: _postSortMode,
-                  onChanged: (mode) => setState(() => _postSortMode = mode),
-                ),
-              ],
-            ),
-          ),
-        if (_mode == _ProfileViewMode.likes)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '내가 하트 누른 글',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (likedPosts.isEmpty)
-                  const Text(
-                    '아직 하트를 누른 글이 없어요.',
-                    style: TextStyle(
-                      color: Color(0xFF7D90A0),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                else
-                  ...likedPosts.map(
-                    (post) => _CompactPostTile(
-                      post: post,
-                      onTap: () => widget.onOpenPost(post),
-                    ),
-                  ),
-              ],
-            ),
-          )
-        else if (_mode == _ProfileViewMode.saved)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '커뮤니티 보관함',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (savedPosts.isEmpty)
-                  const Text(
-                    '커뮤니티 게시글에서 바로 보관함에 넣어보세요.',
-                    style: TextStyle(
-                      color: Color(0xFF7D90A0),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                else
-                  ...savedPosts.map(
-                    (post) => _CompactPostTile(
-                      post: post,
-                      onTap: () => widget.onOpenPost(post),
-                    ),
-                  ),
-              ],
-            ),
-          )
-        else if (_mode == _ProfileViewMode.dislikes)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '내가 싫어요 누른 글',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (dislikedPosts.isEmpty)
-                  const Text(
-                    '아직 싫어요를 누른 글이 없어요.',
-                    style: TextStyle(
-                      color: Color(0xFF7D90A0),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                else
-                  ...dislikedPosts.map(
-                    (post) => _CompactPostTile(
-                      post: post,
-                      onTap: () => widget.onOpenPost(post),
-                    ),
-                  ),
-              ],
-            ),
-          )
-        else if (_mode == _ProfileViewMode.myPosts)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '내가 올린 게시글',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (myPosts.isEmpty)
-                  const Text(
-                    '아직 내가 올린 게시글이 없어요.',
-                    style: TextStyle(
-                      color: Color(0xFF7D90A0),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                else
-                  ...myPosts.map(
-                    (post) => _CompactPostTile(
-                      post: post,
-                      onTap: () => widget.onOpenPost(post),
-                    ),
-                  ),
-              ],
-            ),
-          )
-        else if (_mode == _ProfileViewMode.picks)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '내가 픽한 작성자',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                if (pickedAuthorPosts.isEmpty)
-                  const Text(
-                    '작성자 이름이나 프로필을 눌러 픽해 보세요.',
-                    style: TextStyle(
-                      color: Color(0xFF7D90A0),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                else
-                  ...pickedAuthorPosts.map(
-                    (post) => ListTile(
-                      onTap: () => widget.onOpenAuthor(post),
-                      tileColor: const Color(0xFFF5FAFD),
-                      shape: RoundedRectangleBorder(
-                        borderRadius: BorderRadius.circular(14),
-                      ),
-                      leading: const CircleAvatar(
-                        backgroundColor: Color(0xFFE8EEF3),
-                        child: Icon(
-                          Icons.person_rounded,
-                          color: Color(0xFF8598A8),
-                        ),
-                      ),
-                      title: Text(
-                        post.authorNickname,
-                        style: const TextStyle(fontWeight: FontWeight.w800),
-                      ),
-                      subtitle: Text('${post.title} 외 스타일 보기'),
-                      trailing: const Icon(Icons.chevron_right_rounded),
-                    ),
-                  ),
-              ],
-            ),
-          )
-        else
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: const Text(
-              '프로필 공개 설정과 편봇 초기설정을 여기서 관리할 수 있어요.',
-              style: TextStyle(
-                color: Color(0xFF7D90A0),
-                fontWeight: FontWeight.w600,
-                height: 1.6,
-              ),
-            ),
-          ),
-        if (_mode == _ProfileViewMode.votes)
-          Container(
-            padding: const EdgeInsets.all(20),
-            decoration: BoxDecoration(
-              color: Colors.white,
-              borderRadius: BorderRadius.circular(24),
-              border: Border.all(color: const Color(0xFFE8EFF4)),
-            ),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                const Text(
-                  '내 픽 쇼츠',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 18,
-                  ),
-                ),
-                const SizedBox(height: 12),
-                const Text(
-                  '내가 올린 픽 쇼츠 결과',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w800,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                const Text(
-                  '종료 결과는 대결을 올린 사람에게만 보여요.',
-                  style: TextStyle(
-                    color: Color(0xFF7D90A0),
-                    fontWeight: FontWeight.w600,
-                    fontSize: 12,
-                  ),
-                ),
-                const SizedBox(height: 10),
-                if (endedAuthoredBattleMatches.isEmpty)
-                  const Text(
-                    '아직 종료된 내가 올린 픽 쇼츠가 없어요.',
-                    style: TextStyle(
-                      color: Color(0xFF7D90A0),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                else
-                  ...endedAuthoredBattleMatches.map(
-                    (match) => _CompactBattleVoteTile(
-                      match: match,
-                      currentUserId: currentUser.id,
-                      showResult: true,
-                      leftPost: widget.posts
-                          .where((post) => post.id == match.leftPostId)
-                          .firstOrNull,
-                      rightPost: widget.posts
-                          .where((post) => post.id == match.rightPostId)
-                          .firstOrNull,
-                    ),
-                  ),
-                if (activeAuthoredBattleMatches.isNotEmpty) ...[
-                  const Padding(
-                    padding: EdgeInsets.symmetric(vertical: 16),
-                    child: Divider(height: 1, color: Color(0xFFE8EFF4)),
-                  ),
-                  const Text(
-                    '진행 중인 내가 올린 픽 쇼츠',
-                    style: TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  ...activeAuthoredBattleMatches.map(
-                    (match) => _CompactBattleVoteTile(
-                      match: match,
-                      currentUserId: currentUser.id,
-                      leftPost: widget.posts
-                          .where((post) => post.id == match.leftPostId)
-                          .firstOrNull,
-                      rightPost: widget.posts
-                          .where((post) => post.id == match.rightPostId)
-                          .firstOrNull,
+                  const SizedBox(height: 8),
+                  Text(
+                    '픽 ${user.pickedAuthorIds.length}  ·  받은 픽 ${user.pickedByCount}',
+                    style: const TextStyle(
+                      fontSize: 13,
+                      color: AppColors.muted,
                     ),
                   ),
                 ],
-                const Padding(
-                  padding: EdgeInsets.symmetric(vertical: 16),
-                  child: Divider(height: 1, color: Color(0xFFE8EFF4)),
+              ),
+            ),
+            IconButton(
+              onPressed: _changeProfileImage,
+              tooltip: '프로필 사진 변경',
+              icon: const Icon(Icons.edit_outlined, size: 20),
+            ),
+          ],
+        ),
+        const SizedBox(height: 24),
+        SingleChildScrollView(
+          scrollDirection: Axis.horizontal,
+          child: Row(
+            children: tabs
+                .map(
+                  (tab) => _ProfileModeChip(
+                    label: tab.$2,
+                    active: _mode == tab.$1,
+                    onTap: () => setState(() => _mode = tab.$1),
+                  ),
+                )
+                .toList(),
+          ),
+        ),
+        const Divider(height: 1, color: AppColors.line),
+        const SizedBox(height: 20),
+        if (_mode == _ProfileViewMode.overview) ...[
+          if (setup != null) ...[
+            const Text(
+              '나의 취향',
+              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            ),
+            const SizedBox(height: 10),
+            Text(
+              setup.priorityValues.join(' · '),
+              style: const TextStyle(color: AppColors.muted, height: 1.6),
+            ),
+            const SizedBox(height: 6),
+            Text(
+              setup.tasteRatings.entries
+                  .map((entry) => '${entry.key} ${entry.value}')
+                  .join('   '),
+              style: const TextStyle(fontSize: 13, height: 1.6),
+            ),
+            if (averages != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                '하트한 맛  ${averages.entries.map((entry) => '${entry.key} ${entry.value.toStringAsFixed(1)}').join(' · ')}',
+                style: const TextStyle(
+                  fontSize: 12,
+                  color: AppColors.muted,
+                  height: 1.6,
                 ),
-                const Text(
-                  '내가 투표한 것',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w800,
+              ),
+            ],
+            const SizedBox(height: 16),
+          ],
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.tune_rounded, size: 21),
+            title: const Text('편봇 취향 설정', style: TextStyle(fontSize: 15)),
+            trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+            onTap: widget.onResetBotSetup,
+          ),
+          const Divider(height: 24, color: AppColors.line),
+          Theme(
+            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
+            child: ExpansionTile(
+              tilePadding: EdgeInsets.zero,
+              childrenPadding: EdgeInsets.zero,
+              title: const Text('프로필 공개 설정', style: TextStyle(fontSize: 15)),
+              leading: const Icon(Icons.visibility_outlined, size: 21),
+              children: [
+                _VisibilitySwitchRow(
+                  label: '프로필 공개',
+                  value: user.profilePublic,
+                  onChanged: widget.onToggleProfilePublic,
+                ),
+                _VisibilitySwitchRow(
+                  label: '아이디',
+                  value: user.profileVisibility.username,
+                  onChanged: (v) => widget.onUserChanged(
+                    user.copyWith(
+                      profileVisibility: user.profileVisibility.copyWith(
+                        username: v,
+                      ),
+                    ),
                   ),
                 ),
-                const SizedBox(height: 10),
-                if (votedBattleMatches.isEmpty)
-                  const Text(
-                    '아직 투표한 픽 쇼츠가 없어요.',
-                    style: TextStyle(
-                      color: Color(0xFF7D90A0),
-                      fontWeight: FontWeight.w600,
-                    ),
-                  )
-                else
-                  ...votedBattleMatches.map(
-                    (match) => _CompactBattleVoteTile(
-                      match: match,
-                      currentUserId: currentUser.id,
-                      showResult: false,
-                      leftPost: widget.posts
-                          .where((post) => post.id == match.leftPostId)
-                          .firstOrNull,
-                      rightPost: widget.posts
-                          .where((post) => post.id == match.rightPostId)
-                          .firstOrNull,
+                _VisibilitySwitchRow(
+                  label: '하트',
+                  value: user.profileVisibility.likes,
+                  onChanged: (v) => widget.onUserChanged(
+                    user.copyWith(
+                      profileVisibility: user.profileVisibility.copyWith(
+                        likes: v,
+                      ),
                     ),
                   ),
+                ),
+                _VisibilitySwitchRow(
+                  label: '싫어요',
+                  value: user.profileVisibility.dislikes,
+                  onChanged: (v) => widget.onUserChanged(
+                    user.copyWith(
+                      profileVisibility: user.profileVisibility.copyWith(
+                        dislikes: v,
+                      ),
+                    ),
+                  ),
+                ),
+                _VisibilitySwitchRow(
+                  label: '보관',
+                  value: user.profileVisibility.saved,
+                  onChanged: (v) => widget.onUserChanged(
+                    user.copyWith(
+                      profileVisibility: user.profileVisibility.copyWith(
+                        saved: v,
+                      ),
+                    ),
+                  ),
+                ),
+                _VisibilitySwitchRow(
+                  label: '내 글',
+                  value: user.profileVisibility.myPosts,
+                  onChanged: (v) => widget.onUserChanged(
+                    user.copyWith(
+                      profileVisibility: user.profileVisibility.copyWith(
+                        myPosts: v,
+                      ),
+                    ),
+                  ),
+                ),
+                _VisibilitySwitchRow(
+                  label: '픽한 작성자',
+                  value: user.profileVisibility.picks,
+                  onChanged: (v) => widget.onUserChanged(
+                    user.copyWith(
+                      profileVisibility: user.profileVisibility.copyWith(
+                        picks: v,
+                      ),
+                    ),
+                  ),
+                ),
+                _VisibilitySwitchRow(
+                  label: '받은 픽',
+                  value: user.profileVisibility.pickedBy,
+                  onChanged: (v) => widget.onUserChanged(
+                    user.copyWith(
+                      profileVisibility: user.profileVisibility.copyWith(
+                        pickedBy: v,
+                      ),
+                    ),
+                  ),
+                ),
               ],
             ),
           ),
-        const SizedBox(height: 16),
-        FilledButton(
-          onPressed: widget.onResetBotSetup,
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.skyBlue,
-            foregroundColor: Colors.white,
-            padding: const EdgeInsets.symmetric(vertical: 15),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            leading: const Icon(Icons.shuffle_rounded, size: 21),
+            title: const Text('무작위 추천', style: TextStyle(fontSize: 15)),
+            onTap: _openRandomPost,
           ),
-          child: const Text('편봇 초기설정 다시 하기'),
-        ),
-        const SizedBox(height: 10),
-        OutlinedButton(
-          onPressed: widget.onLogout,
-          style: OutlinedButton.styleFrom(
-            foregroundColor: AppColors.navy,
-            side: const BorderSide(color: AppColors.navy),
-            padding: const EdgeInsets.symmetric(vertical: 15),
+          const Divider(height: 24, color: AppColors.line),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: const Text('로그아웃', style: TextStyle(fontSize: 15)),
+            onTap: widget.onLogout,
           ),
-          child: const Text('로그아웃'),
-        ),
-        const SizedBox(height: 6),
-        TextButton(
-          onPressed: _deletingAccount ? null : _deleteAccount,
-          style: TextButton.styleFrom(
-            foregroundColor: const Color(0xFFB64A4A),
-            padding: const EdgeInsets.symmetric(vertical: 12),
+          ListTile(
+            contentPadding: EdgeInsets.zero,
+            title: Text(
+              _deletingAccount ? '계정 삭제 중...' : '계정 삭제',
+              style: const TextStyle(fontSize: 13, color: AppColors.muted),
+            ),
+            onTap: _deletingAccount ? null : _deleteAccount,
           ),
-          child: Text(_deletingAccount ? '계정 삭제 중...' : '계정 삭제'),
-        ),
+        ] else if (_mode == _ProfileViewMode.picks) ...[
+          if (authors.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                '아직 픽한 작성자가 없어요.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+            ),
+          ...authors.map(
+            (post) => ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: _UserAvatar(
+                imageSource: post.authorProfileImageUrl,
+                radius: 21,
+              ),
+              title: Text(post.authorNickname),
+              trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+              onTap: () => widget.onOpenAuthor(post),
+            ),
+          ),
+        ] else ...[
+          Align(
+            alignment: Alignment.centerRight,
+            child: SortSelector(
+              sortMode: _postSortMode,
+              compact: true,
+              onChanged: (mode) => setState(() => _postSortMode = mode),
+            ),
+          ),
+          const SizedBox(height: 12),
+          if (selectedPosts.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(vertical: 24),
+              child: Text(
+                '아직 게시글이 없어요.',
+                style: TextStyle(color: AppColors.muted),
+              ),
+            ),
+          ...selectedPosts.map(
+            (post) => _CompactPostTile(
+              post: post,
+              onTap: () => widget.onOpenPost(post),
+            ),
+          ),
+        ],
       ],
     );
   }
 }
 
-enum _ProfileViewMode {
-  overview,
-  likes,
-  saved,
-  dislikes,
-  myPosts,
-  picks,
-  votes,
-}
+enum _ProfileViewMode { overview, likes, saved, dislikes, myPosts, picks }
 
 class _ProfileModeChip extends StatelessWidget {
   const _ProfileModeChip({
@@ -7872,30 +7299,33 @@ class _ProfileModeChip extends StatelessWidget {
     required this.active,
     required this.onTap,
   });
-
   final String label;
   final bool active;
   final VoidCallback onTap;
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      borderRadius: BorderRadius.circular(999),
-      onTap: onTap,
-      child: Container(
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
-        decoration: BoxDecoration(
-          color: active ? AppColors.navy : const Color(0xFFF4F8FB),
-          borderRadius: BorderRadius.circular(999),
-        ),
-        child: Text(
-          label,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: TextStyle(
-            color: active ? Colors.white : const Color(0xFF627A90),
-            fontWeight: FontWeight.w900,
-            fontSize: 13,
+    return Semantics(
+      selected: active,
+      child: InkWell(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
+          decoration: BoxDecoration(
+            border: Border(
+              bottom: BorderSide(
+                color: active ? AppColors.ink : Colors.transparent,
+                width: 2,
+              ),
+            ),
+          ),
+          child: Text(
+            label,
+            style: TextStyle(
+              color: active ? AppColors.ink : AppColors.muted,
+              fontWeight: active ? FontWeight.w600 : FontWeight.w400,
+              fontSize: 14,
+            ),
           ),
         ),
       ),
@@ -7916,49 +7346,19 @@ class _VisibilitySwitchRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return InkWell(
-      onTap: () => onChanged(!value),
-      borderRadius: BorderRadius.circular(12),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(vertical: 8),
-        child: Row(
-          children: [
-            Expanded(
-              child: Text(
-                label,
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w700,
-                ),
-              ),
-            ),
-            AnimatedContainer(
-              duration: const Duration(milliseconds: 140),
-              width: 34,
-              height: 34,
-              alignment: Alignment.center,
-              decoration: BoxDecoration(
-                color: value
-                    ? const Color(0xFFFFF0F1)
-                    : const Color(0xFFF2F4F6),
-                borderRadius: BorderRadius.circular(10),
-                border: Border.all(
-                  color: value
-                      ? const Color(0xFFE65064)
-                      : const Color(0xFFD6DCE2),
-                ),
-              ),
-              child: Icon(
-                Icons.check_rounded,
-                size: 22,
-                color: value
-                    ? const Color(0xFFE65064)
-                    : const Color(0xFFB8C0C8),
-              ),
-            ),
-          ],
-        ),
+    return SwitchListTile.adaptive(
+      contentPadding: EdgeInsets.zero,
+      title: Text(
+        label,
+        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400),
       ),
+      value: value,
+      onChanged: onChanged,
+      activeTrackColor: const Color(0xFF9CC9DD),
+      activeThumbColor: Colors.white,
+      inactiveTrackColor: const Color(0xFFEAECEE),
+      inactiveThumbColor: Colors.white,
+      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
     );
   }
 }
@@ -8010,92 +7410,6 @@ class _CompactPostTile extends StatelessWidget {
   }
 }
 
-class _CompactBattleVoteTile extends StatelessWidget {
-  const _CompactBattleVoteTile({
-    required this.match,
-    required this.currentUserId,
-    required this.leftPost,
-    required this.rightPost,
-    this.showResult = false,
-  });
-
-  final BattleMatchEntry match;
-  final String currentUserId;
-  final Post? leftPost;
-  final Post? rightPost;
-  final bool showResult;
-
-  @override
-  Widget build(BuildContext context) {
-    final leftTitle = leftPost?.title ?? match.leftCustomTitle ?? '왼쪽 조합';
-    final rightTitle = rightPost?.title ?? match.rightCustomTitle ?? '오른쪽 조합';
-    final votedSide = match.voteSideOf(currentUserId);
-    final pickedTitle = switch (votedSide) {
-      BattleVoteSide.left => leftTitle,
-      BattleVoteSide.right => rightTitle,
-      null => '아직 선택 안 함',
-    };
-    final resultText = switch (match.winnerSide) {
-      BattleVoteSide.left => '$leftTitle 승',
-      BattleVoteSide.right => '$rightTitle 승',
-      null => match.totalVotes == 0 ? '투표 없음' : '무승부',
-    };
-    final canShowResult = showResult && match.isExpired;
-    return Container(
-      width: double.infinity,
-      margin: const EdgeInsets.only(bottom: 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: canShowResult
-            ? const Color(0xFFFFF8E7)
-            : const Color(0xFFF5FAFD),
-        borderRadius: BorderRadius.circular(14),
-        border: canShowResult
-            ? Border.all(color: const Color(0xFFF1D58B))
-            : null,
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text(
-            match.title,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w800,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            canShowResult
-                ? '결과: $resultText'
-                : match.isExpired
-                ? '투표 종료'
-                : '내 선택: $pickedTitle',
-            maxLines: 1,
-            overflow: TextOverflow.ellipsis,
-            style: const TextStyle(
-              color: Color(0xFF516B83),
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-          const SizedBox(height: 5),
-          Text(
-            canShowResult
-                ? '$leftTitle ${match.leftVotes}표 · $rightTitle ${match.rightVotes}표'
-                : '${match.isExpired ? '종료됨' : '진행 중'} · 총 ${match.totalVotes}표 · ${match.createdAtLabel}',
-            style: const TextStyle(
-              color: Color(0xFF7A8793),
-              fontWeight: FontWeight.w700,
-              fontSize: 12,
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-}
-
 class _AuthorProfileSection extends StatelessWidget {
   const _AuthorProfileSection({
     required this.title,
@@ -8103,59 +7417,33 @@ class _AuthorProfileSection extends StatelessWidget {
     required this.posts,
     required this.onOpenPost,
   });
-
-  final String title;
-  final String subtitle;
+  final String title, subtitle;
   final List<Post> posts;
   final Future<void> Function(Post post) onOpenPost;
-
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.all(20),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(24),
-        border: Border.all(color: const Color(0xFFE8EFF4)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.symmetric(vertical: 16),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Text(
             title,
-            style: const TextStyle(
-              color: AppColors.ink,
-              fontWeight: FontWeight.w900,
-              fontSize: 18,
-            ),
-          ),
-          const SizedBox(height: 6),
-          Text(
-            subtitle,
-            style: const TextStyle(
-              color: Color(0xFF7D90A0),
-              fontWeight: FontWeight.w600,
-            ),
+            style: const TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
           ),
           const SizedBox(height: 12),
           if (posts.isEmpty)
-            const Text(
-              '공개된 항목이 아직 없어요.',
-              style: TextStyle(
-                color: Color(0xFF7D90A0),
-                fontWeight: FontWeight.w600,
-              ),
-            )
+            const Text('공개된 항목이 없어요.', style: TextStyle(color: AppColors.muted))
           else
             GridView.builder(
               shrinkWrap: true,
               physics: const NeverScrollableScrollPhysics(),
               itemCount: posts.length,
-              gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                crossAxisCount: 3,
+              gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+                maxCrossAxisExtent: 240,
                 crossAxisSpacing: 8,
                 mainAxisSpacing: 10,
-                childAspectRatio: 0.58,
+                childAspectRatio: 0.72,
               ),
               itemBuilder: (context, index) => _ProfilePostMiniCard(
                 post: posts[index],
@@ -8598,9 +7886,18 @@ class _PostDetailPageState extends State<PostDetailPage> {
   }
 
   Future<void> _openReviews() async {
-    await Navigator.of(context).push(
-      MaterialPageRoute<void>(
-        builder: (context) => PostReviewsScreen(
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Colors.transparent,
+      constraints: const BoxConstraints(maxWidth: 720),
+      builder: (context) => DraggableScrollableSheet(
+        initialChildSize: 0.76,
+        minChildSize: 0.45,
+        maxChildSize: 0.94,
+        expand: false,
+        builder: (context, scrollController) => PostReviewsScreen(
+          scrollController: scrollController,
           post: _post,
           currentUser: widget.currentUser,
           onAddReview: (review) async {
@@ -10937,75 +10234,6 @@ class _TasteRatingEditor extends StatelessWidget {
                       ),
                     );
                   }),
-                ),
-              ),
-            ],
-          ),
-        );
-      }).toList(),
-    );
-  }
-}
-
-class _ReadOnlyTasteAverages extends StatelessWidget {
-  const _ReadOnlyTasteAverages({required this.averages});
-
-  final Map<String, double> averages;
-
-  static const Map<String, Color> _tasteFillColors = <String, Color>{
-    '달달': Color(0xFFFF8EB2),
-    '매콤': Color(0xFFFF7A59),
-    '새콤': Color(0xFFF3CB47),
-    '짭짤': Color(0xFF5DBFD2),
-  };
-
-  @override
-  Widget build(BuildContext context) {
-    const order = <String>['달달', '새콤', '짭짤', '매콤'];
-
-    return Column(
-      children: order.map((taste) {
-        final value = averages[taste] ?? 0;
-        final clamped = value.clamp(0, 5);
-        final percent = clamped / 5;
-        final color = _tasteFillColors[taste] ?? const Color(0xFFFFC85A);
-
-        return Padding(
-          padding: const EdgeInsets.only(bottom: 12),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Row(
-                children: [
-                  Text(
-                    taste,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w900,
-                    ),
-                  ),
-                  const Spacer(),
-                  Text(
-                    '${clamped.toStringAsFixed(1)}/5',
-                    style: const TextStyle(
-                      color: Color(0xFF6E8395),
-                      fontWeight: FontWeight.w800,
-                      fontSize: 12,
-                    ),
-                  ),
-                ],
-              ),
-              const SizedBox(height: 8),
-              ClipRRect(
-                borderRadius: BorderRadius.circular(999),
-                child: Container(
-                  height: 14,
-                  color: const Color(0xFFEAF0F5),
-                  child: FractionallySizedBox(
-                    alignment: Alignment.centerLeft,
-                    widthFactor: percent,
-                    child: Container(color: color),
-                  ),
                 ),
               ),
             ],

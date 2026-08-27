@@ -16,15 +16,18 @@ import '../models/sort_mode.dart';
 import 'post_repository.dart';
 
 class MockPostRepository implements PostRepository {
-  MockPostRepository({
-    CombinationBattleState initialBattleState = const CombinationBattleState(),
-  }) : _posts = mockPosts.map((post) => post.copyWith()).toList(),
-       _battleState = initialBattleState {
+  MockPostRepository({CombinationBattleState? initialBattleState})
+    : _posts = mockPosts.map((post) => post.copyWith()).toList(),
+      _battleState = initialBattleState ?? const CombinationBattleState(),
+      _battlesLoaded = initialBattleState != null {
     _applyTopFiveBadges();
   }
 
   final List<Post> _posts;
   CombinationBattleState _battleState;
+  bool _battlesLoaded;
+  Future<void>? _battleLoading;
+  static const _battleStorageKey = 'pyeonpick_mock_battles_v1';
   static const _storageKey = 'pyeonpick_mock_posts_v3';
   static const _reactionStorageKey = 'pyeonpick_mock_post_reactions_v1';
   final Map<String, Set<String>> _likedPostIdsByUser = <String, Set<String>>{};
@@ -34,17 +37,17 @@ class MockPostRepository implements PostRepository {
 
   @override
   Future<CombinationBattleState> fetchBattleState() async {
-    if (_battleState.matches.isEmpty) {
-      _battleState = mockCombinationBattleState(_posts, now: DateTime.now());
-    }
+    await (_battleLoading ??= _loadBattles());
     return _battleState;
   }
 
   @override
   Future<BattleMatchEntry> createBattle(BattleMatchEntry match) async {
+    await fetchBattleState();
     _battleState = _battleState.copyWith(
       matches: <BattleMatchEntry>[match, ..._battleState.matches],
     );
+    await _persistBattles();
     return match;
   }
 
@@ -54,6 +57,7 @@ class MockPostRepository implements PostRepository {
     BattleVoteSide side,
     String currentUserId,
   ) async {
+    await fetchBattleState();
     final index = _battleState.matches.indexWhere(
       (match) => match.id == matchId,
     );
@@ -62,25 +66,48 @@ class MockPostRepository implements PostRepository {
     final updated = match.castVote(currentUserId, side);
     final matches = [..._battleState.matches]..[index] = updated;
     _battleState = _battleState.copyWith(matches: matches);
+    await _persistBattles();
     return updated;
   }
 
   @override
   Future<BattleMatchEntry> updateBattle(BattleMatchEntry match) async {
+    await fetchBattleState();
     final matches = _battleState.matches
         .map((item) => item.id == match.id ? match : item)
         .toList();
     _battleState = _battleState.copyWith(matches: matches);
+    await _persistBattles();
     return match;
   }
 
   @override
   Future<void> deleteBattle(String matchId) async {
+    await fetchBattleState();
     _battleState = _battleState.copyWith(
       matches: _battleState.matches
           .where((match) => match.id != matchId)
           .toList(),
     );
+    await _persistBattles();
+  }
+
+  Future<void> _loadBattles() async {
+    if (_battlesLoaded) return;
+    final prefs = await SharedPreferences.getInstance();
+    final raw = prefs.getString(_battleStorageKey);
+    _battleState = raw == null
+        ? mockCombinationBattleState(_posts, now: DateTime.now())
+        : CombinationBattleState.fromJson(
+            jsonDecode(raw) as Map<String, dynamic>,
+          );
+    _battlesLoaded = true;
+    await _persistBattles();
+  }
+
+  Future<void> _persistBattles() async {
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString(_battleStorageKey, jsonEncode(_battleState.toJson()));
   }
 
   Future<void> _ensureLoaded() async {
