@@ -20,6 +20,7 @@
   <meta content="IE=Edge" http-equiv="X-UA-Compatible">
   <meta name="description" content="A new Flutter project.">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta name="theme-color" content="#91D5F0">
 
   <!-- iOS meta tags & icons -->
   <meta name="mobile-web-app-capable" content="yes">
@@ -40,7 +41,7 @@
       height: 100%;
       min-height: 100%;
       overflow: hidden;
-      background: linear-gradient(180deg, #e6f8ff 0%, #ffffff 68%);
+      background: linear-gradient(135deg, #eaf7fc 0%, #fafcf9 55%, #f1f8df 100%);
       font-family: -apple-system, BlinkMacSystemFont, "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
     }
 
@@ -55,7 +56,7 @@
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(180deg, #d9f4ff 0%, #ffffff 72%);
+      background: linear-gradient(135deg, #eaf7fc 0%, #fafcf9 55%, #f1f8df 100%);
       z-index: 9999;
       transition: opacity 240ms ease;
     }
@@ -78,7 +79,7 @@
       background: rgba(255, 255, 255, 0.92);
       border-radius: 28px;
       padding: 28px 24px;
-      box-shadow: 0 22px 48px rgba(35, 64, 94, 0.12);
+      box-shadow: 0 22px 48px rgba(41, 52, 47, 0.06);
       text-align: center;
     }
 
@@ -87,11 +88,11 @@
       height: 5px;
       border-radius: 999px;
       margin: 0 auto 18px;
-      background: #a7d93a;
+      background: #cbea89;
     }
 
     .boot-title {
-      color: #87bf19;
+      color: #29342f;
       font-size: 30px;
       font-weight: 900;
       letter-spacing: -0.04em;
@@ -99,7 +100,7 @@
     }
 
     .boot-copy {
-      color: #4e6884;
+      color: #66736b;
       line-height: 1.65;
       font-size: 14px;
       margin: 0;
@@ -110,7 +111,7 @@
       height: 10px;
       border-radius: 999px;
       overflow: hidden;
-      background: #eef6fa;
+      background: #eaf7fc;
     }
 
     .boot-progress::after {
@@ -119,14 +120,14 @@
       width: 42%;
       height: 100%;
       border-radius: inherit;
-      background: linear-gradient(90deg, #a7d93a 0%, #16467a 100%);
+      background: linear-gradient(90deg, #cbea89 0%, #91d5f0 100%);
       animation: boot-slide 1.2s ease-in-out infinite;
       transform-origin: left center;
     }
 
     .boot-subtle {
       margin-top: 12px;
-      color: #7c90a2;
+      color: #66736b;
       font-size: 12px;
       font-weight: 700;
     }
@@ -145,8 +146,8 @@
       border: none;
       border-radius: 999px;
       padding: 11px 18px;
-      background: #a7d93a;
-      color: #ffffff;
+      background: #cbea89;
+      color: #29342f;
       font-weight: 800;
       font-size: 14px;
       cursor: pointer;
@@ -169,7 +170,7 @@
       <div class="boot-subtle">로딩이 길면 탭을 한 번 닫았다가 다시 열어 주세요.</div>
       <div class="boot-actions">
         <button class="boot-button" onclick="window.location.reload()">다시 열기</button>
-        <button class="boot-button" style="background:#eef6fa;color:#36506e;margin-left:8px;" onclick="window.__forceHideBoot && window.__forceHideBoot()">앱 화면 보기</button>
+        <button class="boot-button" style="background:#eaf7fc;color:#286b83;margin-left:8px;" onclick="window.__forceHideBoot && window.__forceHideBoot()">앱 화면 보기</button>
       </div>
     </div>
   </div>

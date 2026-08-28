@@ -62,7 +62,7 @@ Color _storeColor(String store) => switch (store) {
   'GS25' => const Color(0xFF1C75BC),
   '7-Eleven' => const Color(0xFF008061),
   'emart24' => const Color(0xFFF05A28),
-  _ => AppColors.navy,
+  _ => AppColors.skyBlueDeep,
 };
 
 List<CuProductMatch> _productMatchesForPost(Post post) {
@@ -2633,8 +2633,8 @@ class _HomeScreenState extends State<HomeScreen> {
       floatingActionButton: _selectedTab == AppTab.communication
           ? FloatingActionButton.extended(
               onPressed: () => _openComposer(),
-              backgroundColor: AppColors.navy,
-              foregroundColor: Colors.white,
+              backgroundColor: AppColors.lime,
+              foregroundColor: AppColors.ink,
               icon: const Icon(Icons.add_rounded),
               label: const Text(
                 '올리기',
@@ -2651,7 +2651,15 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(height: 1, color: AppColors.line),
                 Container(
                   width: double.infinity,
-                  color: Colors.white,
+                  decoration: const BoxDecoration(
+                    gradient: LinearGradient(
+                      colors: [
+                        AppColors.sky,
+                        AppColors.receipt,
+                        AppColors.limeSoft,
+                      ],
+                    ),
+                  ),
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 1760),
@@ -2676,7 +2684,7 @@ class _HomeScreenState extends State<HomeScreen> {
                                       Text(
                                         '편pick!',
                                         style: TextStyle(
-                                          color: AppColors.navy,
+                                          color: AppColors.ink,
                                           fontWeight: FontWeight.w900,
                                           fontSize: desktop ? 38 : 22,
                                           letterSpacing: -0.8,
@@ -3143,9 +3151,12 @@ class FeatureTabs extends StatelessWidget {
                       vertical: desktop ? 14 : 10,
                     ),
                     decoration: BoxDecoration(
+                      color: active ? AppColors.limeSoft : Colors.transparent,
                       border: Border(
                         bottom: BorderSide(
-                          color: active ? AppColors.navy : Colors.transparent,
+                          color: active
+                              ? AppColors.limeDeep
+                              : Colors.transparent,
                           width: 2,
                         ),
                       ),
@@ -3157,9 +3168,7 @@ class FeatureTabs extends StatelessWidget {
                       style: TextStyle(
                         fontSize: desktop ? 18 : 11,
                         fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                        color: active
-                            ? AppColors.navy
-                            : const Color(0xFF68859A),
+                        color: active ? AppColors.limeDeep : AppColors.muted,
                       ),
                     ),
                   ),
@@ -3452,7 +3461,7 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                   child: Row(
                     crossAxisAlignment: CrossAxisAlignment.center,
                     children: [
-                      Icon(topic.icon, size: 19, color: AppColors.muted),
+                      Icon(topic.icon, size: 19, color: AppColors.skyBlueDeep),
                       const SizedBox(width: 10),
                       Expanded(
                         child: Column(
@@ -4082,7 +4091,7 @@ class _ToolbarState extends State<Toolbar> {
                 decoration: inputDecoration('조합이나 상품 검색').copyWith(
                   prefixIcon: const Icon(Icons.search_rounded, size: 21),
                   filled: true,
-                  fillColor: const Color(0xFFF5F6F7),
+                  fillColor: AppColors.sky,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(12),
                     borderSide: BorderSide.none,
@@ -4181,7 +4190,7 @@ class _ToolbarState extends State<Toolbar> {
                         style: TextButton.styleFrom(
                           minimumSize: const Size(70, 46),
                           foregroundColor: selected
-                              ? AppColors.ink
+                              ? AppColors.limeDeep
                               : AppColors.muted,
                           padding: const EdgeInsets.symmetric(horizontal: 10),
                         ),
@@ -4330,7 +4339,7 @@ InputDecoration inputDecoration(String hint) {
     ),
     focusedBorder: OutlineInputBorder(
       borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-      borderSide: const BorderSide(color: AppColors.navy, width: 1.5),
+      borderSide: const BorderSide(color: AppColors.skyBlueDeep, width: 1.5),
     ),
   );
 }
@@ -4427,7 +4436,9 @@ class _HighlightStoreFilter extends StatelessWidget {
         itemBuilder: (context, index) {
           final store = stores[index];
           final selected = selectedStore == store;
-          final color = store == null ? AppColors.navy : _storeColor(store);
+          final color = store == null
+              ? AppColors.skyBlueDeep
+              : _storeColor(store);
           final label = store == null ? '전체' : _storeDisplayName(store);
           return InkWell(
             onTap: () => onChanged(store),
@@ -4437,16 +4448,24 @@ class _HighlightStoreFilter extends StatelessWidget {
               alignment: Alignment.center,
               padding: const EdgeInsets.symmetric(horizontal: 13),
               decoration: BoxDecoration(
-                color: selected ? color : color.withAlpha(18),
+                color: selected
+                    ? (store == null ? AppColors.lime : color)
+                    : color.withAlpha(18),
                 borderRadius: BorderRadius.circular(999),
                 border: Border.all(
-                  color: selected ? color : color.withAlpha(105),
+                  color: selected && store == null
+                      ? AppColors.lime
+                      : selected
+                      ? color
+                      : color.withAlpha(105),
                 ),
               ),
               child: Text(
                 label,
                 style: TextStyle(
-                  color: selected ? Colors.white : color,
+                  color: selected
+                      ? (store == null ? AppColors.ink : Colors.white)
+                      : color,
                   fontSize: 12,
                   fontWeight: FontWeight.w900,
                 ),
@@ -4802,7 +4821,7 @@ class PostCard extends StatelessWidget {
           borderRadius: BorderRadius.circular(AppColors.radiusMedium),
           boxShadow: [
             BoxShadow(
-              color: AppColors.navy.withAlpha(10),
+              color: AppColors.ink.withAlpha(10),
               blurRadius: 14,
               offset: const Offset(0, 5),
             ),
@@ -4935,13 +4954,13 @@ class PostCard extends StatelessWidget {
                           vertical: compact ? 1 : 3,
                         ),
                         decoration: BoxDecoration(
-                          color: AppColors.activeYellow,
+                          color: AppColors.limeSoft,
                           borderRadius: BorderRadius.circular(4),
                         ),
                         child: Text(
                           post.priceLabel,
                           style: TextStyle(
-                            color: Color(0xFF332800),
+                            color: AppColors.limeDeep,
                             fontWeight: FontWeight.w900,
                             fontSize: compact ? 9 : 11.2,
                           ),
@@ -5038,7 +5057,7 @@ class GradientPhoto extends StatelessWidget {
         alignment: Alignment.center,
         child: const Icon(
           Icons.restaurant_rounded,
-          color: AppColors.navy,
+          color: AppColors.skyBlueDeep,
           size: 32,
         ),
       ),
@@ -5171,7 +5190,7 @@ class _GalleryArrow extends StatelessWidget {
             color: Colors.white.withAlpha(onTap == null ? 110 : 220),
             shape: BoxShape.circle,
           ),
-          child: Icon(icon, color: AppColors.navy),
+          child: Icon(icon, color: AppColors.skyBlueDeep),
         ),
       ),
     );
@@ -5804,8 +5823,8 @@ class _ComposerSheetState extends State<ComposerSheet> {
                       child: TextButton.icon(
                         onPressed: scanProductCode,
                         style: TextButton.styleFrom(
-                          foregroundColor: AppColors.navy,
-                          backgroundColor: const Color(0xFFEAF2FF),
+                          foregroundColor: AppColors.skyBlueDeep,
+                          backgroundColor: AppColors.sky,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(14),
                           ),
@@ -5904,8 +5923,8 @@ class _ComposerSheetState extends State<ComposerSheet> {
                   child: FilledButton(
                     onPressed: submitting ? null : submit,
                     style: FilledButton.styleFrom(
-                      backgroundColor: AppColors.skyBlue,
-                      foregroundColor: Colors.white,
+                      backgroundColor: AppColors.lime,
+                      foregroundColor: AppColors.ink,
                       padding: const EdgeInsets.symmetric(vertical: 16),
                       shape: RoundedRectangleBorder(
                         borderRadius: BorderRadius.circular(18),
@@ -6291,7 +6310,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                 tooltip: '편봇 메뉴',
                 icon: const Icon(
                   Icons.more_horiz_rounded,
-                  color: AppColors.navy,
+                  color: AppColors.skyBlueDeep,
                 ),
                 onSelected: _handleMenu,
                 itemBuilder: (context) => const [
@@ -6325,7 +6344,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                     icon: const Icon(Icons.refresh_rounded, size: 18),
                     label: const Text('다른 추천 3개 더 보기'),
                     style: OutlinedButton.styleFrom(
-                      foregroundColor: AppColors.navy,
+                      foregroundColor: AppColors.skyBlueDeep,
                       side: const BorderSide(color: AppColors.line),
                       padding: const EdgeInsets.symmetric(vertical: 12),
                       textStyle: const TextStyle(fontWeight: FontWeight.w900),
@@ -6375,8 +6394,8 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                         key: const Key('bot-send-button'),
                         onPressed: _sending ? null : _submit,
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.skyBlue,
-                          foregroundColor: Colors.white,
+                          backgroundColor: AppColors.lime,
+                          foregroundColor: AppColors.ink,
                           padding: EdgeInsets.zero,
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(16),
@@ -6388,7 +6407,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                                 height: 18,
                                 child: CircularProgressIndicator(
                                   strokeWidth: 2,
-                                  color: Colors.white,
+                                  color: AppColors.ink,
                                 ),
                               )
                             : const Icon(Icons.arrow_upward_rounded, size: 21),
@@ -6417,12 +6436,12 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                           ),
                           decoration: BoxDecoration(
                             color: _useAgeCalorieGuide
-                                ? const Color(0xFFF1F7DF)
+                                ? AppColors.limeSoft
                                 : const Color(0xFFF1F3F5),
                             borderRadius: BorderRadius.circular(999),
                             border: Border.all(
                               color: _useAgeCalorieGuide
-                                  ? AppColors.skyBlue
+                                  ? AppColors.lime
                                   : AppColors.line,
                             ),
                           ),
@@ -6433,7 +6452,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                                 Icons.monitor_heart_outlined,
                                 size: 15,
                                 color: _useAgeCalorieGuide
-                                    ? AppColors.navy
+                                    ? AppColors.limeDeep
                                     : AppColors.muted,
                               ),
                               const SizedBox(width: 5),
@@ -6441,7 +6460,7 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                                 _useAgeCalorieGuide ? '권장 칼로리 반영' : '권장 칼로리 제외',
                                 style: TextStyle(
                                   color: _useAgeCalorieGuide
-                                      ? AppColors.navy
+                                      ? AppColors.limeDeep
                                       : AppColors.muted,
                                   fontWeight: FontWeight.w800,
                                   fontSize: 11,
@@ -6755,8 +6774,8 @@ class _BotSetupPageState extends State<BotSetupPage> {
                     child: FilledButton(
                       onPressed: _saving ? null : _submit,
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.skyBlue,
-                        foregroundColor: Colors.white,
+                        backgroundColor: AppColors.lime,
+                        foregroundColor: AppColors.ink,
                         padding: EdgeInsets.symmetric(
                           vertical: desktop ? 22 : 16,
                         ),
@@ -7547,9 +7566,10 @@ class _ProfileModeChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
+            color: active ? AppColors.limeSoft : Colors.transparent,
             border: Border(
               bottom: BorderSide(
-                color: active ? AppColors.ink : Colors.transparent,
+                color: active ? AppColors.limeDeep : Colors.transparent,
                 width: 2,
               ),
             ),
@@ -7557,7 +7577,7 @@ class _ProfileModeChip extends StatelessWidget {
           child: Text(
             label,
             style: TextStyle(
-              color: active ? AppColors.ink : AppColors.muted,
+              color: active ? AppColors.limeDeep : AppColors.muted,
               fontWeight: active ? FontWeight.w600 : FontWeight.w400,
               fontSize: 14,
             ),
@@ -7589,8 +7609,8 @@ class _VisibilitySwitchRow extends StatelessWidget {
       ),
       value: value,
       onChanged: onChanged,
-      activeTrackColor: const Color(0xFF9CC9DD),
-      activeThumbColor: Colors.white,
+      activeTrackColor: AppColors.lime,
+      activeThumbColor: AppColors.limeDeep,
       inactiveTrackColor: const Color(0xFFEAECEE),
       inactiveThumbColor: Colors.white,
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
@@ -8928,8 +8948,8 @@ class _CommentsSheetState extends State<_CommentsSheet> {
                     FilledButton(
                       onPressed: _submitting ? null : _submit,
                       style: FilledButton.styleFrom(
-                        backgroundColor: AppColors.navy,
-                        foregroundColor: Colors.white,
+                        backgroundColor: AppColors.lime,
+                        foregroundColor: AppColors.ink,
                       ),
                       child: Text(_submitting ? '...' : '등록'),
                     ),
@@ -9513,7 +9533,7 @@ class _AuthorProfilePageState extends State<AuthorProfilePage> {
                       backgroundColor: widget.isPicked
                           ? const Color(0xFFEAF6FF)
                           : const Color(0xFFF4F8FB),
-                      foregroundColor: AppColors.navy,
+                      foregroundColor: AppColors.skyBlueDeep,
                     ),
                     child: Text(widget.isPicked ? '픽 취소' : '이 작성자 픽하기'),
                   ),
@@ -9877,8 +9897,8 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
                                   child: FilledButton.icon(
                                     onPressed: _startScanner,
                                     style: FilledButton.styleFrom(
-                                      backgroundColor: AppColors.skyBlue,
-                                      foregroundColor: Colors.white,
+                                      backgroundColor: AppColors.lime,
+                                      foregroundColor: AppColors.ink,
                                       padding: const EdgeInsets.symmetric(
                                         horizontal: 22,
                                         vertical: 16,
@@ -9921,7 +9941,7 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
                         child: OutlinedButton.icon(
                           onPressed: _openManualBarcodeInput,
                           style: OutlinedButton.styleFrom(
-                            foregroundColor: AppColors.navy,
+                            foregroundColor: AppColors.skyBlueDeep,
                             side: const BorderSide(color: Color(0xFFD4E2EA)),
                             padding: const EdgeInsets.symmetric(vertical: 14),
                             shape: RoundedRectangleBorder(
@@ -9957,7 +9977,10 @@ class _GuideBadge extends StatelessWidget {
       ),
       child: const Text(
         '바코드를 중앙에 맞춰 주세요',
-        style: TextStyle(color: AppColors.navy, fontWeight: FontWeight.w800),
+        style: TextStyle(
+          color: AppColors.skyBlueDeep,
+          fontWeight: FontWeight.w800,
+        ),
       ),
     );
   }
@@ -10050,8 +10073,8 @@ class _ScannerStatusCard extends StatelessWidget {
                 FilledButton(
                   onPressed: onRetry,
                   style: FilledButton.styleFrom(
-                    backgroundColor: AppColors.navy,
-                    foregroundColor: Colors.white,
+                    backgroundColor: AppColors.lime,
+                    foregroundColor: AppColors.ink,
                   ),
                   child: const Text('다시 시도'),
                 ),
@@ -10209,14 +10232,10 @@ class _BotMessageBubble extends StatelessWidget {
             Container(
               padding: const EdgeInsets.all(16),
               decoration: BoxDecoration(
-                color: isUser
-                    ? const Color(0xFFE8F3FF)
-                    : const Color(0xFFF9FCFE),
+                color: isUser ? AppColors.sky : AppColors.limeSoft,
                 borderRadius: BorderRadius.circular(22),
                 border: Border.all(
-                  color: isUser
-                      ? const Color(0xFFCFE0F7)
-                      : const Color(0xFFE6EEF3),
+                  color: isUser ? AppColors.skyBlue : AppColors.lime,
                 ),
               ),
               child: Text(
@@ -10362,7 +10381,7 @@ class _BotConditionChip extends StatelessWidget {
       child: Text(
         label,
         style: const TextStyle(
-          color: AppColors.navy,
+          color: AppColors.skyBlueDeep,
           fontSize: 10,
           fontWeight: FontWeight.w800,
         ),
@@ -10516,16 +10535,16 @@ class _PriorityChoiceWrap extends StatelessWidget {
             decoration: BoxDecoration(
               color: active
                   ? rank == 0
-                        ? AppColors.activeYellow
-                        : const Color(0xFFEAF6FF)
-                  : const Color(0xFFF4F7F9),
+                        ? AppColors.lime
+                        : AppColors.skyBlue
+                  : AppColors.surfaceMuted,
               borderRadius: BorderRadius.circular(999),
               border: Border.all(
                 color: active
                     ? rank == 0
-                          ? const Color(0xFFE2B92F)
-                          : const Color(0xFFB9DDF5)
-                    : const Color(0xFFDDE6EC),
+                          ? AppColors.lime
+                          : AppColors.skyBlue
+                    : AppColors.line,
               ),
             ),
             child: Text(
@@ -10573,13 +10592,13 @@ class _ChoiceWrapState extends State<_ChoiceWrap> {
           child: Container(
             padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 10),
             decoration: BoxDecoration(
-              color: active ? AppColors.activeYellow : const Color(0xFFFFF9D7),
+              color: active ? AppColors.lime : AppColors.limeSoft,
               borderRadius: BorderRadius.circular(999),
             ),
             child: Text(
               label,
               style: const TextStyle(
-                color: Color(0xFF715C12),
+                color: AppColors.limeDeep,
                 fontWeight: FontWeight.w900,
               ),
             ),

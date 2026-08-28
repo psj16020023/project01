@@ -77,7 +77,13 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        color: AppColors.paper,
+        decoration: const BoxDecoration(
+          gradient: LinearGradient(
+            begin: Alignment.topLeft,
+            end: Alignment.bottomRight,
+            colors: [AppColors.sky, AppColors.paper, AppColors.limeSoft],
+          ),
+        ),
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -102,7 +108,7 @@ class _AuthScreenState extends State<AuthScreen> {
                         Text(
                           '24H',
                           style: TextStyle(
-                            color: AppColors.skyBlueDeep,
+                            color: AppColors.limeDeep,
                             fontWeight: FontWeight.w900,
                           ),
                         ),
@@ -124,7 +130,7 @@ class _AuthScreenState extends State<AuthScreen> {
                           ? '닉네임, 아이디, 비밀번호를 정해서 바로 시작해요.'
                           : '로그인하고 편봇과 조합 공유를 이어서 사용해요.',
                       style: const TextStyle(
-                        color: Color(0xFF698093),
+                        color: AppColors.muted,
                         fontWeight: FontWeight.w700,
                         height: 1.5,
                       ),
@@ -182,8 +188,8 @@ class _AuthScreenState extends State<AuthScreen> {
                       child: FilledButton(
                         onPressed: _submitting ? null : _submit,
                         style: FilledButton.styleFrom(
-                          backgroundColor: AppColors.navy,
-                          foregroundColor: Colors.white,
+                          backgroundColor: AppColors.lime,
+                          foregroundColor: AppColors.ink,
                           padding: const EdgeInsets.symmetric(vertical: 16),
                           shape: RoundedRectangleBorder(
                             borderRadius: BorderRadius.circular(
@@ -223,7 +229,7 @@ class _ModeToggle extends StatelessWidget {
     return Container(
       padding: const EdgeInsets.all(4),
       decoration: BoxDecoration(
-        color: const Color(0xFFF3F8FB),
+        color: AppColors.sky,
         borderRadius: BorderRadius.circular(999),
       ),
       child: Row(
@@ -274,7 +280,7 @@ class _ToggleChip extends StatelessWidget {
         child: Text(
           label,
           style: TextStyle(
-            color: active ? AppColors.ink : const Color(0xFF7A8EA1),
+            color: active ? AppColors.ink : AppColors.muted,
             fontWeight: FontWeight.w900,
           ),
         ),
@@ -365,7 +371,10 @@ class _AuthFieldState extends State<_AuthField> {
             ),
             focusedBorder: OutlineInputBorder(
               borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-              borderSide: const BorderSide(color: AppColors.navy, width: 1.5),
+              borderSide: const BorderSide(
+                color: AppColors.skyBlueDeep,
+                width: 1.5,
+              ),
             ),
           ),
         ),

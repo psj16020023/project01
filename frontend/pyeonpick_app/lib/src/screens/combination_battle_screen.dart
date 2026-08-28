@@ -8,6 +8,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:mobile_scanner/mobile_scanner.dart';
 
 import '../core/image_url.dart';
+import '../core/app_colors.dart';
 import '../models/combination_battle.dart';
 import '../models/post.dart';
 import '../models/pyeon_user.dart';
@@ -16,10 +17,10 @@ import '../repositories/post_repository.dart';
 import '../services/battle_state_store.dart';
 import '../widgets/cu_product_badges.dart';
 
-const _battleInk = Color(0xFF203447);
+const _battleInk = AppColors.ink;
 const _battleCanvas = Colors.white;
-const _battleLine = Color(0xFFDCE6F0);
-const _battleSubtle = Color(0xFF72869B);
+const _battleLine = AppColors.line;
+const _battleSubtle = AppColors.muted;
 
 bool _isCombinationTitle(String value) {
   final parts = value
@@ -879,7 +880,7 @@ class _BattleFeedPageState extends State<_BattleFeedPage> {
               FilledButton.tonalIcon(
                 onPressed: widget.onOpenCreate,
                 style: FilledButton.styleFrom(
-                  backgroundColor: const Color(0xFFEEF3F6),
+                  backgroundColor: AppColors.lime,
                   foregroundColor: _battleInk,
                 ),
                 icon: const Icon(Icons.add_rounded, size: 18),
@@ -1070,7 +1071,10 @@ class _BattleCreatePage extends StatelessWidget {
                     borderSide: BorderSide(color: _battleLine),
                   ),
                   focusedBorder: UnderlineInputBorder(
-                    borderSide: BorderSide(color: Color(0xFF49A9D8), width: 2),
+                    borderSide: BorderSide(
+                      color: AppColors.skyBlueDeep,
+                      width: 2,
+                    ),
                   ),
                 ),
               ),
@@ -1136,8 +1140,8 @@ class _BattleCreatePage extends StatelessWidget {
                 child: FilledButton(
                   onPressed: onSubmit,
                   style: FilledButton.styleFrom(
-                    backgroundColor: const Color(0xFF49A9D8),
-                    foregroundColor: Colors.white,
+                    backgroundColor: AppColors.lime,
+                    foregroundColor: AppColors.ink,
                     padding: const EdgeInsets.symmetric(vertical: 16),
                     shape: RoundedRectangleBorder(
                       borderRadius: BorderRadius.circular(12),
@@ -1215,16 +1219,16 @@ class _BattleDurationPicker extends StatelessWidget {
                           avatar: Icon(item.icon, size: 16),
                           label: Text(item.label),
                           onSelected: (_) => onUnitChanged(item),
-                          selectedColor: const Color(0xFFDDEBFF),
+                          selectedColor: AppColors.limeSoft,
                           labelStyle: TextStyle(
                             color: unit == item
-                                ? const Color(0xFF2458B6)
+                                ? AppColors.limeDeep
                                 : _battleSubtle,
                             fontWeight: FontWeight.w900,
                           ),
                           side: BorderSide(
                             color: unit == item
-                                ? const Color(0xFF2458B6)
+                                ? AppColors.limeDeep
                                 : _battleLine,
                           ),
                           backgroundColor: Colors.white,
@@ -1371,7 +1375,7 @@ class _BattleManualCreateSlot extends StatelessWidget {
             child: OutlinedButton.icon(
               onPressed: onScanBarcode,
               style: OutlinedButton.styleFrom(
-                foregroundColor: const Color(0xFF174C84),
+                foregroundColor: AppColors.skyBlueDeep,
                 side: const BorderSide(color: Color(0xFFD4E2EA)),
                 padding: const EdgeInsets.symmetric(vertical: 13),
                 shape: RoundedRectangleBorder(
@@ -1687,8 +1691,8 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
                           child: FilledButton.icon(
                             onPressed: _startScanner,
                             style: FilledButton.styleFrom(
-                              backgroundColor: const Color(0xFF49ACE6),
-                              foregroundColor: Colors.white,
+                              backgroundColor: AppColors.lime,
+                              foregroundColor: AppColors.ink,
                               padding: const EdgeInsets.symmetric(
                                 horizontal: 24,
                                 vertical: 16,
@@ -1734,7 +1738,7 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
                 child: OutlinedButton.icon(
                   onPressed: _openManualBarcodeInput,
                   style: OutlinedButton.styleFrom(
-                    foregroundColor: const Color(0xFF174C84),
+                    foregroundColor: AppColors.skyBlueDeep,
                     side: const BorderSide(color: Color(0xFFD4E2EA)),
                     padding: const EdgeInsets.symmetric(vertical: 14),
                     shape: RoundedRectangleBorder(
@@ -2027,7 +2031,7 @@ class _BattleEndPill extends StatelessWidget {
             Icon(
               expired ? Icons.lock_clock_rounded : Icons.timer_rounded,
               size: 15,
-              color: expired ? _battleSubtle : const Color(0xFF2458B6),
+              color: expired ? _battleSubtle : AppColors.skyBlueDeep,
             ),
             const SizedBox(width: 5),
             Flexible(
@@ -2038,7 +2042,7 @@ class _BattleEndPill extends StatelessWidget {
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: TextStyle(
-                  color: expired ? _battleSubtle : const Color(0xFF2458B6),
+                  color: expired ? _battleSubtle : AppColors.skyBlueDeep,
                   fontSize: 11.5,
                   fontWeight: FontWeight.w900,
                   letterSpacing: -0.2,
@@ -2163,6 +2167,10 @@ class _BattleVoteSideCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isLeft = choice == BattleVoteSide.left;
+    final accent = isLeft ? AppColors.lime : AppColors.skyBlue;
+    final accentSoft = isLeft ? AppColors.limeSoft : AppColors.sky;
+    final accentInk = isLeft ? AppColors.limeDeep : AppColors.skyBlueDeep;
     return Semantics(
       button: true,
       selected: active,
@@ -2193,7 +2201,7 @@ class _BattleVoteSideCard extends StatelessWidget {
                   horizontal: 12,
                   vertical: 9,
                 ),
-                color: active ? const Color(0xFFEEF4F7) : Colors.white,
+                color: active ? accent : accentSoft,
                 child: Row(
                   children: [
                     Icon(
@@ -2201,9 +2209,7 @@ class _BattleVoteSideCard extends StatelessWidget {
                           ? Icons.check_circle_rounded
                           : Icons.radio_button_unchecked_rounded,
                       size: 21,
-                      color: active
-                          ? const Color(0xFF567583)
-                          : const Color(0xFFADB5BC),
+                      color: accentInk,
                     ),
                     const SizedBox(width: 9),
                     Expanded(
@@ -2235,7 +2241,7 @@ class _BattleVoteSideCard extends StatelessWidget {
                           tied ? '동률' : '더 많이 선택됨',
                           style: const TextStyle(
                             fontSize: 10,
-                            color: _battleSubtle,
+                            color: _battleInk,
                           ),
                         ),
                       ],

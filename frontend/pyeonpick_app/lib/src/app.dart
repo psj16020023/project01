@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/gestures.dart';
 
 import 'core/app_colors.dart';
+import 'core/app_theme.dart';
 import 'core/app_environment.dart';
 import 'models/pyeon_user.dart';
 import 'repositories/post_repository.dart';
@@ -118,61 +119,7 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
           PointerDeviceKind.trackpad,
         },
       ),
-      theme: ThemeData(
-        useMaterial3: true,
-        scaffoldBackgroundColor: AppColors.paper,
-        colorScheme: ColorScheme.fromSeed(
-          seedColor: AppColors.skyBlue,
-          primary: AppColors.skyBlue,
-          secondary: AppColors.navy,
-          surface: AppColors.receipt,
-        ),
-        appBarTheme: const AppBarTheme(
-          backgroundColor: AppColors.receipt,
-          foregroundColor: AppColors.ink,
-          elevation: 0,
-          surfaceTintColor: Colors.transparent,
-        ),
-        cardTheme: CardThemeData(
-          color: AppColors.receipt,
-          elevation: 0,
-          margin: EdgeInsets.zero,
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusMedium),
-          ),
-        ),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: AppColors.receipt,
-          border: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-            borderSide: const BorderSide(color: AppColors.line),
-          ),
-          enabledBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-            borderSide: const BorderSide(color: AppColors.line),
-          ),
-          focusedBorder: OutlineInputBorder(
-            borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-            borderSide: const BorderSide(color: AppColors.navy, width: 1.5),
-          ),
-        ),
-        filledButtonTheme: FilledButtonThemeData(
-          style: FilledButton.styleFrom(
-            backgroundColor: AppColors.navy,
-            foregroundColor: Colors.white,
-            shape: RoundedRectangleBorder(
-              borderRadius: BorderRadius.circular(AppColors.radiusSmall),
-            ),
-          ),
-        ),
-        chipTheme: ChipThemeData(
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(999),
-          ),
-          side: BorderSide.none,
-        ),
-      ),
+      theme: AppTheme.light,
       builder: (context, child) {
         final content = child ?? const SizedBox.shrink();
         final warning = _storageWarning;
@@ -245,7 +192,7 @@ class _StorageWarningBanner extends StatelessWidget {
             children: [
               const Icon(
                 Icons.info_outline_rounded,
-                color: AppColors.navy,
+                color: AppColors.skyBlueDeep,
                 size: 20,
               ),
               const SizedBox(width: 8),
@@ -294,7 +241,7 @@ class _StorageErrorScreen extends StatelessWidget {
                 const Icon(
                   Icons.storage_rounded,
                   size: 44,
-                  color: AppColors.navy,
+                  color: AppColors.skyBlueDeep,
                 ),
                 const SizedBox(height: 16),
                 const Text(
