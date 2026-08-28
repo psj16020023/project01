@@ -101,4 +101,32 @@ void main() {
     expect(selected, AppTab.battle);
     expect(tester.takeException(), isNull);
   });
+
+  testWidgets('taste setup uses both accents without white score labels', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(1440, 1000);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: AppTheme.light,
+        home: Scaffold(body: BotSetupPage(onComplete: (_) async {})),
+      ),
+    );
+    final colors = tester
+        .widgetList<AnimatedContainer>(find.byType(AnimatedContainer))
+        .map((w) => w.decoration)
+        .whereType<BoxDecoration>()
+        .map((d) => d.color);
+    expect(colors, containsAll([AppColors.lime, AppColors.skyBlue]));
+    for (final label in tester.widgetList<Text>(find.text('1'))) {
+      expect(label.style!.color, AppColors.ink);
+    }
+    await tester.tap(find.text('5').first);
+    await tester.pumpAndSettle();
+    expect(find.text('5/5'), findsOneWidget);
+    expect(tester.takeException(), isNull);
+  });
 }

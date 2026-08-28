@@ -10397,14 +10397,14 @@ class _TasteRatingEditor extends StatelessWidget {
   final void Function(String taste, int value) onChanged;
 
   static const Map<String, Color> _tasteFillColors = <String, Color>{
-    '달달': Color(0xFFFF8EB2),
-    '매콤': Color(0xFFFF7A59),
-    '새콤': Color(0xFFF3CB47),
-    '짭짤': Color(0xFF5DBFD2),
+    '달달': AppColors.lime,
+    '매콤': AppColors.skyBlue,
+    '새콤': AppColors.lime,
+    '짭짤': AppColors.skyBlue,
   };
 
   Color _fillColorFor(String taste) =>
-      _tasteFillColors[taste] ?? const Color(0xFFFFC85A);
+      _tasteFillColors[taste] ?? AppColors.lime;
 
   @override
   Widget build(BuildContext context) {
@@ -10429,7 +10429,7 @@ class _TasteRatingEditor extends StatelessWidget {
                   Text(
                     '${entry.value}/5',
                     style: const TextStyle(
-                      color: Color(0xFF6E8395),
+                      color: AppColors.muted,
                       fontWeight: FontWeight.w800,
                       fontSize: 12,
                     ),
@@ -10455,31 +10455,16 @@ class _TasteRatingEditor extends StatelessWidget {
                             decoration: BoxDecoration(
                               color: active
                                   ? fillColor
-                                  : const Color(0xFFF0F4F7),
+                                  : AppColors.surfaceMuted,
                               borderRadius: BorderRadius.circular(999),
                               border: Border.all(
-                                color: active
-                                    ? fillColor.withValues(alpha: 0.92)
-                                    : const Color(0xFFDCE5EB),
+                                color: active ? fillColor : AppColors.line,
                               ),
-                              boxShadow: active
-                                  ? [
-                                      BoxShadow(
-                                        color: fillColor.withValues(
-                                          alpha: 0.18,
-                                        ),
-                                        blurRadius: 8,
-                                        offset: const Offset(0, 3),
-                                      ),
-                                    ]
-                                  : null,
                             ),
                             child: Text(
                               '$score',
                               style: TextStyle(
-                                color: active
-                                    ? Colors.white
-                                    : const Color(0xFF93A3B0),
+                                color: active ? AppColors.ink : AppColors.muted,
                                 fontWeight: FontWeight.w900,
                               ),
                             ),
