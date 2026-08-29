@@ -19,7 +19,7 @@
 body {
   margin: 0;
   font-family: "Apple SD Gothic Neo", "Noto Sans KR", sans-serif;
-  background: linear-gradient(180deg, #f2fbff 0%, #ffffff 25%);
+  background: #ffffff;
   color: var(--ink);
 }
 
@@ -228,7 +228,7 @@ textarea {
   width: 100%;
   min-height: 260px;
   border-radius: 24px;
-  background: linear-gradient(135deg, #fff4ae, #cdefff);
+  background: #f3f7f1;
   background-size: cover;
   background-position: center;
   display: flex;
@@ -553,7 +553,7 @@ textarea {
 .placeholder-panel {
   min-height: 420px;
   border-radius: 28px;
-  background: linear-gradient(145deg, #ffffff, #f7fbff);
+  background: #ffffff;
   border: 1px solid #edf3f7;
   box-shadow: var(--card-shadow);
   padding: 32px;

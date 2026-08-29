@@ -53,6 +53,20 @@ void main() {
     expect(boot, isNot(contains('#16467a')));
   });
 
+  test('app surfaces and web boot screen do not use gradients', () {
+    final sources = [
+      File('lib/src/screens/auth_screen.dart'),
+      File('lib/src/screens/combination_battle_screen.dart'),
+      File('lib/src/screens/home_screen.dart'),
+      File('web/index.html'),
+    ];
+    for (final source in sources) {
+      final content = source.readAsStringSync();
+      expect(content, isNot(contains('LinearGradient')));
+      expect(content, isNot(contains('linear-gradient')));
+    }
+  });
+
   for (final size in [const Size(390, 844), const Size(1440, 900)]) {
     testWidgets('login accents remain readable at ${size.width}px', (
       tester,

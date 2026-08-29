@@ -2651,15 +2651,7 @@ class _HomeScreenState extends State<HomeScreen> {
                 Container(height: 1, color: AppColors.line),
                 Container(
                   width: double.infinity,
-                  decoration: const BoxDecoration(
-                    gradient: LinearGradient(
-                      colors: [
-                        AppColors.sky,
-                        AppColors.receipt,
-                        AppColors.limeSoft,
-                      ],
-                    ),
-                  ),
+                  color: AppColors.receipt,
                   child: Center(
                     child: ConstrainedBox(
                       constraints: const BoxConstraints(maxWidth: 1760),
@@ -3245,11 +3237,7 @@ class _LegacyDiscoveryStage extends StatelessWidget {
           width: double.infinity,
           clipBehavior: Clip.antiAlias,
           decoration: BoxDecoration(
-            gradient: const LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [Color(0xFF102E51), Color(0xFF075E7B)],
-            ),
+            color: const Color(0xFF102E51),
             borderRadius: BorderRadius.circular(26),
             boxShadow: [
               BoxShadow(
@@ -5047,13 +5035,7 @@ class GradientPhoto extends StatelessWidget {
       _displayImageUrl(imageUrl),
       fit: BoxFit.cover,
       errorBuilder: (_, _, _) => Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [Color(0xFFFFF1D6), Color(0xFFEAF7D8)],
-          ),
-        ),
+        color: AppColors.surfaceMuted,
         alignment: Alignment.center,
         child: const Icon(
           Icons.restaurant_rounded,

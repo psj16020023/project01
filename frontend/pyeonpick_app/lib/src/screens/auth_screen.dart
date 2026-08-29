@@ -77,13 +77,7 @@ class _AuthScreenState extends State<AuthScreen> {
   Widget build(BuildContext context) {
     return Scaffold(
       body: Container(
-        decoration: const BoxDecoration(
-          gradient: LinearGradient(
-            begin: Alignment.topLeft,
-            end: Alignment.bottomRight,
-            colors: [AppColors.sky, AppColors.paper, AppColors.limeSoft],
-          ),
-        ),
+        color: AppColors.paper,
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(

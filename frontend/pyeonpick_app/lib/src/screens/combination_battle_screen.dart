@@ -2354,13 +2354,7 @@ class _BattleImageFill extends StatelessWidget {
 
   Widget _fallback() {
     return DecoratedBox(
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-          colors: [fallbackColor.withAlpha(36), fallbackColor.withAlpha(10)],
-        ),
-      ),
+      decoration: BoxDecoration(color: fallbackColor.withAlpha(22)),
       child: Center(
         child: Icon(Icons.fastfood_rounded, size: 42, color: iconColor),
       ),
