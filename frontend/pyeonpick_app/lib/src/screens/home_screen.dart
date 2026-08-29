@@ -464,6 +464,7 @@ class HomeScreen extends StatefulWidget {
     required this.environment,
     required this.currentUser,
     required this.onUserChanged,
+    required this.onPostReactionChanged,
     required this.onLogout,
     required this.onDeleteAccount,
   });
@@ -472,6 +473,7 @@ class HomeScreen extends StatefulWidget {
   final AppEnvironment environment;
   final PyeonUser currentUser;
   final Future<void> Function(PyeonUser user) onUserChanged;
+  final ValueChanged<Post> onPostReactionChanged;
   final Future<void> Function() onLogout;
   final Future<void> Function(String password) onDeleteAccount;
 
@@ -529,8 +531,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _communicationScrollController.addListener(_handleCommunicationScroll);
     _loadKnownUsers();
     _loadPosts();
-    unawaited(_loadPostFeatureIndex());
-    unawaited(_loadFeaturePostPool());
   }
 
   @override
@@ -596,11 +596,10 @@ class _HomeScreenState extends State<HomeScreen> {
         maxPrice: int.tryParse(_maxFilterController.text.trim()),
         currentUserId: widget.currentUser.id,
         cursor: reset ? null : _nextPostsCursor,
-        limit: 6,
+        limit: 12,
         sortMode: _sortMode,
       );
       final pagePosts = page.posts.map(_withCurrentUserReaction).toList();
-      await _mergeLoadedReactionsIntoUser(pagePosts);
 
       if (!mounted) return;
       setState(() {
@@ -621,6 +620,9 @@ class _HomeScreenState extends State<HomeScreen> {
         _loading = false;
         _loadingMore = false;
       });
+      if (reset && _postFeatureIndex.isEmpty) {
+        unawaited(_loadPostFeatureIndex());
+      }
     } catch (_) {
       if (attempt == 0 && mounted) {
         await Future<void>.delayed(const Duration(milliseconds: 350));
@@ -670,27 +672,6 @@ class _HomeScreenState extends State<HomeScreen> {
 
   Post _withCurrentUserReaction(Post post) {
     return post;
-  }
-
-  Future<void> _mergeLoadedReactionsIntoUser(List<Post> posts) async {
-    final likedIds = widget.currentUser.likedPostIds.toSet();
-    final dislikedIds = widget.currentUser.dislikedPostIds.toSet();
-    var changed = false;
-    for (final post in posts) {
-      changed = post.likedByMe
-          ? likedIds.add(post.id) || changed
-          : likedIds.remove(post.id) || changed;
-      changed = post.dislikedByMe
-          ? dislikedIds.add(post.id) || changed
-          : dislikedIds.remove(post.id) || changed;
-    }
-    if (!changed) return;
-    await widget.onUserChanged(
-      widget.currentUser.copyWith(
-        likedPostIds: likedIds.toList(),
-        dislikedPostIds: dislikedIds.toList(),
-      ),
-    );
   }
 
   Future<void> _loadMorePosts() async {
@@ -779,7 +760,6 @@ class _HomeScreenState extends State<HomeScreen> {
     _loadingFeaturePostPool = true;
     try {
       final posts = await _fetchAllPostsForFunctions();
-      await _mergeLoadedReactionsIntoUser(posts);
       if (!mounted) return;
       setState(() {
         _featurePostPool = posts;
@@ -796,7 +776,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _toggleLike(Post post) async {
-    if (_reactionRequests.isNotEmpty) return;
+    if (_reactionRequests.contains(post.id)) return;
     _reactionRequests.add(post.id);
     final optimistic = post.copyWith(
       likedByMe: !post.likedByMe,
@@ -815,8 +795,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (!mounted) return;
       _applyUpdatedPost(updated);
-      await _syncPostReactionToUser(updated);
-      unawaited(_loadPostFeatureIndex());
+      widget.onPostReactionChanged(updated);
     } catch (_) {
       if (!mounted) return;
       _applyUpdatedPost(post);
@@ -829,7 +808,7 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _toggleDislike(Post post) async {
-    if (_reactionRequests.isNotEmpty) return;
+    if (_reactionRequests.contains(post.id)) return;
     _reactionRequests.add(post.id);
     final optimistic = post.copyWith(
       dislikedByMe: !post.dislikedByMe,
@@ -848,8 +827,7 @@ class _HomeScreenState extends State<HomeScreen> {
       );
       if (!mounted) return;
       _applyUpdatedPost(updated);
-      await _syncPostReactionToUser(updated);
-      unawaited(_loadPostFeatureIndex());
+      widget.onPostReactionChanged(updated);
     } catch (_) {
       if (!mounted) return;
       _applyUpdatedPost(post);
@@ -859,27 +837,6 @@ class _HomeScreenState extends State<HomeScreen> {
     } finally {
       _reactionRequests.remove(post.id);
     }
-  }
-
-  Future<void> _syncPostReactionToUser(Post post) async {
-    final likedIds = widget.currentUser.likedPostIds.toSet();
-    final dislikedIds = widget.currentUser.dislikedPostIds.toSet();
-    if (post.likedByMe) {
-      likedIds.add(post.id);
-    } else {
-      likedIds.remove(post.id);
-    }
-    if (post.dislikedByMe) {
-      dislikedIds.add(post.id);
-    } else {
-      dislikedIds.remove(post.id);
-    }
-    await widget.onUserChanged(
-      widget.currentUser.copyWith(
-        likedPostIds: likedIds.toList(),
-        dislikedPostIds: dislikedIds.toList(),
-      ),
-    );
   }
 
   Future<void> _addComment(Post post, String text) async {

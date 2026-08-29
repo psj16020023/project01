@@ -39,6 +39,21 @@ test('shared immutable votes feed only the authenticated user taste profile', { 
   }
   const a = await api('/api/auth/signup', null, { username: 'test-a', nickname: '테스트 A', password: 'fixture-only' });
   const b = await api('/api/auth/signup', null, { username: 'test-b', nickname: '테스트 B', password: 'fixture-only' });
+  const reactionPost = (await api('/api/posts?limit=12', null, null, 'GET')).posts[0];
+  const liked = await api(`/api/posts/${reactionPost.id}/like`, null, { userId: a.user.id });
+  assert.equal(liked.post.likedByMe, true);
+  assert.equal(liked.post.dislikedByMe, false);
+  const unliked = await api(`/api/posts/${reactionPost.id}/like`, null, { userId: a.user.id });
+  assert.equal(unliked.post.likedByMe, false);
+  const disliked = await api(`/api/posts/${reactionPost.id}/dislike`, null, { userId: a.user.id });
+  assert.equal(disliked.post.dislikedByMe, true);
+  assert.equal(disliked.post.likedByMe, false);
+  const switched = await api(`/api/posts/${reactionPost.id}/like`, null, { userId: a.user.id });
+  assert.equal(switched.post.likedByMe, true);
+  assert.equal(switched.post.dislikedByMe, false);
+  const cleared = await api(`/api/posts/${reactionPost.id}/like`, null, { userId: a.user.id });
+  assert.equal(cleared.post.likedByMe, false);
+  assert.equal(cleared.post.dislikedByMe, false);
   const match = { id: 'test-battle', title: '조합 테스트', leftCustomTitle: '우유 + 쿠키', rightCustomTitle: '라면 + 치즈',
     endsAt: new Date(Date.now() + 3600000).toISOString(), leftColorValue: 1, rightColorValue: 2 };
   await api('/api/battles', a.token, match);

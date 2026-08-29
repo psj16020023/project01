@@ -4,6 +4,7 @@ import 'package:flutter/gestures.dart';
 import 'core/app_colors.dart';
 import 'core/app_theme.dart';
 import 'core/app_environment.dart';
+import 'models/post.dart';
 import 'models/pyeon_user.dart';
 import 'repositories/post_repository.dart';
 import 'screens/auth_screen.dart';
@@ -89,6 +90,21 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
     }
   }
 
+  void _handlePostReactionChanged(Post post) {
+    final user = _currentUser;
+    if (user == null) return;
+    final likedIds = user.likedPostIds.toSet();
+    final dislikedIds = user.dislikedPostIds.toSet();
+    post.likedByMe ? likedIds.add(post.id) : likedIds.remove(post.id);
+    post.dislikedByMe ? dislikedIds.add(post.id) : dislikedIds.remove(post.id);
+    setState(() {
+      _currentUser = user.copyWith(
+        likedPostIds: likedIds.toList(),
+        dislikedPostIds: dislikedIds.toList(),
+      );
+    });
+  }
+
   Future<void> _handleLogout() async {
     final store = _accountStore!;
     await store.signOut();
@@ -156,6 +172,7 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
               environment: _environment,
               currentUser: _currentUser!,
               onUserChanged: _handleUserChanged,
+              onPostReactionChanged: _handlePostReactionChanged,
               onLogout: _handleLogout,
               onDeleteAccount: _handleDeleteAccount,
             ),

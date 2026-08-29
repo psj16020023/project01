@@ -264,7 +264,7 @@ class RemotePostRepository implements PostRepository {
       },
     );
 
-    final response = await http.get(uri);
+    final response = await http.get(uri).timeout(const Duration(seconds: 12));
     if (response.statusCode != 200) {
       throw Exception('게시글 조회 실패');
     }
@@ -327,11 +327,13 @@ class RemotePostRepository implements PostRepository {
 
   @override
   Future<Post> toggleLike(String id, String currentUserId) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/posts/$id/like'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'userId': currentUserId}),
-    );
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/posts/$id/like'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'userId': currentUserId}),
+        )
+        .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {
       throw Exception('좋아요 실패');
     }
@@ -341,11 +343,13 @@ class RemotePostRepository implements PostRepository {
 
   @override
   Future<Post> toggleDislike(String id, String currentUserId) async {
-    final response = await http.post(
-      Uri.parse('$baseUrl/posts/$id/dislike'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'userId': currentUserId}),
-    );
+    final response = await http
+        .post(
+          Uri.parse('$baseUrl/posts/$id/dislike'),
+          headers: {'Content-Type': 'application/json'},
+          body: jsonEncode({'userId': currentUserId}),
+        )
+        .timeout(const Duration(seconds: 8));
     if (response.statusCode != 200) {
       throw Exception('싫어요 실패');
     }

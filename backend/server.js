@@ -3333,6 +3333,29 @@ async function refreshTopFiveBadges() {
   );
 }
 
+let topFiveBadgeRefreshRequested = false;
+let topFiveBadgeRefreshRunning = false;
+
+function scheduleTopFiveBadgeRefresh() {
+  topFiveBadgeRefreshRequested = true;
+  if (topFiveBadgeRefreshRunning) return;
+  topFiveBadgeRefreshRunning = true;
+
+  setImmediate(async () => {
+    try {
+      while (topFiveBadgeRefreshRequested) {
+        topFiveBadgeRefreshRequested = false;
+        await refreshTopFiveBadges();
+      }
+    } catch (error) {
+      console.error("Background badge refresh failed:", error);
+    } finally {
+      topFiveBadgeRefreshRunning = false;
+      if (topFiveBadgeRefreshRequested) scheduleTopFiveBadgeRefresh();
+    }
+  });
+}
+
 function qualifiesForPopularBadge(post) {
   const likes = Number(post.likes || 0);
   const dislikes = Number(post.dislikes || 0);
@@ -4147,8 +4170,13 @@ app.get("/api/posts", async (req, res) => {
         ? { dislikes: -1, createdAt: -1 }
         : { createdAt: -1 };
   const pageSize = Math.min(Math.max(Number(limit) || 6, 1), 20);
-  const posts = await Post.find(filters).sort({ ...sortOption, _id: -1 }).limit(pageSize + 1);
-  const currentUser = viewerId ? await findUserByIdLeanOrNull(viewerId) : null;
+  const [posts, currentUser] = await Promise.all([
+    Post.find(filters)
+      .sort({ ...sortOption, _id: -1 })
+      .limit(pageSize + 1)
+      .lean(),
+    viewerId ? findUserByIdLeanOrNull(viewerId) : Promise.resolve(null),
+  ]);
   const hasMore = posts.length > pageSize;
   const pagePosts = hasMore ? posts.slice(0, pageSize) : posts;
   await hydratePostAuthorImages(pagePosts);
@@ -4449,9 +4477,9 @@ app.post("/api/posts/:id/like", async (req, res) => {
 
   await post.save();
   await user.save();
-  await refreshTopFiveBadges();
   await hydratePostAuthorImages(post);
   res.json({ post: serializePost(post, user) });
+  scheduleTopFiveBadgeRefresh();
 });
 
 app.post("/api/posts/:id/dislike", async (req, res) => {
@@ -4484,9 +4512,9 @@ app.post("/api/posts/:id/dislike", async (req, res) => {
 
   await post.save();
   await user.save();
-  await refreshTopFiveBadges();
   await hydratePostAuthorImages(post);
   res.json({ post: serializePost(post, user) });
+  scheduleTopFiveBadgeRefresh();
 });
 
 app.post("/api/posts/:id/comments", async (req, res) => {
