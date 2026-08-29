@@ -17,6 +17,19 @@ test('only the authenticated user choices contribute; duplicate matches count on
   assert.deepEqual(buildVotePreferences([], posts, 'me'), { sampleCount: 0, categoryWeights: {}, recentChoices: [] });
 });
 
+test('a same-topic vote ranks the chosen categories above the unchosen side', () => {
+  const matches = [{
+    _id: 'night', title: '야식으로 더 좋은 조합은?',
+    leftPostId: 'ramen', rightPostId: 'salad', leftVoterIds: ['me'], rightVoterIds: [],
+  }];
+  const posts = [
+    { _id: 'ramen', title: '불닭 라면', categories: ['매콤'] },
+    { _id: 'salad', title: '가벼운 샐러드', categories: ['저칼로리'] },
+  ];
+  const profile = buildVotePreferences(matches, posts, 'me', '야식 추천해줘');
+  assert.ok(profile.categoryWeights['매콤'] > profile.categoryWeights['저칼로리']);
+});
+
 test('candidate prices must fit the entire requested range', () => {
   const posts = [
     { title: 'A', priceMin: 3000, priceMax: 4000 },

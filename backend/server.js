@@ -3610,14 +3610,14 @@ app.post("/api/auth/signin", async (req, res) => {
   });
 });
 
-async function loadVotePreferences(userId) {
+async function loadVotePreferences(userId, prompt = "") {
   const matches = await BattleMatch.find({
     $or: [{ leftVoterIds: String(userId) }, { rightVoterIds: String(userId) }],
   }).sort({ createdAt: -1 }).limit(200)
-    .select("leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds").lean();
+    .select("title leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds").lean();
   const ids = matches.flatMap((match) => [match.leftPostId, match.rightPostId]).filter(isValidObjectId);
   const posts = await Post.find({ _id: { $in: ids } }).select("title categories").lean();
-  return buildVotePreferences(matches, posts, userId);
+  return buildVotePreferences(matches, posts, userId, prompt);
 }
 
 app.post("/api/bot/analyze", requireAuth, async (req, res) => {
@@ -3628,7 +3628,7 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
   if (!prompt) {
     return res.status(400).json({ message: "분석할 문장이 필요해요." });
   }
-  const preferences = await loadVotePreferences(req.auth.sub);
+  const preferences = await loadVotePreferences(req.auth.sub, prompt);
   const localAnalysis = analyzeBotPromptLocally(prompt);
   if (!OPENAI_API_KEY) {
     return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
@@ -3651,7 +3651,7 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
               {
                 type: "input_text",
                 text:
-                  "You analyze Korean convenience-store recommendation requests. Extract only facts supported by the user's message. Never choose products. Budget is KRW. timeAvailableMinutes is preparation/selection time. wantedTastes must use only 달달, 매콤, 새콤, 짭짤. emotion must be one of neutral, happy, excited, relieved, sad, lonely, angry, stressed, anxious, nervous, tired, sick. Keep summary to one empathetic Korean sentence.",
+                  "You extract optional context from Korean convenience-store requests. Mood is optional and must stay neutral unless clearly stated; never force an emotional interpretation. Accept broad requests such as anything, late-night snacks, comparisons, and casual conversation. Extract only supported facts and never choose products. Budget is KRW. wantedTastes must use only 달달, 매콤, 새콤, 짭짤. Keep summary empty when no empathy is needed.",
               },
             ],
           },
@@ -3751,7 +3751,7 @@ app.post("/api/bot/reply", requireAuth, async (req, res) => {
     const posts = await Post.find({ _id: { $in: ids } })
       .select("title priceMin priceMax categories details.usedProducts").lean();
     const candidates = eligibleCandidates(posts, req.body.maximumBudget, req.body.minimumPrice);
-    const preferences = await loadVotePreferences(req.auth.sub);
+    const preferences = await loadVotePreferences(req.auth.sub, prompt);
     const user = await User.findById(req.auth.sub).select("botSetup").lean();
     const input = dialogueInput({
       prompt, history: req.body.history, candidates, preferences,
@@ -3943,6 +3943,19 @@ app.get("/api/battles", requireAuth, async (req, res) => {
   });
 });
 
+app.get("/api/battles/highlights", requireAuth, async (req, res) => {
+  const matches = await BattleMatch.find({ endsAt: { $lte: new Date() } })
+    .sort({ endsAt: -1 })
+    .limit(200)
+    .lean();
+  const highlighted = matches.filter((match) =>
+    (match.leftVoterIds?.length || 0) + (match.rightVoterIds?.length || 0) >= 8
+  );
+  return res.json({
+    matches: highlighted.map((match) => serializeBattleMatch(match, req.auth.sub)),
+  });
+});
+
 app.post("/api/battles", requireAuth, async (req, res) => {
   const payload = normalizeBattlePayload(req.body || {});
   const user = await User.findById(req.auth.sub).select("nickname").lean();
@@ -4051,8 +4064,17 @@ app.get("/api/posts", async (req, res) => {
     limit,
     tags = "",
     likedGenderMajority = "",
+    authorIds = "",
   } = req.query;
   const filters = {};
+
+  const requestedAuthorIds = String(authorIds)
+    .split(",")
+    .map((entry) => entry.trim())
+    .filter(Boolean);
+  if (requestedAuthorIds.length > 0) {
+    filters.authorId = { $in: requestedAuthorIds };
+  }
 
   if (query) {
     if (String(query).startsWith("#")) {

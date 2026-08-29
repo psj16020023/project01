@@ -114,6 +114,15 @@ class MockPostRepository implements PostRepository {
   }
 
   @override
+  Future<List<BattleMatchEntry>> fetchBattleHighlights() async {
+    final state = await fetchBattleState();
+    return state.matches
+        .where((match) => match.totalVotes >= 8 && match.isExpired)
+        .toList()
+      ..sort((a, b) => b.endsAt!.compareTo(a.endsAt!));
+  }
+
+  @override
   Future<BattleMatchEntry> createBattle(BattleMatchEntry match) async {
     await fetchBattleState();
     _battleState = _battleState.copyWith(
@@ -397,6 +406,7 @@ class MockPostRepository implements PostRepository {
     int? minPrice,
     int? maxPrice,
     String? likedGenderMajority,
+    List<String>? authorIds,
     String? currentUserId,
     String? cursor,
     int? limit,
@@ -457,7 +467,15 @@ class MockPostRepository implements PostRepository {
 
       final matchesMin = minPrice == null || post.priceMax >= minPrice;
       final matchesMax = maxPrice == null || post.priceMin <= maxPrice;
-      return matchesQuery && matchesTags && matchesMin && matchesMax;
+      final matchesAuthor =
+          authorIds == null ||
+          authorIds.isEmpty ||
+          authorIds.contains(post.authorId);
+      return matchesQuery &&
+          matchesTags &&
+          matchesMin &&
+          matchesMax &&
+          matchesAuthor;
     }).toList();
 
     filtered.sort((a, b) {

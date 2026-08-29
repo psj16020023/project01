@@ -20,6 +20,8 @@ abstract class PostRepository {
 
   Future<CombinationBattleState> fetchBattleState();
 
+  Future<List<BattleMatchEntry>> fetchBattleHighlights();
+
   Future<BattleMatchEntry> createBattle(BattleMatchEntry match);
 
   Future<BattleMatchEntry> castBattleVote(
@@ -38,6 +40,7 @@ abstract class PostRepository {
     int? minPrice,
     int? maxPrice,
     String? likedGenderMajority,
+    List<String>? authorIds,
     String? currentUserId,
     String? cursor,
     int? limit,

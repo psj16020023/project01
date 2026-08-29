@@ -153,7 +153,6 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
                 ],
               ),
             ),
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
             Expanded(
               child: ListView(
                 controller: widget.scrollController,
@@ -180,46 +179,48 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
                           .toList(),
               ),
             ),
-            const Divider(height: 1, color: Color(0xFFEEEEEE)),
-            Padding(
-              padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-              child: Row(
-                children: [
-                  CircleAvatar(
-                    radius: 17,
-                    backgroundColor: const Color(0xFFF0F1F2),
-                    child: Text(
-                      widget.currentUser.nickname.isEmpty
-                          ? '?'
-                          : widget.currentUser.nickname.characters.first,
-                      style: const TextStyle(
-                        color: AppColors.muted,
-                        fontSize: 13,
+            ColoredBox(
+              color: AppColors.sky,
+              child: Padding(
+                padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+                child: Row(
+                  children: [
+                    CircleAvatar(
+                      radius: 17,
+                      backgroundColor: const Color(0xFFF0F1F2),
+                      child: Text(
+                        widget.currentUser.nickname.isEmpty
+                            ? '?'
+                            : widget.currentUser.nickname.characters.first,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 13,
+                        ),
                       ),
                     ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: TextField(
-                      key: const Key('review-compose-input'),
-                      readOnly: true,
-                      onTap: _writeReview,
-                      decoration: const InputDecoration(
-                        hintText: '후기 남기기...',
-                        filled: false,
-                        border: InputBorder.none,
-                        enabledBorder: InputBorder.none,
-                        focusedBorder: InputBorder.none,
-                        isDense: true,
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: TextField(
+                        key: const Key('review-compose-input'),
+                        readOnly: true,
+                        onTap: _writeReview,
+                        decoration: const InputDecoration(
+                          hintText: '후기 남기기...',
+                          filled: false,
+                          border: InputBorder.none,
+                          enabledBorder: InputBorder.none,
+                          focusedBorder: InputBorder.none,
+                          isDense: true,
+                        ),
                       ),
                     ),
-                  ),
-                  IconButton(
-                    onPressed: _writeReview,
-                    tooltip: '후기 쓰기',
-                    icon: const Icon(Icons.edit_outlined, size: 21),
-                  ),
-                ],
+                    IconButton(
+                      onPressed: _writeReview,
+                      tooltip: '후기 쓰기',
+                      icon: const Icon(Icons.edit_outlined, size: 21),
+                    ),
+                  ],
+                ),
               ),
             ),
           ],
@@ -411,25 +412,48 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
                 }).toList(),
               ),
               const SizedBox(height: 18),
-              _ScorePicker(
-                label: '달달',
-                value: _sweet,
-                onChanged: (value) => setState(() => _sweet = value),
-              ),
-              _ScorePicker(
-                label: '짭짤',
-                value: _salty,
-                onChanged: (value) => setState(() => _salty = value),
-              ),
-              _ScorePicker(
-                label: '매운',
-                value: _spicy,
-                onChanged: (value) => setState(() => _spicy = value),
-              ),
-              _ScorePicker(
-                label: '새콤',
-                value: _sour,
-                onChanged: (value) => setState(() => _sour = value),
+              LayoutBuilder(
+                builder: (context, constraints) {
+                  final width = (constraints.maxWidth - 12) / 2;
+                  return Wrap(
+                    spacing: 12,
+                    runSpacing: 8,
+                    children: [
+                      SizedBox(
+                        width: width,
+                        child: _CompactTastePicker(
+                          label: '달달',
+                          value: _sweet,
+                          onChanged: (value) => setState(() => _sweet = value),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: _CompactTastePicker(
+                          label: '짭짤',
+                          value: _salty,
+                          onChanged: (value) => setState(() => _salty = value),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: _CompactTastePicker(
+                          label: '매운',
+                          value: _spicy,
+                          onChanged: (value) => setState(() => _spicy = value),
+                        ),
+                      ),
+                      SizedBox(
+                        width: width,
+                        child: _CompactTastePicker(
+                          label: '새콤',
+                          value: _sour,
+                          onChanged: (value) => setState(() => _sour = value),
+                        ),
+                      ),
+                    ],
+                  );
+                },
               ),
               const SizedBox(height: 12),
               TextField(
@@ -517,6 +541,49 @@ class _ScorePicker extends StatelessWidget {
           ),
         ],
       ),
+    );
+  }
+}
+
+class _CompactTastePicker extends StatelessWidget {
+  const _CompactTastePicker({
+    required this.label,
+    required this.value,
+    required this.onChanged,
+  });
+
+  final String label;
+  final int value;
+  final ValueChanged<int> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
+        const SizedBox(height: 4),
+        Row(
+          children: List.generate(5, (index) {
+            final score = index + 1;
+            return Expanded(
+              child: IconButton(
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(minHeight: 34),
+                visualDensity: VisualDensity.compact,
+                onPressed: () => onChanged(score),
+                icon: Icon(
+                  score <= value ? Icons.circle_rounded : Icons.circle_outlined,
+                  size: 16,
+                  color: score <= value
+                      ? AppColors.skyBlueDeep
+                      : AppColors.line,
+                ),
+              ),
+            );
+          }),
+        ),
+      ],
     );
   }
 }

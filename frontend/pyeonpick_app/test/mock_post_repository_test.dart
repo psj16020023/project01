@@ -4,6 +4,19 @@ import 'package:pyeonpick_app/src/repositories/mock_post_repository.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 void main() {
+  test('picked-author filtering is applied before pagination', () async {
+    final repository = MockPostRepository();
+    final catalog = await repository.fetchPostCatalog();
+    final authorId = catalog.first.authorId;
+    final page = await repository.fetchPosts(
+      authorIds: [authorId],
+      limit: 2,
+      sortMode: SortMode.latest,
+    );
+    expect(page.posts, isNotEmpty);
+    expect(page.posts.every((post) => post.authorId == authorId), isTrue);
+  });
+
   test('popular badge uses enough likes with a clear positive ratio', () async {
     SharedPreferences.setMockInitialValues({});
     final repository = MockPostRepository();

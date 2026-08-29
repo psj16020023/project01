@@ -45,13 +45,13 @@ abstract final class AppTheme {
       filled: true,
       fillColor: AppColors.receipt,
       hintStyle: const TextStyle(color: AppColors.muted),
-      border: _inputBorder(AppColors.line),
-      enabledBorder: _inputBorder(AppColors.line),
+      border: _inputBorder(AppColors.lime),
+      enabledBorder: _inputBorder(AppColors.lime),
       focusedBorder: _inputBorder(AppColors.skyBlueDeep, width: 1.5),
     ),
     filledButtonTheme: FilledButtonThemeData(
       style: FilledButton.styleFrom(
-        backgroundColor: AppColors.lime,
+        backgroundColor: AppColors.skyBlue,
         foregroundColor: AppColors.ink,
         shape: RoundedRectangleBorder(
           borderRadius: BorderRadius.circular(AppColors.radiusSmall),
@@ -64,11 +64,11 @@ abstract final class AppTheme {
     outlinedButtonTheme: OutlinedButtonThemeData(
       style: OutlinedButton.styleFrom(
         foregroundColor: AppColors.skyBlueDeep,
-        side: const BorderSide(color: AppColors.line),
+        side: const BorderSide(color: AppColors.lime),
       ),
     ),
     floatingActionButtonTheme: const FloatingActionButtonThemeData(
-      backgroundColor: AppColors.lime,
+      backgroundColor: AppColors.skyBlue,
       foregroundColor: AppColors.ink,
     ),
     progressIndicatorTheme: const ProgressIndicatorThemeData(
@@ -77,8 +77,8 @@ abstract final class AppTheme {
     ),
     chipTheme: ChipThemeData(
       backgroundColor: AppColors.surfaceMuted,
-      selectedColor: AppColors.limeSoft,
-      checkmarkColor: AppColors.limeDeep,
+      selectedColor: AppColors.sky,
+      checkmarkColor: AppColors.skyBlueDeep,
       labelStyle: const TextStyle(color: AppColors.ink),
       shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
       side: BorderSide.none,
@@ -86,15 +86,15 @@ abstract final class AppTheme {
     checkboxTheme: CheckboxThemeData(
       fillColor: WidgetStateProperty.resolveWith((states) {
         if (states.contains(WidgetState.disabled)) return AppColors.line;
-        return states.contains(WidgetState.selected) ? AppColors.lime : null;
+        return states.contains(WidgetState.selected) ? AppColors.skyBlue : null;
       }),
       checkColor: const WidgetStatePropertyAll(AppColors.limeDeep),
     ),
     sliderTheme: const SliderThemeData(
-      activeTrackColor: AppColors.lime,
+      activeTrackColor: AppColors.skyBlue,
       inactiveTrackColor: AppColors.surfaceMuted,
-      thumbColor: AppColors.limeDeep,
-      valueIndicatorColor: AppColors.limeSoft,
+      thumbColor: AppColors.skyBlueDeep,
+      valueIndicatorColor: AppColors.sky,
       valueIndicatorTextStyle: TextStyle(color: AppColors.ink),
     ),
   );

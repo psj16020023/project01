@@ -1506,6 +1506,18 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
   final MobileScannerController _controller = MobileScannerController(
     autoStart: false,
     facing: CameraFacing.back,
+    cameraResolution: const Size(1280, 720),
+    detectionSpeed: DetectionSpeed.normal,
+    detectionTimeoutMs: 120,
+    autoZoom: true,
+    formats: const <BarcodeFormat>[
+      BarcodeFormat.ean13,
+      BarcodeFormat.ean8,
+      BarcodeFormat.upcA,
+      BarcodeFormat.upcE,
+      BarcodeFormat.itf14,
+      BarcodeFormat.code128,
+    ],
   );
   final TextEditingController _manualCodeController = TextEditingController();
   bool _handled = false;
@@ -1662,18 +1674,25 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
                         controller: _controller,
                         onDetect: (capture) {
                           if (_handled) return;
-                          final value = capture.barcodes
-                              .map(
-                                (barcode) =>
-                                    (barcode.rawValue ??
-                                            barcode.displayValue ??
-                                            '')
-                                        .trim(),
-                              )
-                              .firstWhere(
-                                (value) => value.isNotEmpty,
-                                orElse: () => '',
-                              );
+                          var value = '';
+                          for (final barcode in capture.barcodes) {
+                            final raw =
+                                (barcode.rawValue ?? barcode.displayValue ?? '')
+                                    .trim();
+                            final digits = raw.replaceAll(
+                              RegExp(r'[^0-9]'),
+                              '',
+                            );
+                            if (const <int>{
+                              8,
+                              12,
+                              13,
+                              14,
+                            }.contains(digits.length)) {
+                              value = digits;
+                              break;
+                            }
+                          }
                           if (value.isEmpty) return;
                           _handled = true;
                           Navigator.of(context).pop(value);

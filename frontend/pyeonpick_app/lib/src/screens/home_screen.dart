@@ -14,6 +14,7 @@ import '../core/image_url.dart';
 import '../data/cu_product_catalog.dart';
 import '../models/app_tab.dart';
 import '../models/battle_results.dart';
+import '../models/combination_battle.dart';
 import '../models/bot_conversation.dart';
 import '../models/bot_message.dart';
 import '../models/post.dart';
@@ -42,7 +43,14 @@ const List<String> _suggestedSearchCategories = <String>[
   '트렌드',
 ];
 
-enum HighlightCollectionType { newProduct, pbProduct }
+enum HighlightCollectionType {
+  popular,
+  malePicks,
+  femalePicks,
+  newProduct,
+  pbProduct,
+  rediscovered,
+}
 
 const List<String> _highlightStores = <String>[
   'CU',
@@ -416,6 +424,7 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       icon: Icons.local_fire_department_rounded,
       color: const Color(0xFFFF8A4C),
       posts: popular?.posts ?? fallbackPopular,
+      collectionType: HighlightCollectionType.popular,
     ),
     _DiscoveryTopic(
       label: '남자들이 많이 고른 조합',
@@ -423,6 +432,7 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       icon: Icons.male_rounded,
       color: const Color(0xFF2869E6),
       posts: malePicks?.posts ?? const <PostFeatureInfo>[],
+      collectionType: HighlightCollectionType.malePicks,
     ),
     _DiscoveryTopic(
       label: '여자들이 많이 고른 조합',
@@ -430,6 +440,7 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       icon: Icons.female_rounded,
       color: const Color(0xFFE65086),
       posts: femalePicks?.posts ?? const <PostFeatureInfo>[],
+      collectionType: HighlightCollectionType.femalePicks,
     ),
     _DiscoveryTopic(
       label: '새로 들어온 조합',
@@ -453,6 +464,7 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       icon: Icons.replay_circle_filled_rounded,
       color: const Color(0xFF8FA7FF),
       posts: rediscovered?.posts ?? const <PostFeatureInfo>[],
+      collectionType: HighlightCollectionType.rediscovered,
     ),
   ];
 }
@@ -502,6 +514,8 @@ class _HomeScreenState extends State<HomeScreen> {
   Post? _detailPost;
   String? _nextPostsCursor;
   bool _loadingFeaturePostPool = false;
+  bool _pickedAuthorsOnly = false;
+  List<BattleMatchEntry> _battleHighlights = <BattleMatchEntry>[];
   List<PyeonUser> _knownUsers = <PyeonUser>[];
 
   List<Post> get _allFunctionalPosts {
@@ -531,6 +545,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _communicationScrollController.addListener(_handleCommunicationScroll);
     _loadKnownUsers();
     _loadPosts();
+    _loadBattleHighlights();
   }
 
   @override
@@ -595,6 +610,9 @@ class _HomeScreenState extends State<HomeScreen> {
         minPrice: int.tryParse(_minFilterController.text.trim()),
         maxPrice: int.tryParse(_maxFilterController.text.trim()),
         currentUserId: widget.currentUser.id,
+        authorIds: _pickedAuthorsOnly
+            ? widget.currentUser.pickedAuthorIds
+            : null,
         cursor: reset ? null : _nextPostsCursor,
         limit: 12,
         sortMode: _sortMode,
@@ -636,6 +654,15 @@ class _HomeScreenState extends State<HomeScreen> {
             ? '원격 서버에서 게시글을 불러오지 못했어요. API 주소나 서버 상태를 확인해 주세요.'
             : '게시글을 불러오지 못했어요.';
       });
+    }
+  }
+
+  Future<void> _loadBattleHighlights() async {
+    try {
+      final matches = await widget.repository.fetchBattleHighlights();
+      if (mounted) setState(() => _battleHighlights = matches);
+    } catch (_) {
+      // Community remains usable when the optional highlight feed is unavailable.
     }
   }
 
@@ -1835,8 +1862,7 @@ class _HomeScreenState extends State<HomeScreen> {
 
     if (budget == null && minimumPrice == null) {
       return const _BotReply(
-        text:
-            '추천할 때 넘지 말아야 할 현재 예산을 입력해줘. 위 예산 칸에 적거나 “5천 원 있는데 추천해줘”처럼 말해도 돼.',
+        text: '예산은 얼마 있어?',
         memoryNote: '추천 전 현재 예산 확인 필요',
         recommendedPostIds: <String>[],
       );
@@ -2418,15 +2444,42 @@ class _HomeScreenState extends State<HomeScreen> {
   ) async {
     final allPosts = await _ensureFeaturePostPool();
     if (!mounted) return;
+    final features = {for (final item in _allFeatureInfo) item.id: item};
+    final now = DateTime.now();
+    final activityWindow = now.subtract(const Duration(days: 30));
+    bool matchesFeature(Post post) {
+      final feature = features[post.id];
+      if (feature == null) return false;
+      return switch (type) {
+        HighlightCollectionType.popular =>
+          feature.likes >= 10 &&
+              feature.likes >= math.max(1, feature.dislikes * 3),
+        HighlightCollectionType.malePicks =>
+          feature.genderLikeTotal > 0 && feature.maleLikeRatio >= 0.75,
+        HighlightCollectionType.femalePicks =>
+          feature.genderLikeTotal > 0 && feature.femaleLikeRatio >= 0.75,
+        HighlightCollectionType.rediscovered =>
+          feature.createdAt.isBefore(now.subtract(const Duration(days: 7))) &&
+              (feature.recentLikeCount >= 2 ||
+                  (feature.topFiveEnteredAt?.isAfter(activityWindow) ?? false)),
+        _ => false,
+      };
+    }
+
     final posts = switch (type) {
       HighlightCollectionType.newProduct =>
         allPosts.where(_postHasNewProduct).toList(),
       HighlightCollectionType.pbProduct =>
         allPosts.where(_postHasPbProduct).toList(),
+      _ => allPosts.where(matchesFeature).toList(),
     };
     final title = switch (type) {
+      HighlightCollectionType.popular => '이번 주 인기',
+      HighlightCollectionType.malePicks => '남자들이 많이 고른 조합',
+      HighlightCollectionType.femalePicks => '여자들이 많이 고른 조합',
       HighlightCollectionType.newProduct => '신상',
       HighlightCollectionType.pbProduct => 'PB',
+      HighlightCollectionType.rediscovered => '재평가',
     };
     Navigator.of(context).push(
       MaterialPageRoute<void>(
@@ -2441,6 +2494,32 @@ class _HomeScreenState extends State<HomeScreen> {
           onToggleSave: _toggleSavedPost,
           onEditPost: (post) => _openComposer(initialPost: post),
           onDeletePost: _deletePost,
+        ),
+      ),
+    );
+  }
+
+  Future<void> _togglePickedAuthorsOnly() async {
+    if (widget.currentUser.pickedAuthorIds.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('먼저 마음에 드는 작성자를 픽해 주세요.')));
+      return;
+    }
+    setState(() => _pickedAuthorsOnly = !_pickedAuthorsOnly);
+    await _loadPosts();
+  }
+
+  void _openBattleHighlights(bool decisive) {
+    final matches = _battleHighlights.where(
+      (match) => decisive ? match.isDecisiveResult : match.isCloseResult,
+    );
+    Navigator.of(context).push(
+      MaterialPageRoute<void>(
+        builder: (context) => BattleHighlightsPage(
+          title: decisive ? '압도적' : '박빙',
+          matches: matches.toList(),
+          posts: _allFunctionalPosts,
         ),
       ),
     );
@@ -2604,8 +2683,8 @@ class _HomeScreenState extends State<HomeScreen> {
         child: SafeArea(
           child: Column(
             children: [
-              if (_selectedTab != AppTab.battle) ...[
-                Container(height: 1, color: AppColors.line),
+              ...[
+                Container(height: 1, color: AppColors.lime),
                 Container(
                   width: double.infinity,
                   color: AppColors.receipt,
@@ -2698,11 +2777,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   ),
                 ),
               ),
-              if (_selectedTab == AppTab.battle)
-                FeatureTabs(
-                  selectedTab: _selectedTab,
-                  onChanged: (tab) => setState(() => _selectedTab = tab),
-                ),
             ],
           ),
         ),
@@ -2745,6 +2819,11 @@ class _HomeScreenState extends State<HomeScreen> {
           onOpenCollection: _openHighlightCollection,
           onShuffle: _shufflePosts,
           onScanBarcode: _scanCommunicationBarcode,
+          pickedAuthorsOnly: _pickedAuthorsOnly,
+          hasPickedAuthors: widget.currentUser.pickedAuthorIds.isNotEmpty,
+          onTogglePickedAuthors: _togglePickedAuthorsOnly,
+          battleHighlights: _battleHighlights,
+          onOpenBattleHighlights: _openBattleHighlights,
         );
       case AppTab.battle:
         return CombinationBattleScreen(
@@ -2818,6 +2897,11 @@ class CommunicationBody extends StatelessWidget {
     required this.onOpenCollection,
     required this.onShuffle,
     required this.onScanBarcode,
+    required this.pickedAuthorsOnly,
+    required this.hasPickedAuthors,
+    required this.onTogglePickedAuthors,
+    required this.battleHighlights,
+    required this.onOpenBattleHighlights,
   });
 
   final bool loading;
@@ -2848,6 +2932,11 @@ class CommunicationBody extends StatelessWidget {
   final void Function(HighlightCollectionType type) onOpenCollection;
   final VoidCallback onShuffle;
   final Future<void> Function() onScanBarcode;
+  final bool pickedAuthorsOnly;
+  final bool hasPickedAuthors;
+  final Future<void> Function() onTogglePickedAuthors;
+  final List<BattleMatchEntry> battleHighlights;
+  final ValueChanged<bool> onOpenBattleHighlights;
 
   @override
   Widget build(BuildContext context) {
@@ -2930,12 +3019,27 @@ class CommunicationBody extends StatelessWidget {
                   onToggleTag: onToggleSearchTag,
                   onShuffle: onShuffle,
                   onScanBarcode: onScanBarcode,
+                  pickedAuthorsOnly: pickedAuthorsOnly,
+                  hasPickedAuthors: hasPickedAuthors,
+                  onTogglePickedAuthors: onTogglePickedAuthors,
                 ),
                 topics: discoveryTopics,
                 onOpenPost: (post) => unawaited(onOpenFeaturePost(post)),
                 onOpenCollection: onOpenCollection,
               ),
-              const SizedBox(height: 24),
+              if (battleHighlights.isNotEmpty) ...[
+                const SizedBox(height: 14),
+                _BattleHighlightLinks(
+                  decisiveCount: battleHighlights
+                      .where((match) => match.isDecisiveResult)
+                      .length,
+                  closeCount: battleHighlights
+                      .where((match) => match.isCloseResult)
+                      .length,
+                  onOpen: onOpenBattleHighlights,
+                ),
+              ],
+              const SizedBox(height: 18),
               Row(
                 children: [
                   const Expanded(
@@ -2955,9 +3059,7 @@ class CommunicationBody extends StatelessWidget {
                   ),
                 ],
               ),
-              const SizedBox(height: 8),
-              const Divider(height: 1, color: AppColors.line),
-              const SizedBox(height: 14),
+              const SizedBox(height: 12),
               if (posts.isEmpty)
                 const EmptyState()
               else
@@ -3020,14 +3122,8 @@ class EmptyState extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      width: double.infinity,
+    return Padding(
       padding: const EdgeInsets.symmetric(horizontal: 20, vertical: 42),
-      decoration: BoxDecoration(
-        color: Colors.white,
-        borderRadius: BorderRadius.circular(28),
-        border: Border.all(color: AppColors.line),
-      ),
       child: const Column(
         children: [
           Icon(
@@ -3059,6 +3155,182 @@ class EmptyState extends StatelessWidget {
   }
 }
 
+class _BattleHighlightLinks extends StatelessWidget {
+  const _BattleHighlightLinks({
+    required this.decisiveCount,
+    required this.closeCount,
+    required this.onOpen,
+  });
+
+  final int decisiveCount;
+  final int closeCount;
+  final ValueChanged<bool> onOpen;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      children: [
+        Expanded(
+          child: _BattleHighlightButton(
+            label: '압도적',
+            count: decisiveCount,
+            icon: Icons.bolt_rounded,
+            onTap: decisiveCount == 0 ? null : () => onOpen(true),
+          ),
+        ),
+        const SizedBox(width: 10),
+        Expanded(
+          child: _BattleHighlightButton(
+            label: '박빙',
+            count: closeCount,
+            icon: Icons.balance_rounded,
+            onTap: closeCount == 0 ? null : () => onOpen(false),
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BattleHighlightButton extends StatelessWidget {
+  const _BattleHighlightButton({
+    required this.label,
+    required this.count,
+    required this.icon,
+    required this.onTap,
+  });
+
+  final String label;
+  final int count;
+  final IconData icon;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return TextButton.icon(
+      onPressed: onTap,
+      style: TextButton.styleFrom(
+        alignment: Alignment.centerLeft,
+        backgroundColor: AppColors.sky,
+        foregroundColor: AppColors.skyBlueDeep,
+        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
+      ),
+      icon: Icon(icon, size: 19),
+      label: Text(
+        '$label  $count',
+        style: const TextStyle(fontWeight: FontWeight.w900),
+      ),
+    );
+  }
+}
+
+class BattleHighlightsPage extends StatelessWidget {
+  const BattleHighlightsPage({
+    super.key,
+    required this.title,
+    required this.matches,
+    required this.posts,
+  });
+
+  final String title;
+  final List<BattleMatchEntry> matches;
+  final List<Post> posts;
+
+  Post? _post(String id) => posts.where((post) => post.id == id).firstOrNull;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      appBar: AppBar(title: Text(title)),
+      body: ListView.separated(
+        padding: const EdgeInsets.fromLTRB(16, 18, 16, 36),
+        itemCount: matches.length,
+        separatorBuilder: (_, _) => const SizedBox(height: 22),
+        itemBuilder: (context, index) {
+          final match = matches[index];
+          final left = _post(match.leftPostId);
+          final right = _post(match.rightPostId);
+          return Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                match.title,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: const TextStyle(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+              const SizedBox(height: 10),
+              Row(
+                children: [
+                  Expanded(
+                    child: _BattleResultSide(
+                      post: left,
+                      imageUrl: match.leftCustomImageUrl,
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: _BattleResultSide(
+                      post: right,
+                      imageUrl: match.rightCustomImageUrl,
+                    ),
+                  ),
+                ],
+              ),
+              const SizedBox(height: 9),
+              Text(
+                '${match.leftVotes}표  :  ${match.rightVotes}표',
+                style: const TextStyle(
+                  color: AppColors.skyBlueDeep,
+                  fontWeight: FontWeight.w900,
+                ),
+              ),
+            ],
+          );
+        },
+      ),
+    );
+  }
+}
+
+class _BattleResultSide extends StatelessWidget {
+  const _BattleResultSide({required this.post, required this.imageUrl});
+
+  final Post? post;
+  final String? imageUrl;
+
+  @override
+  Widget build(BuildContext context) {
+    final source = imageUrl?.trim().isNotEmpty == true
+        ? imageUrl!.trim()
+        : post?.allImageUrls.firstOrNull;
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        AspectRatio(
+          aspectRatio: 4 / 5,
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(14),
+            child: source == null
+                ? const ColoredBox(color: AppColors.sky)
+                : Image.network(_displayImageUrl(source), fit: BoxFit.contain),
+          ),
+        ),
+        const SizedBox(height: 6),
+        Text(
+          post?.title ?? '직접 등록한 조합',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: const TextStyle(fontWeight: FontWeight.w700),
+        ),
+      ],
+    );
+  }
+}
+
 class FeatureTabs extends StatelessWidget {
   const FeatureTabs({
     super.key,
@@ -3081,50 +3353,43 @@ class FeatureTabs extends StatelessWidget {
     return LayoutBuilder(
       builder: (context, constraints) {
         final desktop = constraints.maxWidth >= 760;
-        return Container(
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: AppColors.divider)),
-          ),
-          child: Row(
-            children: tabs.map((item) {
-              final active = selectedTab == item.tab;
-              return Expanded(
-                child: InkWell(
-                  onTap: () => onChanged(item.tab),
-                  borderRadius: BorderRadius.zero,
-                  child: AnimatedContainer(
-                    duration: const Duration(milliseconds: 160),
-                    alignment: Alignment.center,
-                    padding: EdgeInsets.symmetric(
-                      horizontal: desktop ? 16 : 3,
-                      vertical: desktop ? 14 : 10,
-                    ),
-                    decoration: BoxDecoration(
-                      color: active ? AppColors.limeSoft : Colors.transparent,
-                      border: Border(
-                        bottom: BorderSide(
-                          color: active
-                              ? AppColors.limeDeep
-                              : Colors.transparent,
-                          width: 2,
-                        ),
-                      ),
-                    ),
-                    child: Text(
-                      item.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: desktop ? 18 : 11,
-                        fontWeight: active ? FontWeight.w900 : FontWeight.w700,
-                        color: active ? AppColors.limeDeep : AppColors.muted,
+        return Row(
+          children: tabs.map((item) {
+            final active = selectedTab == item.tab;
+            return Expanded(
+              child: InkWell(
+                onTap: () => onChanged(item.tab),
+                borderRadius: BorderRadius.zero,
+                child: AnimatedContainer(
+                  duration: const Duration(milliseconds: 160),
+                  alignment: Alignment.center,
+                  padding: EdgeInsets.symmetric(
+                    horizontal: desktop ? 16 : 3,
+                    vertical: desktop ? 14 : 10,
+                  ),
+                  decoration: BoxDecoration(
+                    color: active ? AppColors.sky : Colors.transparent,
+                    border: Border(
+                      bottom: BorderSide(
+                        color: active ? AppColors.lime : Colors.transparent,
+                        width: 2,
                       ),
                     ),
                   ),
+                  child: Text(
+                    item.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: desktop ? 18 : 11,
+                      fontWeight: active ? FontWeight.w900 : FontWeight.w700,
+                      color: active ? AppColors.skyBlueDeep : AppColors.muted,
+                    ),
+                  ),
                 ),
-              );
-            }).toList(),
-          ),
+              ),
+            );
+          }).toList(),
         );
       },
     );
@@ -3156,7 +3421,7 @@ class _DiscoveryStage extends StatelessWidget {
               padding: EdgeInsets.symmetric(horizontal: wide ? 2 : 0),
               child: toolbar,
             ),
-            SizedBox(height: wide ? 30 : 24),
+            SizedBox(height: wide ? 18 : 14),
             _DiscoveryAccordion(
               topics: topics,
               onOpenPost: onOpenPost,
@@ -3391,11 +3656,8 @@ class _DiscoveryTopicShelf extends StatelessWidget {
         final wide = constraints.maxWidth >= 760;
         final cardWidth = wide ? 224.0 : 172.0;
         final shelfHeight = wide ? 252.0 : 220.0;
-        return Container(
-          padding: EdgeInsets.only(bottom: expanded ? 12 : 0),
-          decoration: const BoxDecoration(
-            border: Border(bottom: BorderSide(color: AppColors.divider)),
-          ),
+        return Padding(
+          padding: EdgeInsets.only(bottom: expanded ? 10 : 2),
           child: Column(
             children: [
               InkWell(
@@ -4004,6 +4266,9 @@ class Toolbar extends StatefulWidget {
     required this.onToggleTag,
     required this.onShuffle,
     required this.onScanBarcode,
+    required this.pickedAuthorsOnly,
+    required this.hasPickedAuthors,
+    required this.onTogglePickedAuthors,
   });
 
   final TextEditingController searchController;
@@ -4015,6 +4280,9 @@ class Toolbar extends StatefulWidget {
   final Future<void> Function(String tag) onToggleTag;
   final VoidCallback onShuffle;
   final Future<void> Function() onScanBarcode;
+  final bool pickedAuthorsOnly;
+  final bool hasPickedAuthors;
+  final Future<void> Function() onTogglePickedAuthors;
 
   @override
   State<Toolbar> createState() => _ToolbarState();
@@ -4100,6 +4368,33 @@ class _ToolbarState extends State<Toolbar> {
               _categoriesVisible ? Icons.expand_less : Icons.expand_more,
               size: 20,
               color: AppColors.muted,
+            ),
+            const SizedBox(width: 6),
+            TextButton.icon(
+              key: const Key('picked-author-filter'),
+              onPressed: widget.hasPickedAuthors
+                  ? widget.onTogglePickedAuthors
+                  : widget.onTogglePickedAuthors,
+              style: TextButton.styleFrom(
+                foregroundColor: widget.pickedAuthorsOnly
+                    ? AppColors.skyBlueDeep
+                    : AppColors.muted,
+                backgroundColor: widget.pickedAuthorsOnly
+                    ? AppColors.sky
+                    : Colors.transparent,
+                minimumSize: const Size(44, 40),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              icon: Icon(
+                widget.pickedAuthorsOnly
+                    ? Icons.person_rounded
+                    : Icons.person_outline_rounded,
+                size: 18,
+              ),
+              label: const Text(
+                '픽한 사람',
+                style: TextStyle(fontWeight: FontWeight.w700),
+              ),
             ),
             const Spacer(),
             IconButton(
@@ -9571,6 +9866,15 @@ class ProductScannerPage extends StatelessWidget {
   }
 }
 
+String _retailBarcodeFromCapture(BarcodeCapture capture) {
+  for (final barcode in capture.barcodes) {
+    final raw = (barcode.rawValue ?? barcode.displayValue ?? '').trim();
+    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
+    if (const <int>{8, 12, 13, 14}.contains(digits.length)) return digits;
+  }
+  return '';
+}
+
 class ProductScannerSheet extends StatefulWidget {
   const ProductScannerSheet({super.key, this.pageMode = false});
 
@@ -9584,6 +9888,18 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
   final MobileScannerController _controller = MobileScannerController(
     autoStart: false,
     facing: CameraFacing.back,
+    cameraResolution: const Size(1280, 720),
+    detectionSpeed: DetectionSpeed.normal,
+    detectionTimeoutMs: 120,
+    autoZoom: true,
+    formats: const <BarcodeFormat>[
+      BarcodeFormat.ean13,
+      BarcodeFormat.ean8,
+      BarcodeFormat.upcA,
+      BarcodeFormat.upcE,
+      BarcodeFormat.itf14,
+      BarcodeFormat.code128,
+    ],
   );
   final TextEditingController _manualCodeController = TextEditingController();
 
@@ -9782,18 +10098,9 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
                                   controller: _controller,
                                   onDetect: (capture) {
                                     if (_handled) return;
-                                    final value = capture.barcodes
-                                        .map(
-                                          (barcode) =>
-                                              (barcode.rawValue ??
-                                                      barcode.displayValue ??
-                                                      '')
-                                                  .trim(),
-                                        )
-                                        .firstWhere(
-                                          (value) => value.isNotEmpty,
-                                          orElse: () => '',
-                                        );
+                                    final value = _retailBarcodeFromCapture(
+                                      capture,
+                                    );
                                     if (value.isEmpty) return;
                                     _handled = true;
                                     Navigator.of(context).pop(value);

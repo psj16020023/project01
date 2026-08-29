@@ -81,6 +81,21 @@ class RemotePostRepository implements PostRepository {
   }
 
   @override
+  Future<List<BattleMatchEntry>> fetchBattleHighlights() async {
+    final response = await http
+        .get(
+          Uri.parse('$baseUrl/battles/highlights'),
+          headers: await _battleHeaders(),
+        )
+        .timeout(const Duration(seconds: 15));
+    if (response.statusCode != 200) throw Exception('픽쇼츠 화제 결과 조회 실패');
+    final json = jsonDecode(response.body) as Map<String, dynamic>;
+    return (json['matches'] as List<dynamic>? ?? const <dynamic>[])
+        .map((item) => BattleMatchEntry.fromJson(item as Map<String, dynamic>))
+        .toList();
+  }
+
+  @override
   Future<BattleMatchEntry> createBattle(BattleMatchEntry match) async {
     final response = await http.post(
       Uri.parse('$baseUrl/battles'),
@@ -238,6 +253,7 @@ class RemotePostRepository implements PostRepository {
     int? minPrice,
     int? maxPrice,
     String? likedGenderMajority,
+    List<String>? authorIds,
     String? currentUserId,
     String? cursor,
     int? limit,
@@ -252,6 +268,8 @@ class RemotePostRepository implements PostRepository {
         if (maxPrice != null) 'maxPrice': '$maxPrice',
         if (likedGenderMajority != null && likedGenderMajority.isNotEmpty)
           'likedGenderMajority': likedGenderMajority,
+        if (authorIds != null && authorIds.isNotEmpty)
+          'authorIds': authorIds.join(','),
         if (currentUserId != null && currentUserId.isNotEmpty)
           'viewerId': currentUserId,
         if (cursor != null && cursor.isNotEmpty) 'cursor': cursor,

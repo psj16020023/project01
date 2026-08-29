@@ -32,7 +32,7 @@ void main() {
     expect(theme.colorScheme.secondary, AppColors.lime);
     expect(
       theme.filledButtonTheme.style!.backgroundColor!.resolve({}),
-      AppColors.lime,
+      AppColors.skyBlue,
     );
     expect(
       theme.filledButtonTheme.style!.foregroundColor!.resolve({}),
@@ -94,7 +94,7 @@ void main() {
     });
   }
 
-  testWidgets('feature navigation keeps labels and a lime selected state', (
+  testWidgets('feature navigation keeps labels with sky fill and lime line', (
     tester,
   ) async {
     AppTab? selected;
@@ -110,7 +110,7 @@ void main() {
       ),
     );
     final label = tester.widget<Text>(find.text('꿀조합 공유'));
-    expect(label.style!.color, AppColors.limeDeep);
+    expect(label.style!.color, AppColors.skyBlueDeep);
     await tester.tap(find.text('픽 쇼츠'));
     expect(selected, AppTab.battle);
     expect(tester.takeException(), isNull);

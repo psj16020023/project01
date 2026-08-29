@@ -95,6 +95,20 @@ class BattleMatchEntry {
       ? '시간 제한 없음'
       : DateFormat('yyyy.MM.dd HH:mm').format(endsAt!);
   bool get isExpired => endsAt != null && !endsAt!.isAfter(DateTime.now());
+  bool get isDecisiveResult {
+    if (!isExpired || totalVotes < 8 || leftVotes == rightVotes) return false;
+    final higher = leftVotes > rightVotes ? leftVotes : rightVotes;
+    final lower = leftVotes > rightVotes ? rightVotes : leftVotes;
+    return lower == 0 ? higher > 0 : higher >= lower * 2;
+  }
+
+  bool get isCloseResult {
+    return isExpired &&
+        totalVotes >= 8 &&
+        !isDecisiveResult &&
+        (leftVotes - rightVotes).abs() <= 3;
+  }
+
   bool get usesCustomLeft => (leftCustomTitle?.trim().isNotEmpty ?? false);
   bool get usesCustomRight => (rightCustomTitle?.trim().isNotEmpty ?? false);
 
