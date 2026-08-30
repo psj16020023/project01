@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math' as math;
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
@@ -6316,20 +6317,16 @@ class _ComposerSheetState extends State<ComposerSheet> {
                   ),
                 ],
                 const SizedBox(height: 12),
-                TextField(
+                _InlineNumberField(
+                  label: '가격 :',
+                  unit: '원',
                   controller: priceController,
-                  keyboardType: TextInputType.number,
-                  decoration: inputDecoration(
-                    '0',
-                  ).copyWith(prefixText: '가격 : ', suffixText: '원'),
                 ),
                 const SizedBox(height: 12),
-                TextField(
+                _InlineNumberField(
+                  label: '칼로리 :',
+                  unit: 'kcal',
                   controller: calorieController,
-                  keyboardType: TextInputType.number,
-                  decoration: inputDecoration(
-                    '0',
-                  ).copyWith(prefixText: '칼로리 : ', suffixText: 'kcal'),
                 ),
                 const SizedBox(height: 12),
                 _PostRatingPicker(
@@ -6383,6 +6380,78 @@ class _ComposerSheetState extends State<ComposerSheet> {
           ),
         ),
       ),
+    );
+  }
+}
+
+class _InlineNumberField extends StatelessWidget {
+  const _InlineNumberField({
+    required this.label,
+    required this.unit,
+    required this.controller,
+  });
+
+  final String label;
+  final String unit;
+  final TextEditingController controller;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      crossAxisAlignment: CrossAxisAlignment.end,
+      children: [
+        SizedBox(
+          width: 76,
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 11),
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 15,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ),
+        ),
+        Expanded(
+          child: TextField(
+            controller: controller,
+            keyboardType: TextInputType.number,
+            inputFormatters: [FilteringTextInputFormatter.digitsOnly],
+            decoration: const InputDecoration(
+              hintText: '1000',
+              hintStyle: TextStyle(color: Color(0xFFA6B4BE)),
+              filled: false,
+              isDense: true,
+              contentPadding: EdgeInsets.fromLTRB(4, 10, 4, 9),
+              border: UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFD7E1E7)),
+              ),
+              enabledBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: Color(0xFFD7E1E7)),
+              ),
+              focusedBorder: UnderlineInputBorder(
+                borderSide: BorderSide(color: AppColors.skyBlueDeep, width: 2),
+              ),
+            ),
+          ),
+        ),
+        SizedBox(
+          width: 44,
+          child: Padding(
+            padding: const EdgeInsets.only(left: 8, bottom: 11),
+            child: Text(
+              unit,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ),
+        ),
+      ],
     );
   }
 }
