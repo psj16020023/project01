@@ -367,6 +367,8 @@ class _DiscoveryTopic {
     required this.color,
     required this.posts,
     this.collectionType,
+    this.battles = const <_BattleDiscoveryItem>[],
+    this.decisiveBattleCollection,
   });
 
   final String label;
@@ -375,12 +377,33 @@ class _DiscoveryTopic {
   final Color color;
   final List<PostFeatureInfo> posts;
   final HighlightCollectionType? collectionType;
+  final List<_BattleDiscoveryItem> battles;
+  final bool? decisiveBattleCollection;
+
+  int get itemCount => posts.isNotEmpty ? posts.length : battles.length;
+}
+
+class _BattleDiscoveryItem {
+  const _BattleDiscoveryItem({
+    required this.match,
+    required this.leftTitle,
+    required this.rightTitle,
+    this.leftImageUrl,
+    this.rightImageUrl,
+  });
+
+  final BattleMatchEntry match;
+  final String leftTitle;
+  final String rightTitle;
+  final String? leftImageUrl;
+  final String? rightImageUrl;
 }
 
 List<_DiscoveryTopic> _buildDiscoveryTopics(
   List<PostFeatureInfo> posts,
-  List<_CommunityTrendGroup> trends,
-) {
+  List<_CommunityTrendGroup> trends, [
+  List<BattleMatchEntry> battleHighlights = const <BattleMatchEntry>[],
+]) {
   _CommunityTrendGroup? trend(String label) {
     for (final item in trends) {
       if (item.label == label) return item;
@@ -416,6 +439,29 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
     posts.where(_featureHasPbProduct),
     (post) => (post.likes * 4) + (post.reviewCount * 3),
   );
+  final featuresById = {for (final post in posts) post.id: post};
+  _BattleDiscoveryItem battleItem(BattleMatchEntry match) {
+    final left = featuresById[match.leftPostId];
+    final right = featuresById[match.rightPostId];
+    return _BattleDiscoveryItem(
+      match: match,
+      leftTitle: match.leftCustomTitle ?? left?.title ?? '첫 번째 조합',
+      rightTitle: match.rightCustomTitle ?? right?.title ?? '두 번째 조합',
+      leftImageUrl: match.leftCustomImageUrl ?? left?.imageUrl,
+      rightImageUrl: match.rightCustomImageUrl ?? right?.imageUrl,
+    );
+  }
+
+  final decisiveBattles = battleHighlights
+      .where((match) => match.isDecisiveResult)
+      .take(5)
+      .map(battleItem)
+      .toList();
+  final closeBattles = battleHighlights
+      .where((match) => match.isCloseResult)
+      .take(5)
+      .map(battleItem)
+      .toList();
 
   return <_DiscoveryTopic>[
     _DiscoveryTopic(
@@ -465,6 +511,24 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       color: const Color(0xFF8FA7FF),
       posts: rediscovered?.posts ?? const <PostFeatureInfo>[],
       collectionType: HighlightCollectionType.rediscovered,
+    ),
+    _DiscoveryTopic(
+      label: '압도적 픽쇼츠',
+      caption: '8표 이상, 두 배 차이로 선택이 갈린 결과',
+      icon: Icons.bolt_rounded,
+      color: AppColors.skyBlue,
+      posts: const <PostFeatureInfo>[],
+      battles: decisiveBattles,
+      decisiveBattleCollection: true,
+    ),
+    _DiscoveryTopic(
+      label: '박빙 픽쇼츠',
+      caption: '8표 이상, 세 표 이내로 갈린 결과',
+      icon: Icons.balance_rounded,
+      color: AppColors.lime,
+      posts: const <PostFeatureInfo>[],
+      battles: closeBattles,
+      decisiveBattleCollection: false,
     ),
   ];
 }
@@ -2979,7 +3043,11 @@ class CommunicationBody extends StatelessWidget {
         ? posts.map(PostFeatureInfo.fromPost).toList()
         : allFeatureInfo;
     final trendPicks = _buildCommunityTrendPicks(featureIndex);
-    final discoveryTopics = _buildDiscoveryTopics(featureIndex, trendPicks);
+    final discoveryTopics = _buildDiscoveryTopics(
+      featureIndex,
+      trendPicks,
+      battleHighlights,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -3026,19 +3094,8 @@ class CommunicationBody extends StatelessWidget {
                 topics: discoveryTopics,
                 onOpenPost: (post) => unawaited(onOpenFeaturePost(post)),
                 onOpenCollection: onOpenCollection,
+                onOpenBattleCollection: onOpenBattleHighlights,
               ),
-              if (battleHighlights.isNotEmpty) ...[
-                const SizedBox(height: 14),
-                _BattleHighlightLinks(
-                  decisiveCount: battleHighlights
-                      .where((match) => match.isDecisiveResult)
-                      .length,
-                  closeCount: battleHighlights
-                      .where((match) => match.isCloseResult)
-                      .length,
-                  onOpen: onOpenBattleHighlights,
-                ),
-              ],
               const SizedBox(height: 18),
               Row(
                 children: [
@@ -3150,75 +3207,6 @@ class EmptyState extends StatelessWidget {
             ),
           ),
         ],
-      ),
-    );
-  }
-}
-
-class _BattleHighlightLinks extends StatelessWidget {
-  const _BattleHighlightLinks({
-    required this.decisiveCount,
-    required this.closeCount,
-    required this.onOpen,
-  });
-
-  final int decisiveCount;
-  final int closeCount;
-  final ValueChanged<bool> onOpen;
-
-  @override
-  Widget build(BuildContext context) {
-    return Row(
-      children: [
-        Expanded(
-          child: _BattleHighlightButton(
-            label: '압도적',
-            count: decisiveCount,
-            icon: Icons.bolt_rounded,
-            onTap: decisiveCount == 0 ? null : () => onOpen(true),
-          ),
-        ),
-        const SizedBox(width: 10),
-        Expanded(
-          child: _BattleHighlightButton(
-            label: '박빙',
-            count: closeCount,
-            icon: Icons.balance_rounded,
-            onTap: closeCount == 0 ? null : () => onOpen(false),
-          ),
-        ),
-      ],
-    );
-  }
-}
-
-class _BattleHighlightButton extends StatelessWidget {
-  const _BattleHighlightButton({
-    required this.label,
-    required this.count,
-    required this.icon,
-    required this.onTap,
-  });
-
-  final String label;
-  final int count;
-  final IconData icon;
-  final VoidCallback? onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return TextButton.icon(
-      onPressed: onTap,
-      style: TextButton.styleFrom(
-        alignment: Alignment.centerLeft,
-        backgroundColor: AppColors.sky,
-        foregroundColor: AppColors.skyBlueDeep,
-        padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 13),
-      ),
-      icon: Icon(icon, size: 19),
-      label: Text(
-        '$label  $count',
-        style: const TextStyle(fontWeight: FontWeight.w900),
       ),
     );
   }
@@ -3402,12 +3390,14 @@ class _DiscoveryStage extends StatelessWidget {
     required this.topics,
     required this.onOpenPost,
     required this.onOpenCollection,
+    required this.onOpenBattleCollection,
   });
 
   final Widget toolbar;
   final List<_DiscoveryTopic> topics;
   final ValueChanged<PostFeatureInfo> onOpenPost;
   final ValueChanged<HighlightCollectionType> onOpenCollection;
+  final ValueChanged<bool> onOpenBattleCollection;
 
   @override
   Widget build(BuildContext context) {
@@ -3426,6 +3416,7 @@ class _DiscoveryStage extends StatelessWidget {
               topics: topics,
               onOpenPost: onOpenPost,
               onOpenCollection: onOpenCollection,
+              onOpenBattleCollection: onOpenBattleCollection,
             ),
           ],
         );
@@ -3597,11 +3588,13 @@ class _DiscoveryAccordion extends StatefulWidget {
     required this.topics,
     required this.onOpenPost,
     required this.onOpenCollection,
+    required this.onOpenBattleCollection,
   });
 
   final List<_DiscoveryTopic> topics;
   final ValueChanged<PostFeatureInfo> onOpenPost;
   final ValueChanged<HighlightCollectionType> onOpenCollection;
+  final ValueChanged<bool> onOpenBattleCollection;
 
   @override
   State<_DiscoveryAccordion> createState() => _DiscoveryAccordionState();
@@ -3627,6 +3620,7 @@ class _DiscoveryAccordionState extends State<_DiscoveryAccordion> {
           }),
           onOpenPost: widget.onOpenPost,
           onOpenCollection: widget.onOpenCollection,
+          onOpenBattleCollection: widget.onOpenBattleCollection,
         );
       }).toList(),
     );
@@ -3641,6 +3635,7 @@ class _DiscoveryTopicShelf extends StatelessWidget {
     required this.onToggle,
     required this.onOpenPost,
     required this.onOpenCollection,
+    required this.onOpenBattleCollection,
   });
 
   final _DiscoveryTopic topic;
@@ -3648,6 +3643,7 @@ class _DiscoveryTopicShelf extends StatelessWidget {
   final VoidCallback onToggle;
   final ValueChanged<PostFeatureInfo> onOpenPost;
   final ValueChanged<HighlightCollectionType> onOpenCollection;
+  final ValueChanged<bool> onOpenBattleCollection;
 
   @override
   Widget build(BuildContext context) {
@@ -3687,7 +3683,7 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                         ),
                       ),
                       Text(
-                        '${topic.posts.length}',
+                        '${topic.itemCount}',
                         style: const TextStyle(
                           color: AppColors.muted,
                           fontSize: 11,
@@ -3715,7 +3711,7 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                 child: expanded
                     ? Padding(
                         padding: const EdgeInsets.only(top: 4),
-                        child: topic.posts.isEmpty
+                        child: topic.itemCount == 0
                             ? Container(
                                 height: 40,
                                 width: double.infinity,
@@ -3737,18 +3733,39 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                                   physics: const BouncingScrollPhysics(),
                                   padding: const EdgeInsets.only(right: 18),
                                   itemCount:
-                                      topic.posts.length +
-                                      (topic.collectionType == null ? 0 : 1),
+                                      topic.itemCount +
+                                      ((topic.collectionType != null ||
+                                              topic.decisiveBattleCollection !=
+                                                  null)
+                                          ? 1
+                                          : 0),
                                   separatorBuilder: (_, _) =>
                                       const SizedBox(width: 11),
                                   itemBuilder: (context, index) {
-                                    if (index == topic.posts.length) {
+                                    if (index == topic.itemCount) {
                                       return _DiscoveryMoreCard(
                                         width: cardWidth,
                                         color: topic.color,
-                                        count: topic.posts.length,
-                                        onTap: () => onOpenCollection(
-                                          topic.collectionType!,
+                                        count: topic.itemCount,
+                                        onTap: () {
+                                          if (topic.collectionType != null) {
+                                            onOpenCollection(
+                                              topic.collectionType!,
+                                            );
+                                          } else {
+                                            onOpenBattleCollection(
+                                              topic.decisiveBattleCollection!,
+                                            );
+                                          }
+                                        },
+                                      );
+                                    }
+                                    if (topic.battles.isNotEmpty) {
+                                      return _DiscoveryBattleCard(
+                                        width: cardWidth,
+                                        item: topic.battles[index],
+                                        onTap: () => onOpenBattleCollection(
+                                          topic.decisiveBattleCollection!,
                                         ),
                                       );
                                     }
@@ -3770,6 +3787,87 @@ class _DiscoveryTopicShelf extends StatelessWidget {
           ),
         );
       },
+    );
+  }
+}
+
+class _DiscoveryBattleCard extends StatelessWidget {
+  const _DiscoveryBattleCard({
+    required this.width,
+    required this.item,
+    required this.onTap,
+  });
+
+  final double width;
+  final _BattleDiscoveryItem item;
+  final VoidCallback onTap;
+
+  Widget _image(String? source) {
+    if (source == null || source.trim().isEmpty) {
+      return const ColoredBox(
+        color: AppColors.surfaceMuted,
+        child: Center(
+          child: Icon(Icons.image_outlined, color: AppColors.muted),
+        ),
+      );
+    }
+    return Image.network(
+      _displayImageUrl(source),
+      fit: BoxFit.contain,
+      errorBuilder: (_, _, _) => const ColoredBox(
+        color: AppColors.surfaceMuted,
+        child: Center(
+          child: Icon(Icons.broken_image_outlined, color: AppColors.muted),
+        ),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: width,
+      child: InkWell(
+        onTap: onTap,
+        borderRadius: BorderRadius.circular(16),
+        child: Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Expanded(
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(16),
+                child: Row(
+                  children: [
+                    Expanded(child: _image(item.leftImageUrl)),
+                    const SizedBox(width: 3),
+                    Expanded(child: _image(item.rightImageUrl)),
+                  ],
+                ),
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              item.match.title,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 12,
+                fontWeight: FontWeight.w800,
+              ),
+            ),
+            const SizedBox(height: 3),
+            Text(
+              '${item.match.leftVotes} : ${item.match.rightVotes}',
+              style: const TextStyle(
+                color: AppColors.skyBlueDeep,
+                fontSize: 11,
+                fontWeight: FontWeight.w900,
+              ),
+            ),
+          ],
+        ),
+      ),
     );
   }
 }
