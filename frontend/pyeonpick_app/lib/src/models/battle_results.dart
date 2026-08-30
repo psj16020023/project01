@@ -8,6 +8,8 @@ class BattleResultEntry {
     required this.leftVotes,
     required this.rightVotes,
     required this.unread,
+    this.leftImageUrl,
+    this.rightImageUrl,
   });
 
   factory BattleResultEntry.fromJson(Map<String, dynamic> json) =>
@@ -20,6 +22,8 @@ class BattleResultEntry {
         leftVotes: (json['leftVotes'] as num).toInt(),
         rightVotes: (json['rightVotes'] as num).toInt(),
         unread: json['unread'] == true,
+        leftImageUrl: json['leftImageUrl'] as String?,
+        rightImageUrl: json['rightImageUrl'] as String?,
       );
 
   final String id;
@@ -30,6 +34,8 @@ class BattleResultEntry {
   final int leftVotes;
   final int rightVotes;
   final bool unread;
+  final String? leftImageUrl;
+  final String? rightImageUrl;
 
   String get outcome {
     if (leftVotes + rightVotes == 0) return '투표 없이 종료';

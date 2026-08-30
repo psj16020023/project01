@@ -2977,6 +2977,7 @@ class _HomeScreenState extends State<HomeScreen> {
           currentUser: widget.currentUser,
           repository: widget.repository,
           posts: _allFunctionalPosts,
+          knownUsers: _knownUsers,
           onUserChanged: widget.onUserChanged,
           onResetBotSetup: _resetBotSetup,
           onLogout: widget.onLogout,
@@ -6321,12 +6322,14 @@ class _ComposerSheetState extends State<ComposerSheet> {
                   label: '가격 :',
                   unit: '원',
                   controller: priceController,
+                  inputKey: const Key('post-price-input'),
                 ),
                 const SizedBox(height: 12),
                 _InlineNumberField(
                   label: '칼로리 :',
                   unit: 'kcal',
                   controller: calorieController,
+                  inputKey: const Key('post-calorie-input'),
                 ),
                 const SizedBox(height: 12),
                 _PostRatingPicker(
@@ -6389,11 +6392,13 @@ class _InlineNumberField extends StatelessWidget {
     required this.label,
     required this.unit,
     required this.controller,
+    required this.inputKey,
   });
 
   final String label;
   final String unit;
   final TextEditingController controller;
+  final Key inputKey;
 
   @override
   Widget build(BuildContext context) {
@@ -6416,6 +6421,7 @@ class _InlineNumberField extends StatelessWidget {
         ),
         Expanded(
           child: TextField(
+            key: inputKey,
             controller: controller,
             keyboardType: TextInputType.number,
             inputFormatters: [FilteringTextInputFormatter.digitsOnly],
@@ -7326,6 +7332,7 @@ class ProfilePage extends StatefulWidget {
     required this.currentUser,
     required this.repository,
     required this.posts,
+    this.knownUsers = const <PyeonUser>[],
     required this.onUserChanged,
     required this.onResetBotSetup,
     required this.onLogout,
@@ -7338,6 +7345,7 @@ class ProfilePage extends StatefulWidget {
   final PyeonUser currentUser;
   final PostRepository repository;
   final List<Post> posts;
+  final List<PyeonUser> knownUsers;
   final Future<void> Function(PyeonUser user) onUserChanged;
   final Future<void> Function() onResetBotSetup;
   final Future<void> Function() onLogout;
@@ -7573,50 +7581,6 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     return next;
   }
 
-  Map<String, double>? _likedTasteAverages(List<Post> likedPosts) {
-    if (likedPosts.isEmpty) return null;
-
-    Map<String, int> tasteRatingsFor(Post post) {
-      if (post.reviews.isNotEmpty) {
-        int average(int Function(PostReview review) pick) =>
-            (post.reviews.map(pick).reduce((a, b) => a + b) /
-                    post.reviews.length)
-                .round()
-                .clamp(1, 5);
-        return <String, int>{
-          '달달': average((review) => review.sweet),
-          '매콤': average((review) => review.spicy),
-          '새콤': average((review) => review.sour),
-          '짭짤': average((review) => review.salty),
-        };
-      }
-
-      final text = '${post.title} ${post.content} ${post.categories.join(' ')}';
-      bool hasAny(List<String> needles) => needles.any(text.contains);
-      return <String, int>{
-        '달달': hasAny(const ['달달', '초코', '바닐라', '젤리', '디저트']) ? 4 : 2,
-        '매콤': hasAny(const ['매콤', '매운', '불닭', '고추']) ? 4 : 2,
-        '새콤': hasAny(const ['새콤', '상큼', '레몬', '탄산']) ? 4 : 2,
-        '짭짤': hasAny(const ['짭짤', '라면', '김밥', '핫바', '치즈']) ? 4 : 2,
-      };
-    }
-
-    final totals = <String, double>{'달달': 0, '새콤': 0, '짭짤': 0, '매콤': 0};
-
-    for (final post in likedPosts) {
-      final ratings = tasteRatingsFor(post);
-      totals.update('달달', (value) => value + (ratings['달달'] ?? 0));
-      totals.update('새콤', (value) => value + (ratings['새콤'] ?? 0));
-      totals.update('짭짤', (value) => value + (ratings['짭짤'] ?? 0));
-      totals.update('매콤', (value) => value + (ratings['매콤'] ?? 0));
-    }
-
-    return <String, double>{
-      for (final entry in totals.entries)
-        entry.key: entry.value / likedPosts.length,
-    };
-  }
-
   @override
   Widget build(BuildContext context) {
     final user = widget.currentUser;
@@ -7639,11 +7603,26 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     final mine = _sortPosts(
       widget.posts.where((post) => post.authorId == user.id).toList(),
     );
-    final authors = <String, Post>{
-      for (final post in widget.posts)
-        if (user.pickedAuthorIds.contains(post.authorId)) post.authorId: post,
-    }.values.toList();
-    final averages = _likedTasteAverages(liked);
+    final postsByAuthor = <String, List<Post>>{};
+    for (final post in widget.posts) {
+      postsByAuthor.putIfAbsent(post.authorId, () => <Post>[]).add(post);
+    }
+    final knownUsersById = <String, PyeonUser>{
+      for (final knownUser in widget.knownUsers) knownUser.id: knownUser,
+    };
+    final pickedAuthors = user.pickedAuthorIds.map((authorId) {
+      final authoredPosts = postsByAuthor[authorId] ?? const <Post>[];
+      final anchorPost = authoredPosts.isEmpty ? null : authoredPosts.first;
+      final knownUser = knownUsersById[authorId];
+      return _PickedAuthorProfile(
+        id: authorId,
+        nickname: knownUser?.nickname ?? anchorPost?.authorNickname ?? '픽한 사용자',
+        profileImageUrl:
+            knownUser?.profileImageUrl ?? anchorPost?.authorProfileImageUrl,
+        postCount: authoredPosts.length,
+        anchorPost: anchorPost,
+      );
+    }).toList();
     final tabs = [
       (_ProfileViewMode.overview, '설정'),
       (_ProfileViewMode.myPosts, '내 글 ${mine.length}'),
@@ -7654,7 +7633,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       (_ProfileViewMode.likes, '하트 ${liked.length}'),
       (_ProfileViewMode.saved, '보관 ${saved.length}'),
       (_ProfileViewMode.dislikes, '싫어요 ${disliked.length}'),
-      (_ProfileViewMode.picks, '픽 ${authors.length}'),
+      (_ProfileViewMode.picks, '픽 ${pickedAuthors.length}'),
     ];
     final selectedPosts = switch (_mode) {
       _ProfileViewMode.likes => liked,
@@ -7761,32 +7740,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 10),
-            Wrap(
-              spacing: 8,
-              runSpacing: 8,
-              children: [
-                _ProfileStatPill(
-                  label: '${setup.gender} · ${setup.age}세',
-                  value: '',
-                ),
-                ...setup.priorityValues.map(
-                  (value) => _ProfileStatPill(label: value, value: ''),
-                ),
-                ...setup.tasteRatings.entries.map(
-                  (entry) => _ProfileStatPill(
-                    label: entry.key,
-                    value: '${entry.value}',
-                  ),
-                ),
-              ],
-            ),
-            if (averages != null) ...[
-              const SizedBox(height: 10),
-              Text(
-                '하트한 맛  ${averages.entries.map((entry) => '${entry.key} ${entry.value.toStringAsFixed(1)}').join(' · ')}',
-                style: const TextStyle(fontSize: 12, color: AppColors.muted),
-              ),
-            ],
+            _BotSetupSummary(setup: setup),
             const SizedBox(height: 16),
           ],
           ListTile(
@@ -7945,7 +7899,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             ),
           ],
         ] else if (_mode == _ProfileViewMode.picks) ...[
-          if (authors.isEmpty)
+          if (pickedAuthors.isEmpty)
             const Padding(
               padding: EdgeInsets.symmetric(vertical: 24),
               child: Text(
@@ -7956,16 +7910,18 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
-            itemCount: authors.length,
+            itemCount: pickedAuthors.length,
             gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
               maxCrossAxisExtent: 220,
               crossAxisSpacing: 10,
               mainAxisSpacing: 10,
-              childAspectRatio: .72,
+              childAspectRatio: .92,
             ),
-            itemBuilder: (context, index) => _ProfilePostMiniCard(
-              post: authors[index],
-              onTap: () => widget.onOpenAuthor(authors[index]),
+            itemBuilder: (context, index) => _PickedAuthorMiniCard(
+              author: pickedAuthors[index],
+              onTap: pickedAuthors[index].anchorPost == null
+                  ? null
+                  : () => widget.onOpenAuthor(pickedAuthors[index].anchorPost!),
             ),
           ),
         ] else ...[
@@ -8024,25 +7980,6 @@ class _ProfileBattleResult extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    Widget score(String title, int votes) => Padding(
-      padding: const EdgeInsets.only(top: 8),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Expanded(
-            child: Text(
-              title,
-              style: const TextStyle(fontSize: 14, color: AppColors.muted),
-            ),
-          ),
-          const SizedBox(width: 16),
-          Text(
-            '$votes표',
-            style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w600),
-          ),
-        ],
-      ),
-    );
     return Column(
       key: ValueKey('battle-result-${result.id}'),
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -8059,7 +7996,32 @@ class _ProfileBattleResult extends StatelessWidget {
           '${DateFormat('M.d HH:mm').format(result.endsAt)} 종료',
           style: const TextStyle(fontSize: 12, color: AppColors.muted),
         ),
-        const SizedBox(height: 14),
+        const SizedBox(height: 12),
+        SizedBox(
+          height: 178,
+          child: Row(
+            children: [
+              Expanded(
+                child: _BattleResultChoice(
+                  imageUrl: result.leftImageUrl,
+                  title: result.leftTitle,
+                  votes: result.leftVotes,
+                  won: result.leftVotes > result.rightVotes,
+                ),
+              ),
+              const SizedBox(width: 8),
+              Expanded(
+                child: _BattleResultChoice(
+                  imageUrl: result.rightImageUrl,
+                  title: result.rightTitle,
+                  votes: result.rightVotes,
+                  won: result.rightVotes > result.leftVotes,
+                ),
+              ),
+            ],
+          ),
+        ),
+        const SizedBox(height: 12),
         Text(
           result.outcome,
           style: const TextStyle(
@@ -8068,10 +8030,78 @@ class _ProfileBattleResult extends StatelessWidget {
             fontWeight: FontWeight.w600,
           ),
         ),
-        score(result.leftTitle, result.leftVotes),
-        score(result.rightTitle, result.rightVotes),
         const SizedBox(height: 20),
         const Divider(height: 1, color: AppColors.line),
+      ],
+    );
+  }
+}
+
+class _BattleResultChoice extends StatelessWidget {
+  const _BattleResultChoice({
+    required this.imageUrl,
+    required this.title,
+    required this.votes,
+    required this.won,
+  });
+
+  final String? imageUrl;
+  final String title;
+  final int votes;
+  final bool won;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        Expanded(
+          child: ClipRRect(
+            borderRadius: BorderRadius.circular(12),
+            child: SizedBox.expand(
+              child: imageUrl == null || imageUrl!.trim().isEmpty
+                  ? const _ImageErrorPlaceholder()
+                  : Image.network(
+                      _displayImageUrl(imageUrl!),
+                      fit: BoxFit.cover,
+                      errorBuilder: (_, _, _) => const _ImageErrorPlaceholder(),
+                    ),
+            ),
+          ),
+        ),
+        const SizedBox(height: 7),
+        Text(
+          title,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            color: won ? AppColors.ink : AppColors.muted,
+            fontSize: 13,
+            fontWeight: won ? FontWeight.w800 : FontWeight.w500,
+          ),
+        ),
+        const SizedBox(height: 2),
+        Row(
+          children: [
+            Text(
+              '$votes표',
+              style: TextStyle(
+                color: won ? AppColors.skyBlueDeep : AppColors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+            if (won)
+              const Text(
+                ' · 승리',
+                style: TextStyle(
+                  color: AppColors.skyBlueDeep,
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+          ],
+        ),
       ],
     );
   }
@@ -8252,6 +8282,148 @@ class _ProfilePostMiniCard extends StatelessWidget {
           ],
         ),
       ),
+    );
+  }
+}
+
+class _PickedAuthorProfile {
+  const _PickedAuthorProfile({
+    required this.id,
+    required this.nickname,
+    required this.profileImageUrl,
+    required this.postCount,
+    required this.anchorPost,
+  });
+
+  final String id;
+  final String nickname;
+  final String? profileImageUrl;
+  final int postCount;
+  final Post? anchorPost;
+}
+
+class _PickedAuthorMiniCard extends StatelessWidget {
+  const _PickedAuthorMiniCard({required this.author, required this.onTap});
+
+  final _PickedAuthorProfile author;
+  final VoidCallback? onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return InkWell(
+      onTap: onTap,
+      borderRadius: BorderRadius.circular(16),
+      child: Container(
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 16),
+        decoration: BoxDecoration(
+          color: AppColors.sky,
+          borderRadius: BorderRadius.circular(16),
+        ),
+        child: Column(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
+            _UserAvatar(imageSource: author.profileImageUrl, radius: 34),
+            const SizedBox(height: 10),
+            Text(
+              author.nickname,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontWeight: FontWeight.w800,
+                fontSize: 15,
+              ),
+            ),
+            const SizedBox(height: 5),
+            Text(
+              author.postCount == 0 ? '픽한 사용자' : '조합 ${author.postCount}개',
+              style: const TextStyle(
+                color: AppColors.skyBlueDeep,
+                fontSize: 12,
+                fontWeight: FontWeight.w700,
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _BotSetupSummary extends StatelessWidget {
+  const _BotSetupSummary({required this.setup});
+
+  final BotSetup setup;
+
+  Color _tasteColor(String taste) => switch (taste) {
+    '달달' => const Color(0xFFE17B8E),
+    '매콤' => AppColors.priceRed,
+    '새콤' => AppColors.skyBlueDeep,
+    _ => AppColors.limeDeep,
+  };
+
+  @override
+  Widget build(BuildContext context) {
+    return Wrap(
+      spacing: 18,
+      runSpacing: 12,
+      crossAxisAlignment: WrapCrossAlignment.center,
+      children: [
+        _BotSetupLabel(
+          icon: Icons.person_outline_rounded,
+          label: '${setup.gender} · ${setup.age}세',
+          color: AppColors.skyBlueDeep,
+        ),
+        ...setup.priorityValues.map(
+          (value) => _BotSetupLabel(
+            icon: Icons.flag_outlined,
+            label: value,
+            color: AppColors.limeDeep,
+          ),
+        ),
+        ...setup.tasteRatings.entries.map(
+          (entry) => _BotSetupLabel(
+            icon: Icons.circle,
+            label: '${entry.key} ${entry.value}',
+            color: _tasteColor(entry.key),
+            iconSize: 9,
+          ),
+        ),
+      ],
+    );
+  }
+}
+
+class _BotSetupLabel extends StatelessWidget {
+  const _BotSetupLabel({
+    required this.icon,
+    required this.label,
+    required this.color,
+    this.iconSize = 17,
+  });
+
+  final IconData icon;
+  final String label;
+  final Color color;
+  final double iconSize;
+
+  @override
+  Widget build(BuildContext context) {
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        Icon(icon, size: iconSize, color: color),
+        const SizedBox(width: 6),
+        Text(
+          label,
+          style: TextStyle(
+            color: color,
+            fontSize: 15,
+            fontWeight: FontWeight.w700,
+          ),
+        ),
+      ],
     );
   }
 }

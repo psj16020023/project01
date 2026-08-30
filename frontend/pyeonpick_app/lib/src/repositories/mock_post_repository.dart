@@ -55,6 +55,11 @@ class MockPostRepository implements PostRepository {
         custom ??
         _posts.where((post) => post.id == postId).firstOrNull?.title ??
         fallback;
+    String? image(String? custom, String postId) {
+      final post = _posts.where((post) => post.id == postId).firstOrNull;
+      return custom ?? post?.imageUrls.firstOrNull ?? post?.imageUrl;
+    }
+
     return BattleResultsPage(
       refreshAfter: upcoming.isEmpty
           ? const Duration(seconds: 15)
@@ -82,6 +87,11 @@ class MockPostRepository implements PostRepository {
               leftVotes: match.leftVotes,
               rightVotes: match.rightVotes,
               unread: !read.contains(match.id),
+              leftImageUrl: image(match.leftCustomImageUrl, match.leftPostId),
+              rightImageUrl: image(
+                match.rightCustomImageUrl,
+                match.rightPostId,
+              ),
             ),
           )
           .toList(),

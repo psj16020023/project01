@@ -3881,15 +3881,22 @@ app.get("/api/battles/results", requireAuth, async (req, res) => {
   try {
     const [matches, next, user] = await Promise.all([
       BattleMatch.find({ authorId, endsAt: { $ne: null, $lte: now } })
-        .select("id title endsAt leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds")
+        .select("id title endsAt leftPostId rightPostId leftCustomTitle rightCustomTitle leftCustomImageUrl rightCustomImageUrl leftVoterIds rightVoterIds")
         .sort({ endsAt: -1, _id: -1 }).lean(),
       BattleMatch.findOne({ authorId, endsAt: { $gt: now } }).sort({ endsAt: 1 }).select("endsAt").lean(),
       User.findById(authorId).select("battleResultReadIds").lean(),
     ]);
     if (!user) return res.status(401).json({ message: "로그인이 필요해요." });
     const ids = matches.flatMap((match) => [match.leftPostId, match.rightPostId]).filter(isValidObjectId);
-    const posts = await Post.find({ _id: { $in: ids } }).select("title").lean();
-    const titles = new Map(posts.map((post) => [String(post._id), post.title]));
+    const posts = await Post.find({ _id: { $in: ids } })
+      .select("title imageUrl imageUrls")
+      .lean();
+    const postsById = new Map(posts.map((post) => [String(post._id), post]));
+    const titleFor = (id) => postsById.get(id)?.title;
+    const imageFor = (id) => {
+      const post = postsById.get(id);
+      return post?.imageUrls?.find(Boolean) || post?.imageUrl || null;
+    };
     const readIds = new Set(user.battleResultReadIds || []);
     res.setHeader("Cache-Control", "no-store");
     return res.json({
@@ -3899,8 +3906,10 @@ app.get("/api/battles/results", requireAuth, async (req, res) => {
         id: match.id,
         title: match.title,
         endsAt: match.endsAt,
-        leftTitle: match.leftCustomTitle || titles.get(match.leftPostId) || "첫 번째 조합",
-        rightTitle: match.rightCustomTitle || titles.get(match.rightPostId) || "두 번째 조합",
+        leftTitle: match.leftCustomTitle || titleFor(match.leftPostId) || "첫 번째 조합",
+        rightTitle: match.rightCustomTitle || titleFor(match.rightPostId) || "두 번째 조합",
+        leftImageUrl: match.leftCustomImageUrl || imageFor(match.leftPostId),
+        rightImageUrl: match.rightCustomImageUrl || imageFor(match.rightPostId),
         leftVotes: match.leftVoterIds.length,
         rightVotes: match.rightVoterIds.length,
         unread: !readIds.has(match.id),

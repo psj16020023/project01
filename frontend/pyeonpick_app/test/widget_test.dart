@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:intl/date_symbol_data_local.dart';
 import 'package:pyeonpick_app/src/app.dart';
+import 'package:pyeonpick_app/src/core/app_environment.dart';
 import 'package:pyeonpick_app/src/data/mock_posts.dart';
 import 'package:pyeonpick_app/src/models/bot_message.dart';
 import 'package:pyeonpick_app/src/models/combination_battle.dart';
@@ -174,6 +175,60 @@ void main() {
     expect(find.byType(MaterialApp), findsOneWidget);
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('post composer keeps units outside numeric-only inputs', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({});
+    const user = PyeonUser(
+      id: 'composer-user',
+      username: 'composer-user',
+      password: '1234',
+      nickname: '작성자',
+      botSetup: BotSetup(
+        age: 20,
+        gender: '여자',
+        tasteRatings: {'달달': 3, '매콤': 3, '새콤': 3, '짭짤': 3},
+        priorityValues: ['가성비'],
+      ),
+    );
+    await tester.pumpWidget(
+      MaterialApp(
+        home: HomeScreen(
+          repository: MockPostRepository(),
+          environment: const AppEnvironment(
+            dataMode: DataMode.mock,
+            apiBaseUrl: 'http://127.0.0.1:4173/api',
+            mapTilerApiKey: '',
+            mapTilerMapId: 'streets-v2',
+          ),
+          currentUser: user,
+          onUserChanged: (_) async {},
+          onPostReactionChanged: (_) {},
+          onLogout: () async {},
+          onDeleteAccount: (_) async {},
+        ),
+      ),
+    );
+    await tester.pump(const Duration(seconds: 1));
+    final composerButton = find.byType(FloatingActionButton);
+    expect(composerButton, findsOneWidget);
+    await tester.tap(composerButton);
+    await tester.pump();
+    await tester.pump(const Duration(seconds: 1));
+
+    expect(find.text('게시글 올리기'), findsOneWidget);
+    expect(find.text('가격 :'), findsOneWidget);
+    expect(find.text('칼로리 :'), findsOneWidget);
+    expect(find.text('원'), findsOneWidget);
+    expect(find.text('kcal'), findsOneWidget);
+
+    final priceInput = find.byKey(const Key('post-price-input'));
+    await tester.enterText(priceInput, '1,000원');
+    expect(tester.widget<TextField>(priceInput).controller?.text, '1000');
+    expect(tester.takeException(), isNull);
+    await tester.pump(const Duration(seconds: 5));
   });
 
   testWidgets('bot shows a button for the next three recommendations', (
