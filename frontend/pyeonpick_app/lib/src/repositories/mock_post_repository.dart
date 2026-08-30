@@ -531,8 +531,9 @@ class MockPostRepository implements PostRepository {
   }
 
   @override
-  Future<Post> toggleLike(String id, String currentUserId) async {
+  Future<Post> toggleLike(Post target, String currentUserId) async {
     await _ensureLoaded();
+    final id = target.id;
     final index = _posts.indexWhere((post) => post.id == id);
     if (index < 0) {
       throw StateError('게시글을 찾을 수 없어요.');
@@ -564,8 +565,9 @@ class MockPostRepository implements PostRepository {
   }
 
   @override
-  Future<Post> toggleDislike(String id, String currentUserId) async {
+  Future<Post> toggleDislike(Post target, String currentUserId) async {
     await _ensureLoaded();
+    final id = target.id;
     final index = _posts.indexWhere((post) => post.id == id);
     if (index < 0) {
       throw StateError('게시글을 찾을 수 없어요.');

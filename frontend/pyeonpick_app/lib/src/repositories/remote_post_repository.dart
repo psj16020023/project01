@@ -344,10 +344,10 @@ class RemotePostRepository implements PostRepository {
   }
 
   @override
-  Future<Post> toggleLike(String id, String currentUserId) async {
+  Future<Post> toggleLike(Post post, String currentUserId) async {
     final response = await http
         .post(
-          Uri.parse('$baseUrl/posts/$id/like'),
+          Uri.parse('$baseUrl/posts/${post.id}/like'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'userId': currentUserId}),
         )
@@ -356,14 +356,20 @@ class RemotePostRepository implements PostRepository {
       throw Exception('좋아요 실패');
     }
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return Post.fromJson(json['post'] as Map<String, dynamic>);
+    final reaction = json['reaction'] as Map<String, dynamic>;
+    return post.copyWith(
+      likes: reaction['likes'] as int? ?? post.likes,
+      dislikes: reaction['dislikes'] as int? ?? post.dislikes,
+      likedByMe: reaction['likedByMe'] as bool? ?? post.likedByMe,
+      dislikedByMe: reaction['dislikedByMe'] as bool? ?? post.dislikedByMe,
+    );
   }
 
   @override
-  Future<Post> toggleDislike(String id, String currentUserId) async {
+  Future<Post> toggleDislike(Post post, String currentUserId) async {
     final response = await http
         .post(
-          Uri.parse('$baseUrl/posts/$id/dislike'),
+          Uri.parse('$baseUrl/posts/${post.id}/dislike'),
           headers: {'Content-Type': 'application/json'},
           body: jsonEncode({'userId': currentUserId}),
         )
@@ -372,7 +378,13 @@ class RemotePostRepository implements PostRepository {
       throw Exception('싫어요 실패');
     }
     final json = jsonDecode(response.body) as Map<String, dynamic>;
-    return Post.fromJson(json['post'] as Map<String, dynamic>);
+    final reaction = json['reaction'] as Map<String, dynamic>;
+    return post.copyWith(
+      likes: reaction['likes'] as int? ?? post.likes,
+      dislikes: reaction['dislikes'] as int? ?? post.dislikes,
+      likedByMe: reaction['likedByMe'] as bool? ?? post.likedByMe,
+      dislikedByMe: reaction['dislikedByMe'] as bool? ?? post.dislikedByMe,
+    );
   }
 
   @override

@@ -40,8 +40,11 @@ void main() {
   test('mock likes survive repository reload for the same user', () async {
     SharedPreferences.setMockInitialValues({});
     final firstRepository = MockPostRepository();
+    final target = (await firstRepository.fetchPostCatalog()).firstWhere(
+      (post) => post.id == 'seed-2026-01',
+    );
 
-    final liked = await firstRepository.toggleLike('seed-2026-01', 'tester');
+    final liked = await firstRepository.toggleLike(target, 'tester');
     expect(liked.likedByMe, isTrue);
 
     final reloadedRepository = MockPostRepository();

@@ -4497,10 +4497,16 @@ app.post("/api/posts/:id/like", async (req, res) => {
     }
   }
 
-  await post.save();
-  await user.save();
-  await hydratePostAuthorImages(post);
-  res.json({ post: serializePost(post, user) });
+  await Promise.all([post.save(), user.save()]);
+  res.json({
+    reaction: {
+      id: postId,
+      likes: post.likes,
+      dislikes: post.dislikes,
+      likedByMe: likedIndex < 0,
+      dislikedByMe: false,
+    },
+  });
   scheduleTopFiveBadgeRefresh();
 });
 
@@ -4532,10 +4538,16 @@ app.post("/api/posts/:id/dislike", async (req, res) => {
     }
   }
 
-  await post.save();
-  await user.save();
-  await hydratePostAuthorImages(post);
-  res.json({ post: serializePost(post, user) });
+  await Promise.all([post.save(), user.save()]);
+  res.json({
+    reaction: {
+      id: postId,
+      likes: post.likes,
+      dislikes: post.dislikes,
+      likedByMe: false,
+      dislikedByMe: dislikedIndex < 0,
+    },
+  });
   scheduleTopFiveBadgeRefresh();
 });
 

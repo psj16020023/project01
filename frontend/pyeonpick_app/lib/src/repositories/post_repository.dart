@@ -53,9 +53,9 @@ abstract class PostRepository {
 
   Future<PostAudienceStats> fetchPostAudienceStats(String postId);
 
-  Future<Post> toggleLike(String id, String currentUserId);
+  Future<Post> toggleLike(Post post, String currentUserId);
 
-  Future<Post> toggleDislike(String id, String currentUserId);
+  Future<Post> toggleDislike(Post post, String currentUserId);
 
   Future<Post> addComment(
     String id,

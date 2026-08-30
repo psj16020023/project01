@@ -121,6 +121,45 @@ List<String> _displayCategories(List<String> categories, {int maxVisible = 4}) {
   ];
 }
 
+bool _featureMatchesSelectedTags(
+  PostFeatureInfo post,
+  Set<String> selectedTags,
+) {
+  if (selectedTags.isEmpty) return true;
+  return _textMatchesSelectedTags(
+    <String>[post.title, ...post.usedProducts].join(' '),
+    selectedTags,
+  );
+}
+
+bool _postMatchesSelectedTags(Post post, Set<String> selectedTags) {
+  if (selectedTags.isEmpty) return true;
+  return _textMatchesSelectedTags(
+    <String>[
+      post.title,
+      post.content,
+      ...post.categories,
+      ...post.details.usedProducts,
+      ...post.details.eatingSteps,
+    ].join(' '),
+    selectedTags,
+  );
+}
+
+bool _textMatchesSelectedTags(String text, Set<String> selectedTags) {
+  final searchable = text.toLowerCase();
+  const aliases = <String, List<String>>{
+    '달달': ['달달', '달콤', '단맛', '단 거', '초코', '디저트'],
+    '매콤': ['매콤', '매운', '불닭', '고추'],
+    '새콤': ['새콤', '상큼', '레몬', '신맛'],
+    '짭짤': ['짭짤', '짠맛', '라면', '치즈'],
+  };
+  return selectedTags.every((tag) {
+    final terms = aliases[tag] ?? [tag];
+    return terms.any(searchable.contains);
+  });
+}
+
 bool _titleHasNewProduct(String title) {
   return CuProductCatalog.matchesForText(
     title,
@@ -881,7 +920,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _applyUpdatedPost(optimistic);
     try {
       final updated = await widget.repository.toggleLike(
-        post.id,
+        post,
         widget.currentUser.id,
       );
       if (!mounted) return;
@@ -913,7 +952,7 @@ class _HomeScreenState extends State<HomeScreen> {
     _applyUpdatedPost(optimistic);
     try {
       final updated = await widget.repository.toggleDislike(
-        post.id,
+        post,
         widget.currentUser.id,
       );
       if (!mounted) return;
@@ -2543,13 +2582,18 @@ class _HomeScreenState extends State<HomeScreen> {
       };
     }
 
-    final posts = switch (type) {
-      HighlightCollectionType.newProduct =>
-        allPosts.where(_postHasNewProduct).toList(),
-      HighlightCollectionType.pbProduct =>
-        allPosts.where(_postHasPbProduct).toList(),
-      _ => allPosts.where(matchesFeature).toList(),
-    };
+    final posts =
+        switch (type) {
+              HighlightCollectionType.newProduct =>
+                allPosts.where(_postHasNewProduct).toList(),
+              HighlightCollectionType.pbProduct =>
+                allPosts.where(_postHasPbProduct).toList(),
+              _ => allPosts.where(matchesFeature).toList(),
+            }
+            .where(
+              (post) => _postMatchesSelectedTags(post, _selectedSearchTags),
+            )
+            .toList();
     final title = switch (type) {
       HighlightCollectionType.popular => '이번 주 인기',
       HighlightCollectionType.malePicks => '남자들이 많이 고른 조합',
@@ -3056,9 +3100,12 @@ class CommunicationBody extends StatelessWidget {
     final featureIndex = allFeatureInfo.isEmpty
         ? posts.map(PostFeatureInfo.fromPost).toList()
         : allFeatureInfo;
-    final trendPicks = _buildCommunityTrendPicks(featureIndex);
+    final filteredFeatureIndex = featureIndex
+        .where((post) => _featureMatchesSelectedTags(post, selectedTags))
+        .toList();
+    final trendPicks = _buildCommunityTrendPicks(filteredFeatureIndex);
     final discoveryTopics = _buildDiscoveryTopics(
-      featureIndex,
+      filteredFeatureIndex,
       trendPicks,
       battleHighlights,
     );
@@ -4415,6 +4462,11 @@ class _ToolbarState extends State<Toolbar> {
                 controller: widget.searchController,
                 decoration: inputDecoration('조합이나 상품 검색').copyWith(
                   prefixIcon: const Icon(Icons.search_rounded, size: 21),
+                  suffixIcon: IconButton(
+                    onPressed: widget.onSearch,
+                    tooltip: '검색',
+                    icon: const Icon(Icons.search_rounded, size: 21),
+                  ),
                   filled: true,
                   fillColor: AppColors.sky,
                   border: OutlineInputBorder(
@@ -4434,11 +4486,6 @@ class _ToolbarState extends State<Toolbar> {
               onPressed: widget.onScanBarcode,
               tooltip: '바코드 스캔',
               icon: const Icon(Icons.qr_code_scanner_rounded, size: 22),
-            ),
-            IconButton(
-              onPressed: widget.onSearch,
-              tooltip: '검색',
-              icon: const Icon(Icons.arrow_forward_rounded, size: 22),
             ),
           ],
         ),
@@ -4638,34 +4685,32 @@ class _LiveTitleSuggestions extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     if (suggestions.isEmpty) return const SizedBox.shrink();
-    return SizedBox(
-      height: 40,
-      child: ListView.separated(
-        scrollDirection: Axis.horizontal,
-        itemCount: suggestions.length,
-        separatorBuilder: (_, _) => const SizedBox(width: 6),
-        itemBuilder: (context, index) {
-          final title = suggestions[index];
-          return ActionChip(
-            onPressed: () => onSelected(title),
-            avatar: const Icon(Icons.search_rounded, size: 15),
-            label: ConstrainedBox(
-              constraints: const BoxConstraints(maxWidth: 220),
-              child: Text(
+    return Padding(
+      padding: const EdgeInsets.only(top: 8, bottom: 4),
+      child: Column(
+        children: suggestions.take(5).map((title) {
+          return Align(
+            alignment: Alignment.centerLeft,
+            child: TextButton.icon(
+              onPressed: () => onSelected(title),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.ink,
+                minimumSize: const Size.fromHeight(34),
+                padding: const EdgeInsets.symmetric(horizontal: 10),
+              ),
+              icon: const Icon(Icons.search_rounded, size: 16),
+              label: Text(
                 title,
                 maxLines: 1,
                 overflow: TextOverflow.ellipsis,
                 style: const TextStyle(
-                  fontSize: 11,
-                  fontWeight: FontWeight.w800,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
             ),
-            backgroundColor: Colors.white,
-            side: const BorderSide(color: AppColors.line),
-            visualDensity: VisualDensity.compact,
           );
-        },
+        }).toList(),
       ),
     );
   }
@@ -5194,7 +5239,7 @@ class PostCard extends StatelessWidget {
       post.categories,
       maxVisible: compact ? 1 : 2,
     );
-    final cardHeight = compact ? 284.0 : 448.0;
+    final cardHeight = compact ? 288.0 : 448.0;
     final cardPadding = compact ? 5.0 : 8.0;
     final avatarRadius = compact ? 10.0 : 14.0;
     final imageHeight = compact ? 112.0 : 230.0;
@@ -5671,6 +5716,9 @@ class ActionChipButton extends StatelessWidget {
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
+        mouseCursor: SystemMouseCursors.click,
+        hoverColor: AppColors.skyBlue.withAlpha(80),
+        highlightColor: AppColors.skyBlue.withAlpha(110),
         onTap: () async {
           try {
             await onTap();
@@ -5692,8 +5740,13 @@ class ActionChipButton extends StatelessWidget {
           decoration: BoxDecoration(
             color: active
                 ? (activeColor ?? const Color(0xFFFFE7EC))
-                : const Color(0xFFF6F9FC),
+                : AppColors.sky,
             borderRadius: BorderRadius.circular(999),
+            border: Border.all(
+              color: active
+                  ? (activeColor ?? const Color(0xFFFFE7EC))
+                  : AppColors.skyBlue.withAlpha(120),
+            ),
           ),
           child: Text(
             label,
@@ -5702,7 +5755,7 @@ class ActionChipButton extends StatelessWidget {
             style: TextStyle(
               color: active
                   ? (activeTextColor ?? const Color(0xFFE44566))
-                  : const Color(0xFF52697F),
+                  : AppColors.skyBlueDeep,
               fontWeight: FontWeight.w800,
               fontSize: compact ? 10 : 11,
             ),
@@ -5839,7 +5892,9 @@ class _ComposerSheetState extends State<ComposerSheet> {
   Future<void> pickImage() async {
     final picked = await picker.pickImage(
       source: ImageSource.gallery,
-      imageQuality: 84,
+      imageQuality: 78,
+      maxWidth: 1600,
+      maxHeight: 1600,
     );
     if (picked == null) return;
     final bytes = await picked.readAsBytes();
@@ -6264,13 +6319,17 @@ class _ComposerSheetState extends State<ComposerSheet> {
                 TextField(
                   controller: priceController,
                   keyboardType: TextInputType.number,
-                  decoration: inputDecoration('가격 ____원'),
+                  decoration: inputDecoration(
+                    '0',
+                  ).copyWith(prefixText: '가격 : ', suffixText: '원'),
                 ),
                 const SizedBox(height: 12),
                 TextField(
                   controller: calorieController,
                   keyboardType: TextInputType.number,
-                  decoration: inputDecoration('칼로리 약 ____kcal'),
+                  decoration: inputDecoration(
+                    '0',
+                  ).copyWith(prefixText: '칼로리 : ', suffixText: 'kcal'),
                 ),
                 const SizedBox(height: 12),
                 _PostRatingPicker(
@@ -7585,10 +7644,21 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 ],
               ),
             ),
-            IconButton(
-              onPressed: _changeProfileImage,
-              tooltip: '프로필 사진 변경',
-              icon: const Icon(Icons.edit_outlined, size: 20),
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                IconButton(
+                  onPressed: _openRandomPost,
+                  tooltip: '무작위 추천',
+                  color: AppColors.skyBlueDeep,
+                  icon: const Icon(Icons.shuffle_rounded, size: 21),
+                ),
+                IconButton(
+                  onPressed: _changeProfileImage,
+                  tooltip: '프로필 수정',
+                  icon: const Icon(Icons.edit_outlined, size: 20),
+                ),
+              ],
             ),
           ],
         ),
@@ -7622,26 +7692,30 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
             ),
             const SizedBox(height: 10),
-            Text(
-              setup.priorityValues.join(' · '),
-              style: const TextStyle(color: AppColors.muted, height: 1.6),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              setup.tasteRatings.entries
-                  .map((entry) => '${entry.key} ${entry.value}')
-                  .join('   '),
-              style: const TextStyle(fontSize: 13, height: 1.6),
+            Wrap(
+              spacing: 8,
+              runSpacing: 8,
+              children: [
+                _ProfileStatPill(
+                  label: '${setup.gender} · ${setup.age}세',
+                  value: '',
+                ),
+                ...setup.priorityValues.map(
+                  (value) => _ProfileStatPill(label: value, value: ''),
+                ),
+                ...setup.tasteRatings.entries.map(
+                  (entry) => _ProfileStatPill(
+                    label: entry.key,
+                    value: '${entry.value}',
+                  ),
+                ),
+              ],
             ),
             if (averages != null) ...[
-              const SizedBox(height: 8),
+              const SizedBox(height: 10),
               Text(
                 '하트한 맛  ${averages.entries.map((entry) => '${entry.key} ${entry.value.toStringAsFixed(1)}').join(' · ')}',
-                style: const TextStyle(
-                  fontSize: 12,
-                  color: AppColors.muted,
-                  height: 1.6,
-                ),
+                style: const TextStyle(fontSize: 12, color: AppColors.muted),
               ),
             ],
             const SizedBox(height: 16),
@@ -7749,13 +7823,6 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
           ),
           ListTile(
             contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.shuffle_rounded, size: 21),
-            title: const Text('무작위 추천', style: TextStyle(fontSize: 15)),
-            onTap: _openRandomPost,
-          ),
-          const Divider(height: 24, color: AppColors.line),
-          ListTile(
-            contentPadding: EdgeInsets.zero,
             title: const Text('로그아웃', style: TextStyle(fontSize: 15)),
             onTap: widget.onLogout,
           ),
@@ -7817,16 +7884,19 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 style: TextStyle(color: AppColors.muted),
               ),
             ),
-          ...authors.map(
-            (post) => ListTile(
-              contentPadding: EdgeInsets.zero,
-              leading: _UserAvatar(
-                imageSource: post.authorProfileImageUrl,
-                radius: 21,
-              ),
-              title: Text(post.authorNickname),
-              trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-              onTap: () => widget.onOpenAuthor(post),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: authors.length,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: .72,
+            ),
+            itemBuilder: (context, index) => _ProfilePostMiniCard(
+              post: authors[index],
+              onTap: () => widget.onOpenAuthor(authors[index]),
             ),
           ),
         ] else ...[
@@ -7847,10 +7917,19 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 style: TextStyle(color: AppColors.muted),
               ),
             ),
-          ...selectedPosts.map(
-            (post) => _CompactPostTile(
-              post: post,
-              onTap: () => widget.onOpenPost(post),
+          GridView.builder(
+            shrinkWrap: true,
+            physics: const NeverScrollableScrollPhysics(),
+            itemCount: selectedPosts.length,
+            gridDelegate: const SliverGridDelegateWithMaxCrossAxisExtent(
+              maxCrossAxisExtent: 220,
+              crossAxisSpacing: 10,
+              mainAxisSpacing: 10,
+              childAspectRatio: .72,
+            ),
+            itemBuilder: (context, index) => _ProfilePostMiniCard(
+              post: selectedPosts[index],
+              onTap: () => widget.onOpenPost(selectedPosts[index]),
             ),
           ),
         ],
@@ -7948,10 +8027,10 @@ class _ProfileModeChip extends StatelessWidget {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 14, vertical: 14),
           decoration: BoxDecoration(
-            color: active ? AppColors.limeSoft : Colors.transparent,
+            color: active ? AppColors.sky : Colors.transparent,
             border: Border(
               bottom: BorderSide(
-                color: active ? AppColors.limeDeep : Colors.transparent,
+                color: active ? AppColors.skyBlueDeep : Colors.transparent,
                 width: 2,
               ),
             ),
@@ -7996,53 +8075,6 @@ class _VisibilitySwitchRow extends StatelessWidget {
       inactiveTrackColor: const Color(0xFFEAECEE),
       inactiveThumbColor: Colors.white,
       trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
-    );
-  }
-}
-
-class _CompactPostTile extends StatelessWidget {
-  const _CompactPostTile({required this.post, required this.onTap});
-
-  final Post post;
-  final VoidCallback onTap;
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: InkWell(
-        borderRadius: BorderRadius.circular(14),
-        onTap: onTap,
-        child: Container(
-          width: double.infinity,
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          decoration: BoxDecoration(
-            color: const Color(0xFFF5FAFD),
-            borderRadius: BorderRadius.circular(14),
-          ),
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                post.title,
-                style: const TextStyle(
-                  color: AppColors.ink,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                '${post.priceLabel} · 하트 ${post.likes} · 싫어요 ${post.dislikes}',
-                style: const TextStyle(
-                  color: Color(0xFF758A9C),
-                  fontWeight: FontWeight.w600,
-                  fontSize: 12,
-                ),
-              ),
-            ],
-          ),
-        ),
-      ),
     );
   }
 }
@@ -8269,7 +8301,7 @@ class _ProfileStatPill extends StatelessWidget {
         borderRadius: BorderRadius.circular(999),
       ),
       child: Text(
-        '$label $value',
+        value.isEmpty ? label : '$label $value',
         style: const TextStyle(
           color: Color(0xFF6A8093),
           fontWeight: FontWeight.w800,
@@ -8578,6 +8610,19 @@ class _PostDetailPageState extends State<PostDetailPage> {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
+          FilledButton.icon(
+            onPressed: _openReviews,
+            icon: const Icon(Icons.rate_review_outlined, size: 18),
+            label: const Text(
+              '후기 작성',
+              style: TextStyle(fontWeight: FontWeight.w900),
+            ),
+            style: FilledButton.styleFrom(
+              backgroundColor: AppColors.skyBlue,
+              foregroundColor: AppColors.ink,
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+            ),
+          ),
           if (widget.isMine)
             PopupMenuButton<String>(
               onSelected: (value) async {
@@ -8776,12 +8821,6 @@ class _PostDetailPageState extends State<PostDetailPage> {
                           ),
                         ),
                       ],
-                    ),
-                    const SizedBox(height: 10),
-                    ActionChipButton(
-                      label: '후기 ${_post.reviews.length}',
-                      expanded: true,
-                      onTap: _openReviews,
                     ),
                   ],
                 ),
@@ -9366,36 +9405,12 @@ class _DetailBlock extends StatelessWidget {
           ),
         ),
         const SizedBox(height: 10),
-        ...items.indexed.map(
-          (entry) => Padding(
-            padding: const EdgeInsets.only(bottom: 12),
-            child: Row(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                SizedBox(
-                  width: 32,
-                  child: Text(
-                    '${entry.$1 + 1}'.padLeft(2, '0'),
-                    style: const TextStyle(
-                      color: Color(0xFF88A2B3),
-                      fontSize: 12,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 0.5,
-                    ),
-                  ),
-                ),
-                Expanded(
-                  child: Text(
-                    entry.$2,
-                    style: const TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w600,
-                      height: 1.5,
-                    ),
-                  ),
-                ),
-              ],
-            ),
+        Text(
+          items.join('\n'),
+          style: const TextStyle(
+            color: AppColors.ink,
+            fontWeight: FontWeight.w600,
+            height: 1.65,
           ),
         ),
       ],
