@@ -40,6 +40,45 @@ void main() {
     expect(secondVote.rightVotes, 0);
   });
 
+  testWidgets('only product collections show convenience store filters', (
+    tester,
+  ) async {
+    const user = PyeonUser(
+      id: 'viewer',
+      username: 'viewer',
+      password: '1234',
+      nickname: '사용자',
+    );
+
+    Widget page(HighlightCollectionType type, String title) {
+      return MaterialApp(
+        home: HighlightPostsPage(
+          title: title,
+          collectionType: type,
+          posts: const [],
+          currentUser: user,
+          onOpenAuthor: (_) {},
+          onOpenPost: (_) async {},
+          onToggleLike: (_) async {},
+          onToggleDislike: (_) async {},
+          onToggleSave: (_) async {},
+          onEditPost: (_) async {},
+          onDeletePost: (_) async {},
+        ),
+      );
+    }
+
+    await tester.pumpWidget(page(HighlightCollectionType.popular, '이번 주 인기'));
+    expect(find.text('CU'), findsNothing);
+    expect(find.text('최근 반응이 가장 많이 모인 조합'), findsOneWidget);
+    expect(find.text('인기순'), findsOneWidget);
+
+    await tester.pumpWidget(page(HighlightCollectionType.pbProduct, 'PB'));
+    await tester.pump();
+    expect(find.text('CU'), findsOneWidget);
+    expect(find.text('편의점 PB 상품이 포함된 조합'), findsOneWidget);
+  });
+
   test('shared Pick Shorts counts keep only the current viewer choice', () {
     final match = BattleMatchEntry.fromJson(<String, dynamic>{
       'id': 'shared-battle',

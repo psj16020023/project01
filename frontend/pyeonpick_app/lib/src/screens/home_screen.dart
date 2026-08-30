@@ -2562,6 +2562,7 @@ class _HomeScreenState extends State<HomeScreen> {
       MaterialPageRoute<void>(
         builder: (context) => HighlightPostsPage(
           title: title,
+          collectionType: type,
           posts: posts,
           currentUser: widget.currentUser,
           onOpenAuthor: _openAuthorProfile,
@@ -4833,6 +4834,7 @@ class HighlightPostsPage extends StatefulWidget {
   const HighlightPostsPage({
     super.key,
     required this.title,
+    required this.collectionType,
     required this.posts,
     required this.currentUser,
     required this.onOpenAuthor,
@@ -4845,6 +4847,7 @@ class HighlightPostsPage extends StatefulWidget {
   });
 
   final String title;
+  final HighlightCollectionType collectionType;
   final List<Post> posts;
   final PyeonUser currentUser;
   final ValueChanged<Post> onOpenAuthor;
@@ -4860,13 +4863,36 @@ class HighlightPostsPage extends StatefulWidget {
 }
 
 class _HighlightPostsPageState extends State<HighlightPostsPage> {
-  SortMode _sortMode = SortMode.latest;
+  late SortMode _sortMode;
   String? _selectedStore;
+
+  bool get _supportsStoreFilter =>
+      widget.collectionType == HighlightCollectionType.newProduct ||
+      widget.collectionType == HighlightCollectionType.pbProduct;
+
+  String get _collectionCaption => switch (widget.collectionType) {
+    HighlightCollectionType.popular => '최근 반응이 가장 많이 모인 조합',
+    HighlightCollectionType.malePicks => '남성 사용자의 하트 비중이 높은 조합',
+    HighlightCollectionType.femalePicks => '여성 사용자의 하트 비중이 높은 조합',
+    HighlightCollectionType.newProduct => '신상품이 포함된 최신 조합',
+    HighlightCollectionType.pbProduct => '편의점 PB 상품이 포함된 조합',
+    HighlightCollectionType.rediscovered => '최근 다시 반응이 늘어난 조합',
+  };
+
+  @override
+  void initState() {
+    super.initState();
+    _sortMode = switch (widget.collectionType) {
+      HighlightCollectionType.newProduct => SortMode.latest,
+      _ => SortMode.popular,
+    };
+  }
 
   List<Post> get _sortedPosts {
     final sorted = widget.posts
         .where(
           (post) =>
+              !_supportsStoreFilter ||
               _selectedStore == null ||
               _postMatchesStore(post, _selectedStore!),
         )
@@ -4916,12 +4942,23 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      _HighlightStoreFilter(
-                        selectedStore: _selectedStore,
-                        onChanged: (store) =>
-                            setState(() => _selectedStore = store),
+                      Text(
+                        _collectionCaption,
+                        style: const TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w600,
+                        ),
                       ),
-                      const SizedBox(height: 14),
+                      if (_supportsStoreFilter) ...[
+                        const SizedBox(height: 12),
+                        _HighlightStoreFilter(
+                          selectedStore: _selectedStore,
+                          onChanged: (store) =>
+                              setState(() => _selectedStore = store),
+                        ),
+                      ],
+                      const SizedBox(height: 12),
                       Row(
                         children: [
                           Expanded(
