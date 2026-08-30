@@ -1179,9 +1179,8 @@ class _HomeScreenState extends State<HomeScreen> {
         .catchError((Object _) {
           // The complete turn save below retries a failed draft save.
         });
-    if (_botRecommendationPosts.isEmpty) {
-      await _loadBotRecommendationPool(reset: true);
-    }
+    // Recommendations must use the latest community catalog, not a stale feed page.
+    await _loadBotRecommendationPool(reset: true);
     if (!mounted || widget.currentUser.id != userId) {
       return const BotTurnResult();
     }
@@ -1254,7 +1253,7 @@ class _HomeScreenState extends State<HomeScreen> {
     final userId = widget.currentUser.id;
     final setup = widget.currentUser.botSetup;
     if (setup == null) return;
-    await _loadBotRecommendationPool();
+    await _loadBotRecommendationPool(reset: true);
     if (!mounted || widget.currentUser.id != userId) return;
 
     String? prompt;
@@ -1327,6 +1326,9 @@ class _HomeScreenState extends State<HomeScreen> {
     List<BotMessage> history,
     _BotReply reply,
   ) async {
+    if (reply.recommendationAttempted && reply.recommendedPostIds.isEmpty) {
+      return reply.text;
+    }
     final text = await BotSituationAnalyzer.reply(
       environment: widget.environment,
       prompt: prompt,
@@ -1503,23 +1505,7 @@ class _HomeScreenState extends State<HomeScreen> {
         .where((post) => post.likedByMe)
         .toList();
     final analysis = _analyzeSituationPrompt(normalized);
-    final isFoodRequest = _hasAny(normalized, const [
-      '추천',
-      '추천해줘',
-      '골라줘',
-      '아무거나',
-      '뭐 먹',
-      '뭐 먹지',
-      '뭐사먹',
-      '뭐 사먹',
-      '먹을 거',
-      '편의점',
-      '배고',
-      '메뉴',
-      '먹을까',
-      '조합',
-      '음식',
-    ]);
+    final isFoodRequest = _isBotRecommendationRequest(normalized);
     final isGreeting = _hasAny(normalized, const [
       '안녕',
       '하이',
@@ -1929,6 +1915,7 @@ class _HomeScreenState extends State<HomeScreen> {
         text: '예산은 얼마 있어?',
         memoryNote: '추천 전 현재 예산 확인 필요',
         recommendedPostIds: <String>[],
+        recommendationAttempted: true,
       );
     }
 
@@ -2010,6 +1997,7 @@ class _HomeScreenState extends State<HomeScreen> {
       contextPrompt: effectivePrompt,
       useAgeCalorieGuide: useAgeCalorieGuide,
       shouldSyncBudget: shouldSyncBudget,
+      recommendationAttempted: true,
     );
   }
 
@@ -2208,6 +2196,31 @@ class _HomeScreenState extends State<HomeScreen> {
 
   bool _hasAny(String source, List<String> needles) {
     return needles.any(source.contains);
+  }
+
+  bool _isBotRecommendationRequest(String source) {
+    return _hasAny(source.toLowerCase(), const [
+      '추천',
+      '골라',
+      '아무거나',
+      '뭐 먹',
+      '뭐먹',
+      '뭐 사먹',
+      '뭐사먹',
+      '뭐가 좋',
+      '먹을 거',
+      '먹을까',
+      '배고',
+      '메뉴',
+      '조합',
+      '야식',
+      '간식',
+      '아침',
+      '점심',
+      '저녁',
+      '한 끼',
+      '한끼',
+    ]);
   }
 
   String _buildBotConversationFollowUp({
@@ -10993,6 +11006,7 @@ class _BotReply {
     this.pendingClarification,
     this.pendingAmount,
     this.shouldSyncBudget = false,
+    this.recommendationAttempted = false,
   });
 
   final String text;
@@ -11005,6 +11019,7 @@ class _BotReply {
   final String? pendingClarification;
   final int? pendingAmount;
   final bool shouldSyncBudget;
+  final bool recommendationAttempted;
 }
 
 class _SituationAnalysis {

@@ -47,5 +47,7 @@ test('conversation keeps bounded user/assistant history, not supplied system rol
   assert.equal(safeHistory(history)[0].content.length, 1500);
   const input = dialogueInput({ prompt: '조금 더 싼 건?', history, candidates: [], preferences: {}, draft: '예산 확인', pendingClarification: 'budgetDirection' });
   assert.equal(input.filter(m => m.role === 'developer').length, 1);
+  assert.match(input[0].content, /반드시 candidates에 포함된 조합 공유 게시글/);
+  assert.match(input[0].content, /candidates가 비어 있으면.*임의로 추천하지 말고/);
   assert.equal(JSON.parse(input.at(-1).content).constraints.pendingClarification, 'budgetDirection');
 });
