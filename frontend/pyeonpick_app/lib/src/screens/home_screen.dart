@@ -8369,56 +8369,85 @@ class _BotSetupSummaryCard extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final collapsedSummary = <String>[
+      setup.gender,
+      '${setup.age}세',
+      ...setup.priorityValues,
+    ].join(' · ');
+
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        InkWell(
-          onTap: onToggle,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 6),
-            child: Row(
-              children: [
-                const Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        '나의 취향',
-                        style: TextStyle(
-                          color: AppColors.ink,
-                          fontSize: 17,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      SizedBox(height: 3),
-                      Text(
-                        '편봇이 추천을 고를 때 참고해요',
-                        style: TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w500,
-                        ),
-                      ),
-                    ],
-                  ),
+        Semantics(
+          button: true,
+          expanded: expanded,
+          label: expanded ? '나의 초기 설정 접기' : '나의 초기 설정 펼치기',
+          child: InkWell(
+            onTap: onToggle,
+            child: Container(
+              padding: const EdgeInsets.symmetric(vertical: 13),
+              decoration: const BoxDecoration(
+                color: Color(0xFFFAFCFD),
+                border: Border(
+                  top: BorderSide(color: AppColors.line),
+                  bottom: BorderSide(color: AppColors.line),
                 ),
-                Text(
-                  expanded ? '접기' : '보기',
-                  style: const TextStyle(
+              ),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.tune_rounded,
+                    size: 20,
                     color: AppColors.skyBlueDeep,
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
                   ),
-                ),
-                const SizedBox(width: 2),
-                Icon(
-                  expanded
-                      ? Icons.keyboard_arrow_up_rounded
-                      : Icons.keyboard_arrow_down_rounded,
-                  size: 21,
-                  color: AppColors.skyBlueDeep,
-                ),
-              ],
+                  const SizedBox(width: 11),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '나의 초기 설정',
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w700,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          expanded
+                              ? '편봇이 추천을 고를 때 참고하는 정보예요'
+                              : collapsedSummary,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const SizedBox(width: 8),
+                  Text(
+                    expanded ? '접기' : '펼치기',
+                    style: const TextStyle(
+                      color: AppColors.skyBlueDeep,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 2),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    size: 21,
+                    color: AppColors.skyBlueDeep,
+                  ),
+                ],
+              ),
             ),
           ),
         ),

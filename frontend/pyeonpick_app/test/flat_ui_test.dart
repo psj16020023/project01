@@ -63,7 +63,8 @@ void main() {
     await tester.tap(find.text('접기'));
     await tester.pumpAndSettle();
     expect(find.text('기본 정보'), findsNothing);
-    expect(find.text('보기'), findsOneWidget);
+    expect(find.text('펼치기'), findsOneWidget);
+    expect(find.text('남자 · 15세 · 시간절약 · 호불호'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
