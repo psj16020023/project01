@@ -7370,6 +7370,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   bool _resultError = false;
   bool _markingResultsRead = false;
   int _resultGeneration = 0;
+  bool _tasteSummaryExpanded = true;
   final Set<String> _confirmedReadIds = {};
 
   int get _unreadResultCount => _battleResults.results
@@ -7735,21 +7736,23 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         const SizedBox(height: 20),
         if (_mode == _ProfileViewMode.overview) ...[
           if (setup != null) ...[
-            const Text(
-              '나의 취향',
-              style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
+            _BotSetupSummaryCard(
+              setup: setup,
+              expanded: _tasteSummaryExpanded,
+              onToggle: () => setState(
+                () => _tasteSummaryExpanded = !_tasteSummaryExpanded,
+              ),
+              onEdit: widget.onResetBotSetup,
             ),
-            const SizedBox(height: 10),
-            _BotSetupSummary(setup: setup),
             const SizedBox(height: 16),
-          ],
-          ListTile(
-            contentPadding: EdgeInsets.zero,
-            leading: const Icon(Icons.tune_rounded, size: 21),
-            title: const Text('편봇 취향 설정', style: TextStyle(fontSize: 15)),
-            trailing: const Icon(Icons.chevron_right_rounded, size: 20),
-            onTap: widget.onResetBotSetup,
-          ),
+          ] else
+            ListTile(
+              contentPadding: EdgeInsets.zero,
+              leading: const Icon(Icons.tune_rounded, size: 21),
+              title: const Text('편봇 취향 설정', style: TextStyle(fontSize: 15)),
+              trailing: const Icon(Icons.chevron_right_rounded, size: 20),
+              onTap: widget.onResetBotSetup,
+            ),
           const Divider(height: 24, color: AppColors.line),
           Theme(
             data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
@@ -8351,10 +8354,18 @@ class _PickedAuthorMiniCard extends StatelessWidget {
   }
 }
 
-class _BotSetupSummary extends StatelessWidget {
-  const _BotSetupSummary({required this.setup});
+class _BotSetupSummaryCard extends StatelessWidget {
+  const _BotSetupSummaryCard({
+    required this.setup,
+    required this.expanded,
+    required this.onToggle,
+    required this.onEdit,
+  });
 
   final BotSetup setup;
+  final bool expanded;
+  final VoidCallback onToggle;
+  final VoidCallback onEdit;
 
   Color _tasteColor(String taste) => switch (taste) {
     '달달' => const Color(0xFFE17B8E),
@@ -8365,31 +8376,178 @@ class _BotSetupSummary extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Wrap(
-      spacing: 18,
-      runSpacing: 12,
-      crossAxisAlignment: WrapCrossAlignment.center,
+    return DecoratedBox(
+      decoration: BoxDecoration(
+        color: const Color(0xFFF7FBFD),
+        borderRadius: BorderRadius.circular(18),
+        border: Border.all(color: const Color(0xFFDDEAF0)),
+      ),
+      child: Column(
+        children: [
+          InkWell(
+            onTap: onToggle,
+            borderRadius: BorderRadius.circular(18),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
+              child: Row(
+                children: [
+                  Container(
+                    width: 36,
+                    height: 36,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFE2F3FC),
+                      borderRadius: BorderRadius.circular(12),
+                    ),
+                    child: const Icon(
+                      Icons.tune_rounded,
+                      size: 20,
+                      color: AppColors.skyBlueDeep,
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  const Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        Text(
+                          '나의 취향',
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 16,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                        SizedBox(height: 2),
+                        Text(
+                          '편봇 맞춤 추천에 사용해요',
+                          style: TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  Text(
+                    expanded ? '접기' : '보기',
+                    style: const TextStyle(
+                      color: AppColors.skyBlueDeep,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    expanded
+                        ? Icons.keyboard_arrow_up_rounded
+                        : Icons.keyboard_arrow_down_rounded,
+                    color: AppColors.skyBlueDeep,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          AnimatedSize(
+            duration: const Duration(milliseconds: 180),
+            child: expanded
+                ? Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Divider(height: 1, color: Color(0xFFDDEAF0)),
+                        const SizedBox(height: 14),
+                        _BotSetupGroup(
+                          title: '기본 정보',
+                          children: [
+                            _BotSetupLabel(
+                              icon: Icons.person_outline_rounded,
+                              label: '${setup.gender} · ${setup.age}세',
+                              color: AppColors.skyBlueDeep,
+                            ),
+                          ],
+                        ),
+                        if (setup.priorityValues.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _BotSetupGroup(
+                            title: '우선 기준',
+                            children: setup.priorityValues
+                                .map(
+                                  (value) => _BotSetupLabel(
+                                    icon: Icons.flag_outlined,
+                                    label: value,
+                                    color: AppColors.limeDeep,
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ],
+                        if (setup.tasteRatings.isNotEmpty) ...[
+                          const SizedBox(height: 14),
+                          _BotSetupGroup(
+                            title: '맛 선호',
+                            children: setup.tasteRatings.entries
+                                .map(
+                                  (entry) => _BotSetupLabel(
+                                    icon: Icons.circle,
+                                    label: '${entry.key} ${entry.value}',
+                                    color: _tasteColor(entry.key),
+                                    iconSize: 8,
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ],
+                        const SizedBox(height: 12),
+                        SizedBox(
+                          width: double.infinity,
+                          child: OutlinedButton.icon(
+                            onPressed: onEdit,
+                            icon: const Icon(Icons.edit_outlined, size: 17),
+                            label: const Text('취향 설정 수정'),
+                            style: OutlinedButton.styleFrom(
+                              foregroundColor: AppColors.ink,
+                              side: const BorderSide(color: Color(0xFFCFE1E9)),
+                              shape: RoundedRectangleBorder(
+                                borderRadius: BorderRadius.circular(12),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  )
+                : const SizedBox(width: double.infinity),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _BotSetupGroup extends StatelessWidget {
+  const _BotSetupGroup({required this.title, required this.children});
+
+  final String title;
+  final List<Widget> children;
+
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        _BotSetupLabel(
-          icon: Icons.person_outline_rounded,
-          label: '${setup.gender} · ${setup.age}세',
-          color: AppColors.skyBlueDeep,
-        ),
-        ...setup.priorityValues.map(
-          (value) => _BotSetupLabel(
-            icon: Icons.flag_outlined,
-            label: value,
-            color: AppColors.limeDeep,
+        Text(
+          title,
+          style: const TextStyle(
+            color: AppColors.muted,
+            fontSize: 12,
+            fontWeight: FontWeight.w700,
           ),
         ),
-        ...setup.tasteRatings.entries.map(
-          (entry) => _BotSetupLabel(
-            icon: Icons.circle,
-            label: '${entry.key} ${entry.value}',
-            color: _tasteColor(entry.key),
-            iconSize: 9,
-          ),
-        ),
+        const SizedBox(height: 8),
+        Wrap(spacing: 8, runSpacing: 8, children: children),
       ],
     );
   }
@@ -8400,7 +8558,7 @@ class _BotSetupLabel extends StatelessWidget {
     required this.icon,
     required this.label,
     required this.color,
-    this.iconSize = 17,
+    this.iconSize = 16,
   });
 
   final IconData icon;
@@ -8410,20 +8568,28 @@ class _BotSetupLabel extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Row(
-      mainAxisSize: MainAxisSize.min,
-      children: [
-        Icon(icon, size: iconSize, color: color),
-        const SizedBox(width: 6),
-        Text(
-          label,
-          style: TextStyle(
-            color: color,
-            fontSize: 15,
-            fontWeight: FontWeight.w700,
+    return Container(
+      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+      decoration: BoxDecoration(
+        color: color.withAlpha(18),
+        borderRadius: BorderRadius.circular(999),
+        border: Border.all(color: color.withAlpha(48)),
+      ),
+      child: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          Icon(icon, size: iconSize, color: color),
+          const SizedBox(width: 6),
+          Text(
+            label,
+            style: TextStyle(
+              color: color,
+              fontSize: 13,
+              fontWeight: FontWeight.w800,
+            ),
           ),
-        ),
-      ],
+        ],
+      ),
     );
   }
 }
@@ -8851,19 +9017,6 @@ class _PostDetailPageState extends State<PostDetailPage> {
           style: TextStyle(fontWeight: FontWeight.w900),
         ),
         actions: [
-          FilledButton.icon(
-            onPressed: _openReviews,
-            icon: const Icon(Icons.rate_review_outlined, size: 18),
-            label: const Text(
-              '후기 작성',
-              style: TextStyle(fontWeight: FontWeight.w900),
-            ),
-            style: FilledButton.styleFrom(
-              backgroundColor: AppColors.skyBlue,
-              foregroundColor: AppColors.ink,
-              padding: const EdgeInsets.symmetric(horizontal: 12),
-            ),
-          ),
           if (widget.isMine)
             PopupMenuButton<String>(
               onSelected: (value) async {
@@ -8901,37 +9054,70 @@ class _PostDetailPageState extends State<PostDetailPage> {
                   children: [
                     Row(
                       children: [
-                        InkWell(
-                          onTap: widget.onOpenAuthor,
-                          borderRadius: BorderRadius.circular(999),
-                          child: Row(
-                            children: [
-                              _UserAvatar(
-                                imageSource: _post.authorProfileImageUrl,
-                                radius: 18,
-                              ),
-                              const SizedBox(width: 10),
-                              Column(
-                                crossAxisAlignment: CrossAxisAlignment.start,
-                                children: [
-                                  Text(
-                                    _post.authorNickname,
-                                    style: const TextStyle(
-                                      color: AppColors.ink,
-                                      fontWeight: FontWeight.w900,
-                                    ),
+                        Expanded(
+                          child: InkWell(
+                            onTap: widget.onOpenAuthor,
+                            borderRadius: BorderRadius.circular(999),
+                            child: Row(
+                              children: [
+                                _UserAvatar(
+                                  imageSource: _post.authorProfileImageUrl,
+                                  radius: 18,
+                                ),
+                                const SizedBox(width: 10),
+                                Expanded(
+                                  child: Column(
+                                    crossAxisAlignment:
+                                        CrossAxisAlignment.start,
+                                    children: [
+                                      Text(
+                                        _post.authorNickname,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: AppColors.ink,
+                                          fontWeight: FontWeight.w900,
+                                        ),
+                                      ),
+                                      Text(
+                                        _post.createdAtLabel,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        style: const TextStyle(
+                                          color: Color(0xFF8CA0B3),
+                                          fontSize: 12,
+                                          fontWeight: FontWeight.w600,
+                                        ),
+                                      ),
+                                    ],
                                   ),
-                                  Text(
-                                    _post.createdAtLabel,
-                                    style: const TextStyle(
-                                      color: Color(0xFF8CA0B3),
-                                      fontSize: 12,
-                                      fontWeight: FontWeight.w600,
-                                    ),
-                                  ),
-                                ],
-                              ),
-                            ],
+                                ),
+                              ],
+                            ),
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        FilledButton.icon(
+                          onPressed: _openReviews,
+                          icon: const Icon(
+                            Icons.rate_review_outlined,
+                            size: 17,
+                          ),
+                          label: const Text(
+                            '후기 작성',
+                            style: TextStyle(fontWeight: FontWeight.w900),
+                          ),
+                          style: FilledButton.styleFrom(
+                            backgroundColor: const Color(0xFFE2F3FC),
+                            foregroundColor: AppColors.skyBlueDeep,
+                            elevation: 0,
+                            padding: const EdgeInsets.symmetric(
+                              horizontal: 12,
+                              vertical: 10,
+                            ),
+                            shape: RoundedRectangleBorder(
+                              borderRadius: BorderRadius.circular(12),
+                            ),
                           ),
                         ),
                       ],
