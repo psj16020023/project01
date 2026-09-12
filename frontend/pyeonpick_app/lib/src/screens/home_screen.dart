@@ -8367,225 +8367,222 @@ class _BotSetupSummaryCard extends StatelessWidget {
   final VoidCallback onToggle;
   final VoidCallback onEdit;
 
-  Color _tasteColor(String taste) => switch (taste) {
-    '달달' => const Color(0xFFE17B8E),
-    '매콤' => AppColors.priceRed,
-    '새콤' => AppColors.skyBlueDeep,
-    _ => AppColors.limeDeep,
-  };
+  @override
+  Widget build(BuildContext context) {
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        InkWell(
+          onTap: onToggle,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(vertical: 6),
+            child: Row(
+              children: [
+                const Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
+                      Text(
+                        '나의 취향',
+                        style: TextStyle(
+                          color: AppColors.ink,
+                          fontSize: 17,
+                          fontWeight: FontWeight.w700,
+                        ),
+                      ),
+                      SizedBox(height: 3),
+                      Text(
+                        '편봇이 추천을 고를 때 참고해요',
+                        style: TextStyle(
+                          color: AppColors.muted,
+                          fontSize: 12,
+                          fontWeight: FontWeight.w500,
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                Text(
+                  expanded ? '접기' : '보기',
+                  style: const TextStyle(
+                    color: AppColors.skyBlueDeep,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w600,
+                  ),
+                ),
+                const SizedBox(width: 2),
+                Icon(
+                  expanded
+                      ? Icons.keyboard_arrow_up_rounded
+                      : Icons.keyboard_arrow_down_rounded,
+                  size: 21,
+                  color: AppColors.skyBlueDeep,
+                ),
+              ],
+            ),
+          ),
+        ),
+        AnimatedSize(
+          duration: const Duration(milliseconds: 180),
+          child: expanded
+              ? Padding(
+                  padding: const EdgeInsets.only(top: 10),
+                  child: Column(
+                    children: [
+                      const Divider(height: 1, color: AppColors.line),
+                      _PreferenceInfoRow(
+                        title: '기본 정보',
+                        child: Text(
+                          '${setup.gender}  ·  ${setup.age}세',
+                          style: const TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 14,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                      if (setup.priorityValues.isNotEmpty)
+                        _PreferenceInfoRow(
+                          title: '우선 기준',
+                          child: Text(
+                            setup.priorityValues.join('  ·  '),
+                            style: const TextStyle(
+                              color: AppColors.ink,
+                              fontSize: 14,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      if (setup.tasteRatings.isNotEmpty)
+                        _PreferenceInfoRow(
+                          title: '맛 선호',
+                          alignTop: true,
+                          child: Column(
+                            children: setup.tasteRatings.entries
+                                .map(
+                                  (entry) => _TastePreferenceMeter(
+                                    label: entry.key,
+                                    value: entry.value,
+                                  ),
+                                )
+                                .toList(),
+                          ),
+                        ),
+                      Align(
+                        alignment: Alignment.centerRight,
+                        child: TextButton.icon(
+                          onPressed: onEdit,
+                          icon: const Icon(Icons.edit_outlined, size: 16),
+                          label: const Text('취향 다시 설정'),
+                          style: TextButton.styleFrom(
+                            foregroundColor: AppColors.skyBlueDeep,
+                            textStyle: const TextStyle(
+                              fontSize: 13,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ),
+                      ),
+                    ],
+                  ),
+                )
+              : const SizedBox(width: double.infinity),
+        ),
+      ],
+    );
+  }
+}
+
+class _PreferenceInfoRow extends StatelessWidget {
+  const _PreferenceInfoRow({
+    required this.title,
+    required this.child,
+    this.alignTop = false,
+  });
+
+  final String title;
+  final Widget child;
+  final bool alignTop;
 
   @override
   Widget build(BuildContext context) {
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: const Color(0xFFF7FBFD),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(color: const Color(0xFFDDEAF0)),
+    return Container(
+      padding: const EdgeInsets.symmetric(vertical: 13),
+      decoration: const BoxDecoration(
+        border: Border(bottom: BorderSide(color: AppColors.line)),
       ),
-      child: Column(
+      child: Row(
+        crossAxisAlignment: alignTop
+            ? CrossAxisAlignment.start
+            : CrossAxisAlignment.center,
         children: [
-          InkWell(
-            onTap: onToggle,
-            borderRadius: BorderRadius.circular(18),
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 15),
-              child: Row(
-                children: [
-                  Container(
-                    width: 36,
-                    height: 36,
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFE2F3FC),
-                      borderRadius: BorderRadius.circular(12),
-                    ),
-                    child: const Icon(
-                      Icons.tune_rounded,
-                      size: 20,
-                      color: AppColors.skyBlueDeep,
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  const Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          '나의 취향',
-                          style: TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                          ),
-                        ),
-                        SizedBox(height: 2),
-                        Text(
-                          '편봇 맞춤 추천에 사용해요',
-                          style: TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Text(
-                    expanded ? '접기' : '보기',
-                    style: const TextStyle(
-                      color: AppColors.skyBlueDeep,
-                      fontSize: 12,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  const SizedBox(width: 4),
-                  Icon(
-                    expanded
-                        ? Icons.keyboard_arrow_up_rounded
-                        : Icons.keyboard_arrow_down_rounded,
-                    color: AppColors.skyBlueDeep,
-                  ),
-                ],
+          SizedBox(
+            width: 82,
+            child: Text(
+              title,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 12,
+                fontWeight: FontWeight.w500,
               ),
             ),
           ),
-          AnimatedSize(
-            duration: const Duration(milliseconds: 180),
-            child: expanded
-                ? Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.fromLTRB(16, 0, 16, 16),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Divider(height: 1, color: Color(0xFFDDEAF0)),
-                        const SizedBox(height: 14),
-                        _BotSetupGroup(
-                          title: '기본 정보',
-                          children: [
-                            _BotSetupLabel(
-                              icon: Icons.person_outline_rounded,
-                              label: '${setup.gender} · ${setup.age}세',
-                              color: AppColors.skyBlueDeep,
-                            ),
-                          ],
-                        ),
-                        if (setup.priorityValues.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          _BotSetupGroup(
-                            title: '우선 기준',
-                            children: setup.priorityValues
-                                .map(
-                                  (value) => _BotSetupLabel(
-                                    icon: Icons.flag_outlined,
-                                    label: value,
-                                    color: AppColors.limeDeep,
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ],
-                        if (setup.tasteRatings.isNotEmpty) ...[
-                          const SizedBox(height: 14),
-                          _BotSetupGroup(
-                            title: '맛 선호',
-                            children: setup.tasteRatings.entries
-                                .map(
-                                  (entry) => _BotSetupLabel(
-                                    icon: Icons.circle,
-                                    label: '${entry.key} ${entry.value}',
-                                    color: _tasteColor(entry.key),
-                                    iconSize: 8,
-                                  ),
-                                )
-                                .toList(),
-                          ),
-                        ],
-                        const SizedBox(height: 12),
-                        SizedBox(
-                          width: double.infinity,
-                          child: OutlinedButton.icon(
-                            onPressed: onEdit,
-                            icon: const Icon(Icons.edit_outlined, size: 17),
-                            label: const Text('취향 설정 수정'),
-                            style: OutlinedButton.styleFrom(
-                              foregroundColor: AppColors.ink,
-                              side: const BorderSide(color: Color(0xFFCFE1E9)),
-                              shape: RoundedRectangleBorder(
-                                borderRadius: BorderRadius.circular(12),
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  )
-                : const SizedBox(width: double.infinity),
-          ),
+          const SizedBox(width: 12),
+          Expanded(child: child),
         ],
       ),
     );
   }
 }
 
-class _BotSetupGroup extends StatelessWidget {
-  const _BotSetupGroup({required this.title, required this.children});
+class _TastePreferenceMeter extends StatelessWidget {
+  const _TastePreferenceMeter({required this.label, required this.value});
 
-  final String title;
-  final List<Widget> children;
-
-  @override
-  Widget build(BuildContext context) {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        Text(
-          title,
-          style: const TextStyle(
-            color: AppColors.muted,
-            fontSize: 12,
-            fontWeight: FontWeight.w700,
-          ),
-        ),
-        const SizedBox(height: 8),
-        Wrap(spacing: 8, runSpacing: 8, children: children),
-      ],
-    );
-  }
-}
-
-class _BotSetupLabel extends StatelessWidget {
-  const _BotSetupLabel({
-    required this.icon,
-    required this.label,
-    required this.color,
-    this.iconSize = 16,
-  });
-
-  final IconData icon;
   final String label;
-  final Color color;
-  final double iconSize;
+  final int value;
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
-      decoration: BoxDecoration(
-        color: color.withAlpha(18),
-        borderRadius: BorderRadius.circular(999),
-        border: Border.all(color: color.withAlpha(48)),
-      ),
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 10),
       child: Row(
-        mainAxisSize: MainAxisSize.min,
         children: [
-          Icon(icon, size: iconSize, color: color),
-          const SizedBox(width: 6),
-          Text(
-            label,
-            style: TextStyle(
-              color: color,
-              fontSize: 13,
-              fontWeight: FontWeight.w800,
+          SizedBox(
+            width: 38,
+            child: Text(
+              label,
+              style: const TextStyle(
+                color: AppColors.ink,
+                fontSize: 13,
+                fontWeight: FontWeight.w500,
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          Expanded(
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(2),
+              child: LinearProgressIndicator(
+                value: value.clamp(1, 5) / 5,
+                minHeight: 5,
+                backgroundColor: const Color(0xFFE8EFF2),
+                valueColor: const AlwaysStoppedAnimation<Color>(
+                  AppColors.skyBlueDeep,
+                ),
+              ),
+            ),
+          ),
+          const SizedBox(width: 10),
+          SizedBox(
+            width: 26,
+            child: Text(
+              '$value/5',
+              textAlign: TextAlign.right,
+              style: const TextStyle(
+                color: AppColors.muted,
+                fontSize: 11,
+                fontWeight: FontWeight.w500,
+              ),
             ),
           ),
         ],
