@@ -59,12 +59,14 @@ void main() {
     );
 
     expect(find.text('기본 정보'), findsOneWidget);
-    expect(find.text('맛 선호'), findsOneWidget);
-    await tester.tap(find.text('접기'));
+    expect(find.text('맛 선호도'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('bot-setup-toggle')));
     await tester.pumpAndSettle();
     expect(find.text('기본 정보'), findsNothing);
-    expect(find.text('펼치기'), findsOneWidget);
     expect(find.text('남자 · 15세 · 시간절약 · 호불호'), findsOneWidget);
+    await tester.tap(find.byKey(const Key('bot-setup-toggle')));
+    await tester.pumpAndSettle();
+    expect(find.text('기본 정보'), findsOneWidget);
     expect(tester.takeException(), isNull);
   });
 
@@ -194,6 +196,20 @@ void main() {
       findsNothing,
     );
     expect(find.text('후기 작성'), findsOneWidget);
+    final authorBottom = tester
+        .getBottomLeft(find.byKey(const Key('post-author-header')))
+        .dy;
+    final reviewTop = tester
+        .getTopLeft(find.byKey(const Key('post-review-action')))
+        .dy;
+    final reviewBottom = tester
+        .getBottomLeft(find.byKey(const Key('post-review-action')))
+        .dy;
+    final photoTop = tester
+        .getTopLeft(find.byKey(const Key('post-photo-gallery')))
+        .dy;
+    expect(reviewTop, greaterThan(authorBottom));
+    expect(photoTop, greaterThan(reviewBottom));
     expect(tester.takeException(), isNull);
   });
 }
