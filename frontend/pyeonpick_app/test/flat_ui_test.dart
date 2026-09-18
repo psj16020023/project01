@@ -58,6 +58,10 @@ void main() {
       ),
     );
 
+    expect(
+      tester.widget(find.byKey(const Key('bot-setup-summary'))),
+      isA<Column>(),
+    );
     expect(find.text('기본 정보'), findsOneWidget);
     expect(find.text('맛 선호도'), findsOneWidget);
     await tester.tap(find.byKey(const Key('bot-setup-toggle')));
