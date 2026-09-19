@@ -14,12 +14,16 @@
 
 1. 편봇의 규칙 기반 분석, OpenAI 상황 분석, 사용자 행동 신호를 결합한 하이브리드 추천
 2. HACCP 공공데이터와 OpenFoodFacts를 결합하는 바코드 상품 식별 및 캐시 전략
-3. 인기순·싫어요순·최신순을 안정적으로 이어 읽는 복합 커서 페이지네이션
+3. 게시글 피드를 중복 없이 이어 읽는 생성 시각·문서 ID 기반 커서 페이지네이션
 4. 중복 투표와 동시 수정 손실을 방지하는 픽쇼츠 원자적 갱신
 5. CU·GS25·세븐일레븐·이마트24의 서로 다른 페이지를 수집하는 다중 크롤러와 14일 스케줄
 6. bcrypt와 JWT를 이용한 인증 구조, 그리고 현재 코드에 남아 있는 권한·토큰 보관 문제
 
 이 문서는 현재 코드를 과장하지 않는다. 잘 구현된 부분은 근거와 함께 설명하고, 불완전한 부분은 면접에서 숨기지 않고 개선 방향까지 말할 수 있도록 구분한다.
+
+### 문서 범위 기준
+
+이 문서는 로그인 후 사용자가 실제로 접근하는 꿀조합 공유, 게시글 상세·후기, 바코드 조회, 편봇, 픽쇼츠, 내 정보 흐름과 이를 직접 지원하는 서버 로직만 다룬다. 소스 파일에 흔적만 남아 있고 현재 사용자 흐름에서 호출되지 않는 실험 코드, 과거 화면용 위젯, 사용하지 않는 분류 로직은 프로젝트 기능으로 소개하지 않는다.
 
 ---
 
@@ -64,6 +68,20 @@
 [GitHub Actions] ── 보호된 API 호출 ──► [14일 주기 크롤러]
 [Render Docker] ── Flutter 빌드 + Express 실행
 ```
+
+### 현재 화면 기준 기능 대응표
+
+| 실제 화면 | 사용자가 하는 동작 | 연결되는 핵심 코드 |
+|---|---|---|
+| 로그인·회원가입 | 아이디·닉네임·비밀번호로 계정 생성 및 로그인 | `AuthScreen`, `LocalAccountStore`, `/api/auth/*` |
+| 꿀조합 공유 | 검색, 태그·가격 필터, 게시글 조회·등록·수정·삭제 | `CommunicationBody`, `ComposerPage`, `/api/posts` |
+| 게시글 상세 | 좋아요·싫어요·보관, 댓글, 개별 후기 작성 | `PostDetailPage`, `PostReviewsScreen`, 게시글 하위 API |
+| 바코드 | 카메라로 상품 코드를 읽어 상품명 조회 | `ProductScannerSheet`, `/api/products/lookup/:barcode` |
+| 픽쇼츠 | 두 조합 비교 글 생성, 한 번 투표, 종료 결과 확인 | `CombinationBattleScreen`, `/api/battles/*` |
+| 편봇 | 초기 취향 설정, 예산·상황 대화, 실제 게시글 추천 | `PyeonBotPage`, `BotBudgetRules`, `/api/bot/*` |
+| 내 정보 | 초기 설정 펼치기·접기, 프로필과 활동 정보 관리 | `ProfilePage`, `/api/users/:id` |
+
+이후의 알고리즘 설명은 위 화면으로 이어지는 코드만 선택한다. 예를 들어 크롤러는 독립 화면은 아니지만 바코드와 상품 정보의 입력 데이터를 만들기 때문에 포함하고, 호출되지 않는 과거 UI 코드는 제외한다.
 
 ### 요청의 실제 흐름
 
@@ -494,37 +512,24 @@ API가 넓은 결과나 예상과 다른 상품을 반환했을 때 동일 바�
 
 ---
 
-## 8. 핵심 알고리즘 3: 복합 커서 페이지네이션
+## 8. 핵심 알고리즘 3: 게시글 피드 커서 페이지네이션
 
 ### offset 대신 cursor를 선택한 이유
 
-`skip(1000)` 같은 offset 방식은 앞의 문서를 계속 건너뛰어야 하고, 사용자가 다음 페이지를 보는 사이 새 글이나 좋아요 변화가 생기면 중복·누락이 발생하기 쉽다. 편pick은 마지막 항목의 정렬 키를 커서에 넣는다.
+`skip(1000)` 같은 offset 방식은 앞의 문서를 계속 건너뛰어야 하고, 사용자가 다음 페이지를 보는 사이 새 글이 생기면 중복·누락이 발생하기 쉽다. 편pick의 기본 피드는 마지막 게시글의 생성 시각과 문서 ID를 커서에 넣는다.
+
+기본 정렬은 `(createdAt DESC, _id DESC)`다. 서버의 커서 함수 중 기본 피드 분기는 다음처럼 생성 시각이 더 오래됐거나, 생성 시각이 같을 때 `_id`가 더 작은 문서만 가져온다.
 
 ```js
-function encodePostCursor(post, sort) {
-  return Buffer.from(JSON.stringify({
-    sort,
-    id: post._id.toString(),
-    createdAt: post.createdAt.toISOString(),
-    likes: post.likes,
-    dislikes: post.dislikes,
-  })).toString("base64url");
-}
-```
-
-인기순 정렬은 `(likes DESC, createdAt DESC, _id DESC)`다. 다음 페이지는 다음 조건을 만족한다.
-
-```js
-{
+return {
   $or: [
-    { likes: { $lt: cursor.likes } },
-    { likes: cursor.likes, createdAt: { $lt: cursorDate } },
-    { likes: cursor.likes, createdAt: cursorDate, _id: { $lt: cursorId } },
+    { createdAt: { $lt: cursorDate } },
+    { createdAt: cursorDate, _id: { $lt: cursorId } },
   ]
-}
+};
 ```
 
-좋아요가 같으면 생성 시각, 생성 시각도 같으면 고유한 `_id`가 최종 tie-breaker가 된다. 싫어요순도 같은 구조이며 최신순은 `createdAt`과 `_id`를 사용한다.
+서로 다른 게시글의 생성 시각이 우연히 같아도 고유한 `_id`가 최종 tie-breaker가 되므로 순서가 결정된다.
 
 서버는 `pageSize + 1`개를 읽는다. 초과 한 개가 있으면 `hasMore = true`로 판단하고 실제 응답에서는 제거한다. 별도 count 쿼리 없이 다음 페이지 존재 여부를 알 수 있다.
 
@@ -532,14 +537,14 @@ function encodePostCursor(post, sort) {
 
 - 커서는 Base64 인코딩일 뿐 암호화나 서명이 아니다.
 - 잘못된 `_id`를 넣은 커서의 오류 처리가 충분하지 않다.
-- 페이지를 넘기는 동안 좋아요 수가 바뀌면 인기순 위치가 변할 수 있다.
-- 현재 정렬을 위한 복합 인덱스가 명시적으로 충분하지 않다.
+- 커서 발급 이후 게시글의 생성 시각이 수정되는 예외 상황은 별도 정책이 필요하다.
+- 기본 피드 정렬용 `{createdAt:-1, _id:-1}` 복합 인덱스를 명시하면 데이터 증가 시 더 안정적이다.
 
-개선하려면 커서 payload를 HMAC 서명하고, Zod/Joi 같은 도구로 검증하며, `{likes:-1, createdAt:-1, _id:-1}` 등의 복합 인덱스를 추가한다.
+개선하려면 커서 payload를 HMAC 서명하고, Zod/Joi 같은 도구로 검증하며, `{createdAt:-1, _id:-1}` 복합 인덱스를 추가한다.
 
 ---
 
-## 9. 핵심 알고리즘 4: 좋아요·싫어요와 TOP 배지
+## 9. 핵심 알고리즘 4: 좋아요·싫어요의 낙관적 UI와 동기화
 
 ### 낙관적 UI
 
@@ -570,12 +575,6 @@ try {
 
 좋아요를 추가할 때 기존 싫어요를 제거하고, 싫어요를 추가할 때 기존 좋아요를 제거한다. 숫자가 음수가 되지 않도록 `Math.max(0, value - 1)`을 적용한다.
 
-### 배지 기준
-
-인기 TOP 후보는 좋아요 10개 이상이면서 `likes >= dislikes × 3`이어야 한다. 최악 후보는 싫어요 8개 이상이며 싫어요 비율이 45% 이상이거나 싫어요가 좋아요 이상이어야 한다. 조건을 만족한 목록에서 각각 상위 5개만 선택하고 처음 진입한 시각을 저장한다.
-
-좋아요가 연속으로 발생할 때마다 전체 갱신을 동시에 실행하지 않도록 요청 플래그와 실행 플래그를 사용해 갱신을 합친다.
-
 ### 일관성 한계
 
 게시글과 사용자 문서를 `Promise.all([post.save(), user.save()])`로 저장하지만 MongoDB 트랜잭션은 사용하지 않는다. 하나만 성공하면 숫자와 사용자 ID 목록이 어긋날 수 있다. 또한 읽기-수정-저장 방식이라 동시에 같은 게시글에 반응하면 lost update 가능성이 있다.
@@ -585,7 +584,7 @@ try {
 1. replica set 기반 MongoDB transaction으로 두 문서를 함께 커밋한다.
 2. 반응을 별도 `Reaction(userId, postId, type)` 컬렉션에 unique 복합 인덱스로 저장한다.
 3. `$inc`, `$addToSet`, `$pull` 조건부 갱신으로 원자성을 높인다.
-4. 배지 계산은 전체 문서를 애플리케이션 메모리로 읽지 않고 aggregation pipeline과 인덱스로 처리한다.
+4. 서버 응답을 반응 상태의 단일 기준으로 사용하고 클라이언트 캐시를 함께 갱신한다.
 
 ---
 
@@ -632,25 +631,68 @@ const match = await BattleMatch.findOneAndUpdate(
 
 ---
 
-## 11. 핵심 알고리즘 6: 규칙 기반 상품 카테고리 분류
+## 11. 핵심 알고리즘 6: 게시글 작성·후기 저장 흐름
 
-`CombinationCategoryClassifier`는 상품 문자열을 편의점 음식 카테고리로 분류한다. 이름에서 공백을 제거하고 소문자로 만든 뒤 다음 순서로 처리한다.
+현재 화면에서 사용자는 조합 공유 게시글을 만들고, 선택한 게시글의 상세 화면에서 후기와 댓글을 작성한다. 서버는 입력 JSON을 그대로 저장하지 않고 필수값과 숫자 범위를 정규화한다.
 
-1. 카테고리 이름과 완전 일치하면 신뢰도 0.99
-2. 카테고리별 키워드가 포함되는지 검사
-3. 길이 3 이상 키워드는 3점, 짧은 키워드는 2점
-4. 최고 점수와 2위 점수 차이로 신뢰도 계산
-5. 아무 규칙도 없으면 `기타`, 신뢰도 0.3
+### 게시글 작성 순서
+
+1. Flutter 작성 화면이 사진, 사용 상품, 가격 범위, 카테고리, 평점, 상세 설명을 `PostDraft`로 만든다.
+2. `RemotePostRepository.createPost()`가 이미지 바이트를 Base64 문자열로 바꾸고 `POST /api/posts`에 전달한다.
+3. 서버가 사진 존재 여부, 사용 상품 한 개 이상, 0보다 큰 평점을 검사한다.
+4. 제목이 비어 있으면 사용 상품을 ` + `로 연결해 제목을 만든다.
+5. 가격과 평점을 허용 범위로 정규화한 뒤 `Post` 문서를 생성한다.
+6. Flutter가 목록과 편봇 추천용 게시글 풀을 다시 읽어 새 글을 반영한다.
 
 ```dart
-final confidence =
-    ((winner.value - runnerUp) / (winner.value + 1))
-        .clamp(0.35, 0.98);
+body: jsonEncode({
+  'authorId': draft.authorId,
+  'authorNickname': draft.authorNickname,
+  'title': draft.title,
+  'content': draft.content,
+  'priceMin': draft.priceMin,
+  'priceMax': draft.priceMax,
+  'categories': draft.categories,
+  'imageDatas': draft.imageBytes.map(base64Encode).toList(),
+  'imageUrls': draft.imageUrls,
+  'details': draft.details.toJson(),
+  'calories': draft.calories,
+  'rating': draft.rating,
+})
 ```
 
-예를 들어 `까르보 불닭볶음면`은 `불닭`, `볶음면`, `까르보` 등이 여러 카테고리에 걸릴 수 있다. 단순 첫 일치가 아니라 누적 점수와 1·2위 차이를 사용하므로 모호성을 일부 표현한다.
+```js
+if (!hasImage) {
+  return res.status(400).json({ message: "사진은 꼭 필요합니다." });
+}
+if (normalizedDetails.usedProducts.length === 0) {
+  return res.status(400).json({ message: "사용한 상품은 하나 이상 필요합니다." });
+}
+if (normalizedRating <= 0) {
+  return res.status(400).json({ message: "평점은 꼭 필요합니다." });
+}
+```
 
-분류 결과는 포만감 점수와 예상 칼로리, 함께 먹기 좋은 기본 카테고리 맵에 연결된다. 이 방식은 무료·빠름·설명 가능이라는 장점이 있지만 새 상품명과 오타 대응은 약하다. 향후 실제 사용자 수정 데이터를 쌓아 TF-IDF나 임베딩 분류와 비교할 수 있다.
+### 후기 저장 순서
+
+후기는 공용 입력칸이 아니라 개별 게시글 상세 화면에서 작성한다. 후기에는 글, 별점, 평가 태그, 단맛·짠맛·매운맛·신맛 1~5점, 주의사항이 들어간다. 서버는 별점과 맛 점수를 1~5 범위로 제한하고 허용된 태그만 저장한다. 저장된 맛 점수의 평균은 편봇이 해당 게시글의 맛 성향을 계산할 때 다시 사용한다.
+
+```js
+const review = {
+  id: String(req.body.id || crypto.randomUUID()),
+  authorId: String(req.body.authorId || ""),
+  text: String(req.body.text || "").trim(),
+  rating: Math.min(5, Math.max(1, Number(req.body.rating) || 3)),
+  sweet: Math.min(5, Math.max(1, Number(req.body.sweet) || 1)),
+  salty: Math.min(5, Math.max(1, Number(req.body.salty) || 1)),
+  spicy: Math.min(5, Math.max(1, Number(req.body.spicy) || 1)),
+  sour: Math.min(5, Math.max(1, Number(req.body.sour) || 1)),
+};
+post.reviews.push(review);
+await post.save();
+```
+
+이 흐름의 핵심은 사용자 후기가 다시 편봇 추천 입력으로 연결된다는 점이다. 다만 현재 수정·삭제 권한이 body/query의 작성자 ID 문자열에 의존하므로 JWT의 `sub`로 작성자를 판별하도록 보완해야 한다.
 
 ---
 
@@ -662,7 +704,7 @@ final confidence =
 |---|---|---|
 | CU | 카테고리/PB AJAX HTML | 카테고리들은 병렬, 페이지는 순차 |
 | GS25 | 세션·쿠키·CSRF 후 JSON 요청 | 이벤트·YouUs·Fresh Food 등 여러 소스 |
-| 7-Eleven | 탭별 POST AJAX | 1+1, 2+1, PB, 인기 등 탭 순회 |
+| 7-Eleven | 탭별 POST AJAX | 1+1, 2+1, PB 등 공개 상품 탭 순회 |
 | emart24 | 공개 목록 HTML | PB·행사·FF 페이지 순회 |
 
 모든 매장이 같은 형식이 아니므로 공통 크롤러 하나에 억지로 넣지 않고, 매장별 파서가 공통 상품 구조로 변환한다.
@@ -839,7 +881,7 @@ POST가 GET보다 무조건 안전한 것은 아니다. POST body도 HTTP에서�
 
 ### 선택 기능의 격리
 
-픽쇼츠 하이라이트나 추천 카탈로그처럼 선택적인 기능이 실패해도 커뮤니티 전체를 막지 않는다. 이미 불러온 게시글을 폴백 풀로 사용한다.
+추천용 전체 게시글 카탈로그처럼 선택적인 보조 요청이 실패해도 커뮤니티 전체를 막지 않는다. 이미 불러온 게시글을 폴백 풀로 사용한다.
 
 ### 타임아웃
 
@@ -972,7 +1014,6 @@ Render Dashboard의 Environment에 실제 값을 저장한다. `render.yaml`의 
 | P0 | 이미지 프록시 SSRF | 내부망 접근 | IP/도메인 검증, 크기·redirect 제한 |
 | P1 | 좋아요가 두 문서 비트랜잭션 저장 | 데이터 불일치 | Reaction 컬렉션 또는 transaction |
 | P1 | 이미지 Base64를 MongoDB에 저장 | 문서·전송량 증가 | Object Storage 사용 |
-| P1 | 전체 게시글을 읽어 배지 계산 | 확장성 저하 | aggregation + 인덱스 + 비동기 job |
 | P1 | 추천이 최대 1000개 카탈로그 | 데이터 증가 시 누락 | 서버 추천 쿼리/후보 검색 API |
 | P2 | 거대한 `home_screen.dart` | 유지보수 어려움 | feature별 widget/controller 분리 |
 | P2 | JS 입력 타입 수동 검증 | 런타임 오류 | TypeScript + Zod/Joi |
@@ -1036,7 +1077,7 @@ AI에게 전체 상품 DB를 고르게 하지 않았습니다. 코드가 실제 
 
 ### Q5. 커서 페이지네이션이 왜 필요한가요?
 
-offset은 앞의 데이터 변화로 중복·누락이 생기고 큰 offset일수록 비효율적입니다. 마지막 항목의 좋아요, 생성 시각, `_id`를 커서로 저장하고 그보다 뒤인 문서만 조회합니다. `_id`를 최종 tie-breaker로 사용해 같은 좋아요와 생성 시각에도 안정적인 순서를 만듭니다.
+offset은 앞의 데이터 변화로 중복·누락이 생기고 큰 offset일수록 비효율적입니다. 기본 피드에서는 마지막 항목의 생성 시각과 `_id`를 커서로 저장하고 그보다 뒤인 문서만 조회합니다. `_id`를 최종 tie-breaker로 사용해 생성 시각이 같은 게시글도 안정적인 순서를 만듭니다.
 
 ### Q6. 동시성 문제를 해결한 사례가 있나요?
 
@@ -1056,7 +1097,7 @@ offset은 앞의 데이터 변화로 중복·누락이 생기고 큰 offset일�
 
 ### Q10. 외부 API 장애에 어떻게 대응했나요?
 
-각 요청에 타임아웃을 두고, 바코드 제공자들은 개별 try/catch로 격리해 한 제공자가 실패해도 다른 결과를 사용할 수 있게 했습니다. 편봇은 AI 오류 시 로컬 분석을 반환하고, 이미지·하이라이트 같은 선택 기능 실패는 주 화면을 막지 않습니다. 찾지 못한 바코드는 실패 횟수와 오류를 별도 컬렉션에 저장해 나중에 관찰할 수 있습니다.
+각 요청에 타임아웃을 두고, 바코드 제공자들은 개별 try/catch로 격리해 한 제공자가 실패해도 다른 결과를 사용할 수 있게 했습니다. 편봇은 AI 오류 시 로컬 분석을 반환하고, 추천용 카탈로그 같은 보조 요청의 실패는 주 화면을 막지 않습니다. 찾지 못한 바코드는 실패 횟수와 오류를 별도 컬렉션에 저장해 나중에 관찰할 수 있습니다.
 
 ### Q11. 로딩이 길 때 원인을 어떻게 확인해야 하나요?
 
@@ -1141,7 +1182,6 @@ offset은 앞의 데이터 변화로 중복·누락이 생기고 큰 offset일�
 | 픽쇼츠 | `.../screens/combination_battle_screen.dart` | 생성·투표·스캐너 UI |
 | 예산 해석 | `.../services/bot_budget_rules.dart` | `parseMention`, `allowsPrice` |
 | 편봇 서버 호출 | `.../services/bot_situation_analyzer.dart` | analyze/reply, 투표 점수 |
-| 규칙 분류 | `.../services/combination_category_classifier.dart` | 키워드 점수 분류 |
 | 사용자 모델 | `.../models/pyeon_user.dart` | 초기 취향·칼로리 범위 |
 | 게시글 모델 | `.../models/post.dart` | 후기·댓글·상세 모델 |
 | 배포 | `Dockerfile`, `render.yaml` | 멀티스테이지·환경변수 |
@@ -1153,11 +1193,10 @@ offset은 앞의 데이터 변화로 중복·누락이 생기고 큰 offset일�
 
 ## 25. 최종 요약
 
-편pick의 핵심은 “AI 앱”이라는 이름보다 데이터와 제약을 통제하는 방식에 있다. 바코드에서는 출처 우선순위와 정확 일치 검증, 추천에서는 가격 선필터와 설명 가능한 점수, 목록에서는 복합 커서, 투표에서는 조건부 원자 갱신, 크롤러에서는 DB 기반 스케줄을 사용했다. 이 선택들은 실제 오류와 동시성, 외부 서비스 실패, 배포 환경 재시작을 고려한 결과다.
+편pick의 핵심은 “AI 앱”이라는 이름보다 데이터와 제약을 통제하는 방식에 있다. 바코드에서는 출처 우선순위와 정확 일치 검증, 추천에서는 가격 선필터와 설명 가능한 점수, 목록에서는 생성 시각 기반 커서, 투표에서는 조건부 원자 갱신, 크롤러에서는 DB 기반 스케줄을 사용했다. 이 선택들은 실제 오류와 동시성, 외부 서비스 실패, 배포 환경 재시작을 고려한 결과다.
 
 동시에 현재 코드는 원격 비밀번호 캐시, 게시글 API 인가, 이미지 프록시 SSRF, 반응 데이터 일관성, Base64 이미지 확장성이라는 분명한 기술 부채를 갖고 있다. 면접에서는 이를 숨기지 말고 “무엇을 확인했고, 왜 위험하며, 어떤 순서로 고칠 것인지”까지 답하는 것이 오히려 코드 이해도를 보여준다.
 
 가장 압축된 결론은 다음과 같다.
 
 > 편pick은 Flutter와 Express, MongoDB를 이용한 편의점 추천 서비스이며, 코드가 실제 데이터와 예산 제약을 통제하고 AI는 보조적으로 사용합니다. HACCP 우선 상품 통합, 설명 가능한 추천 점수, 안정적인 커서 페이지네이션, 원자적 픽쇼츠 투표, DB 기반 크롤러 스케줄이 핵심 구현입니다. 현재 보안과 확장성의 한계도 코드 리뷰로 확인했고, 전 API JWT 적용, 평문 캐시 제거, 객체 스토리지와 원자적 반응 모델 도입을 우선 개선 과제로 두고 있습니다.
-
