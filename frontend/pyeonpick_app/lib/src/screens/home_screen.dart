@@ -5452,7 +5452,10 @@ class PostCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: ActionChipButton(
-                    label: isSaved ? '보관됨' : '보관',
+                    label: isSaved ? '보관함에서 삭제' : '보관함에 추가',
+                    icon: isSaved
+                        ? Icons.bookmark_rounded
+                        : Icons.bookmark_border_rounded,
                     active: isSaved,
                     activeColor: const Color(0xFFE2F3FC),
                     activeTextColor: const Color(0xFF176EAA),
@@ -5701,6 +5704,7 @@ class ActionChipButton extends StatelessWidget {
     this.activeTextColor,
     this.expanded = false,
     this.compact = false,
+    this.icon,
     required this.onTap,
   });
 
@@ -5710,11 +5714,28 @@ class ActionChipButton extends StatelessWidget {
   final Color? activeTextColor;
   final bool expanded;
   final bool compact;
+  final IconData? icon;
   final Future<void> Function() onTap;
 
   @override
   Widget build(BuildContext context) {
-    return Material(
+    final foregroundColor = active
+        ? (activeTextColor ?? const Color(0xFFE44566))
+        : AppColors.skyBlueDeep;
+    final buttonIcon = icon;
+    final content = buttonIcon == null
+        ? Text(
+            label,
+            maxLines: 1,
+            textAlign: TextAlign.center,
+            style: TextStyle(
+              color: foregroundColor,
+              fontWeight: FontWeight.w800,
+              fontSize: compact ? 10 : 11,
+            ),
+          )
+        : Icon(buttonIcon, color: foregroundColor, size: compact ? 15 : 18);
+    final button = Material(
       color: Colors.transparent,
       child: InkWell(
         borderRadius: BorderRadius.circular(999),
@@ -5750,19 +5771,19 @@ class ActionChipButton extends StatelessWidget {
                   : AppColors.skyBlue.withAlpha(120),
             ),
           ),
-          child: Text(
-            label,
-            maxLines: 1,
-            textAlign: TextAlign.center,
-            style: TextStyle(
-              color: active
-                  ? (activeTextColor ?? const Color(0xFFE44566))
-                  : AppColors.skyBlueDeep,
-              fontWeight: FontWeight.w800,
-              fontSize: compact ? 10 : 11,
-            ),
-          ),
+          child: content,
         ),
+      ),
+    );
+    if (buttonIcon == null) return button;
+
+    return Tooltip(
+      message: label,
+      child: Semantics(
+        button: true,
+        selected: active,
+        label: label,
+        child: ExcludeSemantics(child: button),
       ),
     );
   }
@@ -9258,7 +9279,10 @@ class _PostDetailPageState extends State<PostDetailPage> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ActionChipButton(
-                            label: _saved ? '보관 중' : '보관함 이동',
+                            label: _saved ? '보관함에서 삭제' : '보관함에 추가',
+                            icon: _saved
+                                ? Icons.bookmark_rounded
+                                : Icons.bookmark_border_rounded,
                             active: _saved,
                             activeColor: const Color(0xFFE2F3FC),
                             activeTextColor: const Color(0xFF176EAA),

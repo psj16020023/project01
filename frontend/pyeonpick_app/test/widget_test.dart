@@ -177,6 +177,44 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
+  testWidgets('save actions use bookmark icons instead of visible text', (
+    tester,
+  ) async {
+    var tapCount = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Column(
+            children: [
+              ActionChipButton(
+                label: '보관함에 추가',
+                icon: Icons.bookmark_border_rounded,
+                onTap: () async => tapCount += 1,
+              ),
+              ActionChipButton(
+                label: '보관함에서 삭제',
+                icon: Icons.bookmark_rounded,
+                active: true,
+                onTap: () async {},
+              ),
+            ],
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('보관함에 추가'), findsNothing);
+    expect(find.text('보관함에서 삭제'), findsNothing);
+    expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
+    expect(find.byIcon(Icons.bookmark_rounded), findsOneWidget);
+    expect(find.byTooltip('보관함에 추가'), findsOneWidget);
+    expect(find.byTooltip('보관함에서 삭제'), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.bookmark_border_rounded));
+    await tester.pump();
+    expect(tapCount, 1);
+  });
+
   testWidgets('post composer keeps units outside numeric-only inputs', (
     tester,
   ) async {
