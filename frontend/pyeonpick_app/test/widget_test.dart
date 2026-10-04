@@ -534,6 +534,7 @@ void main() {
       find.byKey(const Key('discovery-horizontal-이번 주 인기')),
       findsOneWidget,
     );
+    expect(find.byKey(const Key('discovery-topic-divider')), findsWidgets);
     await tester.ensureVisible(find.byKey(const Key('discovery-topic-3')));
     await tester.pumpAndSettle();
     final collapsedHeight = tester

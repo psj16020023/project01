@@ -102,11 +102,15 @@ void main() {
         ),
       );
       expect(find.text('픽 쇼츠'), findsOneWidget);
+      expect(find.byKey(const Key('profile-battle-shortcut')), findsOneWidget);
       expect(find.text('로그아웃'), findsOneWidget);
       expect(find.text('계정 삭제'), findsOneWidget);
       await tester.tap(find.text('프로필 공개 설정'));
       await tester.pumpAndSettle();
       expect(find.byType(Switch), findsNWidgets(8));
+      await tester.tap(find.byKey(const Key('profile-battle-shortcut')));
+      await tester.pump();
+      expect(find.text('내 픽 쇼츠 결과'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -154,6 +158,11 @@ void main() {
       await tester.tap(find.byKey(const Key('review-compose-input')));
       await tester.pumpAndSettle();
       expect(find.byType(ReviewComposerSheet), findsOneWidget);
+      expect(find.text('맛 점수'), findsOneWidget);
+      expect(find.text('평점'), findsOneWidget);
+      expect(find.byKey(const Key('review-free-text')), findsOneWidget);
+      expect(find.text('어디에 해당하나요?'), findsNothing);
+      expect(find.text('주의사항이 있다면 적어 주세요'), findsNothing);
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       addTearDown(tester.view.resetViewInsets);
       await tester.pumpAndSettle();

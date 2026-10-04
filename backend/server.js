@@ -19,6 +19,8 @@ const JWT_SECRET = String(
 );
 const usesDefaultJwtSecret = !process.env.JWT_SECRET;
 const CRAWLER_REFRESH_SECRET = String(process.env.CRAWLER_REFRESH_SECRET || "").trim();
+let databaseReady = false;
+let databaseStartupError = "";
 
 app.use(cors());
 app.use(express.json({ limit: "15mb" }));
@@ -26,6 +28,17 @@ app.use(express.json({ limit: "15mb" }));
 app.get("/api/version", (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
   res.json({ revision: process.env.RENDER_GIT_COMMIT || "local" });
+});
+
+app.get("/api/health", (_req, res) => {
+  res.setHeader("Cache-Control", "no-store");
+  if (!databaseReady) {
+    return res.status(503).json({
+      status: databaseStartupError ? "failed" : "starting",
+      databaseReady: false,
+    });
+  }
+  return res.json({ status: "ok", databaseReady: true });
 });
 
 function isValidObjectId(value) {
@@ -5019,31 +5032,38 @@ async function start() {
     throw new Error("JWT_SECRET is required when NODE_ENV=production.");
   }
 
-  let mongoLabel = "in-memory MongoDB";
-
-  if (MONGO_URI) {
-    await mongoose.connect(MONGO_URI);
-    mongoLabel = "external MongoDB";
-  } else if (process.env.ALLOW_IN_MEMORY_MONGO === "true") {
-    const mongoServer = await MongoMemoryServer.create();
-    await mongoose.connect(mongoServer.getUri());
-  } else {
-    throw new Error("MONGO_URI is required. Add it to backend/.env to use your MongoDB account.");
-  }
-
-  await resetDemoDataIfRequested();
-  await seedIfNeeded();
-  await backfillLegacyPosts();
-  await seedGlobalBattlesIfNeeded();
-  await backfillLegacyProducts();
-  await Product.deleteMany({ source: "local-fallback-catalog" });
-  await refreshTopFiveBadges();
-  // GitHub Actions triggers the protected crawler endpoint. This keeps the
-  // 14-day collection schedule independent from Render's free-instance sleep.
-
-  app.listen(PORT, "0.0.0.0", () => {
-    console.log(`PyeonPick full-stack server running at http://0.0.0.0:${PORT} using ${mongoLabel}`);
+  const server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`PyeonPick server listening at http://0.0.0.0:${PORT}; database startup is in progress`);
   });
+  let mongoLabel = "in-memory MongoDB";
+  try {
+    if (MONGO_URI) {
+      await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 20000 });
+      mongoLabel = "external MongoDB";
+    } else if (process.env.ALLOW_IN_MEMORY_MONGO === "true") {
+      const mongoServer = await MongoMemoryServer.create();
+      await mongoose.connect(mongoServer.getUri());
+    } else {
+      throw new Error("MONGO_URI is required. Add it to backend/.env to use your MongoDB account.");
+    }
+
+    await resetDemoDataIfRequested();
+    await seedIfNeeded();
+    await backfillLegacyPosts();
+    await seedGlobalBattlesIfNeeded();
+    await backfillLegacyProducts();
+    await Product.deleteMany({ source: "local-fallback-catalog" });
+    await refreshTopFiveBadges();
+    databaseReady = true;
+    databaseStartupError = "";
+    // GitHub Actions triggers the protected crawler endpoint. This keeps the
+    // 14-day collection schedule independent from Render's free-instance sleep.
+    console.log(`PyeonPick full-stack server ready using ${mongoLabel}`);
+  } catch (error) {
+    databaseStartupError = String(error.message || error);
+    await new Promise((resolve) => server.close(resolve));
+    throw error;
+  }
 }
 
 if (require.main === module) {

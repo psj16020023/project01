@@ -3674,16 +3674,34 @@ class _DiscoveryAccordionState extends State<_DiscoveryAccordion> {
       children: widget.topics.indexed.map((entry) {
         final index = entry.$1;
         final expanded = _expanded.contains(index);
-        return _DiscoveryTopicShelf(
-          key: Key('discovery-topic-$index'),
-          topic: entry.$2,
-          expanded: expanded,
-          onToggle: () => setState(() {
-            expanded ? _expanded.remove(index) : _expanded.add(index);
-          }),
-          onOpenPost: widget.onOpenPost,
-          onOpenCollection: widget.onOpenCollection,
-          onOpenBattleCollection: widget.onOpenBattleCollection,
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            _DiscoveryTopicShelf(
+              key: Key('discovery-topic-$index'),
+              topic: entry.$2,
+              expanded: expanded,
+              onToggle: () => setState(() {
+                expanded ? _expanded.remove(index) : _expanded.add(index);
+              }),
+              onOpenPost: widget.onOpenPost,
+              onOpenCollection: widget.onOpenCollection,
+              onOpenBattleCollection: widget.onOpenBattleCollection,
+            ),
+            if (index < widget.topics.length - 1)
+              const Padding(
+                padding: EdgeInsets.only(left: 28, top: 1, bottom: 1),
+                child: SizedBox(
+                  key: Key('discovery-topic-divider'),
+                  width: 72,
+                  child: Divider(
+                    height: 1,
+                    thickness: 1,
+                    color: AppColors.line,
+                  ),
+                ),
+              ),
+          ],
         );
       }).toList(),
     );
@@ -7130,7 +7148,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
             width: double.infinity,
             padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 11),
             decoration: BoxDecoration(
-              color: const Color(0xFFF4F7F8),
+              color: AppColors.sky,
               borderRadius: BorderRadius.circular(12),
             ),
             child: Text(
@@ -7240,22 +7258,12 @@ class _BotSetupPageState extends State<BotSetupPage> {
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 10,
-                      vertical: 6,
-                    ),
-                    decoration: BoxDecoration(
-                      color: const Color(0xFFF1F4F5),
-                      borderRadius: BorderRadius.circular(999),
-                    ),
-                    child: const Text(
-                      '1분 취향 설정',
-                      style: TextStyle(
-                        color: Color(0xFF6A7D8B),
-                        fontSize: 11,
-                        fontWeight: FontWeight.w900,
-                      ),
+                  const Text(
+                    '편봇 취향 설정',
+                    style: TextStyle(
+                      color: AppColors.skyBlueDeep,
+                      fontSize: 12,
+                      fontWeight: FontWeight.w700,
                     ),
                   ),
                   const SizedBox(height: 14),
@@ -7498,6 +7506,12 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     }
   }
 
+  void _showBattleResults() {
+    setState(() => _mode = _ProfileViewMode.battleResults);
+    unawaited(_markResultsRead());
+    unawaited(_loadBattleResults());
+  }
+
   Future<void> _changeProfileImage() async {
     final picked = await _picker.pickImage(
       source: ImageSource.gallery,
@@ -7647,11 +7661,11 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
     }).toList();
     final tabs = [
       (_ProfileViewMode.overview, '설정'),
-      (_ProfileViewMode.myPosts, '내 글 ${mine.length}'),
       (
         _ProfileViewMode.battleResults,
         _unreadResultCount == 0 ? '픽 쇼츠' : '픽 쇼츠 · 새 결과 $_unreadResultCount',
       ),
+      (_ProfileViewMode.myPosts, '내 글 ${mine.length}'),
       (_ProfileViewMode.likes, '하트 ${liked.length}'),
       (_ProfileViewMode.saved, '보관 ${saved.length}'),
       (_ProfileViewMode.dislikes, '싫어요 ${disliked.length}'),
@@ -7742,10 +7756,10 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                     label: tab.$2,
                     active: _mode == tab.$1,
                     onTap: () {
-                      setState(() => _mode = tab.$1);
-                      if (_mode == _ProfileViewMode.battleResults) {
-                        unawaited(_markResultsRead());
-                        unawaited(_loadBattleResults());
+                      if (tab.$1 == _ProfileViewMode.battleResults) {
+                        _showBattleResults();
+                      } else {
+                        setState(() => _mode = tab.$1);
                       }
                     },
                   ),
@@ -7756,6 +7770,56 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         const Divider(height: 1, color: AppColors.line),
         const SizedBox(height: 20),
         if (_mode == _ProfileViewMode.overview) ...[
+          InkWell(
+            key: const Key('profile-battle-shortcut'),
+            onTap: _showBattleResults,
+            child: Padding(
+              padding: const EdgeInsets.symmetric(vertical: 12),
+              child: Row(
+                children: [
+                  const Icon(
+                    Icons.play_circle_outline_rounded,
+                    size: 22,
+                    color: AppColors.skyBlueDeep,
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      children: [
+                        const Text(
+                          '내 픽쇼츠 결과',
+                          style: TextStyle(
+                            color: AppColors.ink,
+                            fontSize: 15,
+                            fontWeight: FontWeight.w600,
+                          ),
+                        ),
+                        const SizedBox(height: 3),
+                        Text(
+                          _unreadResultCount > 0
+                              ? '새로운 결과 $_unreadResultCount개가 있어요'
+                              : '종료된 투표의 조합별 득표를 확인해요',
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 12,
+                            fontWeight: FontWeight.w400,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  const Icon(
+                    Icons.chevron_right_rounded,
+                    size: 21,
+                    color: AppColors.muted,
+                  ),
+                ],
+              ),
+            ),
+          ),
+          const Divider(height: 1, color: AppColors.line),
+          const SizedBox(height: 10),
           if (setup != null) ...[
             _BotSetupSummaryCard(
               setup: setup,
@@ -8020,9 +8084,18 @@ class _ProfileBattleResult extends StatelessWidget {
           '${DateFormat('M.d HH:mm').format(result.endsAt)} 종료',
           style: const TextStyle(fontSize: 12, color: AppColors.muted),
         ),
+        const SizedBox(height: 3),
+        Text(
+          '총 ${result.leftVotes + result.rightVotes}표',
+          style: const TextStyle(
+            fontSize: 12,
+            color: AppColors.skyBlueDeep,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
         const SizedBox(height: 12),
         SizedBox(
-          height: 178,
+          height: MediaQuery.sizeOf(context).width < 520 ? 232 : 278,
           child: Row(
             children: [
               Expanded(
@@ -8096,11 +8169,12 @@ class _BattleResultChoice extends StatelessWidget {
         const SizedBox(height: 7),
         Text(
           title,
-          maxLines: 1,
+          maxLines: 2,
           overflow: TextOverflow.ellipsis,
           style: TextStyle(
             color: won ? AppColors.ink : AppColors.muted,
-            fontSize: 13,
+            fontSize: 14,
+            height: 1.25,
             fontWeight: won ? FontWeight.w800 : FontWeight.w500,
           ),
         ),
@@ -8411,18 +8485,21 @@ class _BotSetupSummaryCard extends StatelessWidget {
               padding: const EdgeInsets.symmetric(vertical: 12),
               child: Row(
                 children: [
-                  const Icon(
-                    Icons.tune_rounded,
-                    size: 20,
-                    color: AppColors.skyBlueDeep,
+                  Container(
+                    width: 3,
+                    height: 34,
+                    decoration: BoxDecoration(
+                      color: AppColors.lime,
+                      borderRadius: BorderRadius.circular(2),
+                    ),
                   ),
-                  const SizedBox(width: 11),
+                  const SizedBox(width: 10),
                   Expanded(
                     child: Column(
                       crossAxisAlignment: CrossAxisAlignment.start,
                       children: [
                         const Text(
-                          '나의 초기 설정',
+                          '편봇 취향 설정',
                           style: TextStyle(
                             color: AppColors.ink,
                             fontSize: 15,
@@ -8431,7 +8508,7 @@ class _BotSetupSummaryCard extends StatelessWidget {
                         ),
                         const SizedBox(height: 3),
                         Text(
-                          expanded ? '편봇 추천에 반영되는 내 취향 정보' : collapsedSummary,
+                          expanded ? '추천에 사용하는 내 취향' : collapsedSummary,
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
                           style: const TextStyle(
@@ -8608,10 +8685,8 @@ class _TastePreferenceMeter extends StatelessWidget {
               child: LinearProgressIndicator(
                 value: value.clamp(1, 5) / 5,
                 minHeight: 5,
-                backgroundColor: AppColors.surfaceMuted,
-                valueColor: const AlwaysStoppedAnimation<Color>(
-                  AppColors.skyBlue,
-                ),
+                backgroundColor: AppColors.limeSoft,
+                valueColor: const AlwaysStoppedAnimation<Color>(AppColors.lime),
               ),
             ),
           ),
@@ -11279,21 +11354,10 @@ class _TasteRatingEditor extends StatelessWidget {
   final Map<String, int> ratings;
   final void Function(String taste, int value) onChanged;
 
-  static const Map<String, Color> _tasteFillColors = <String, Color>{
-    '달달': AppColors.lime,
-    '매콤': AppColors.skyBlue,
-    '새콤': AppColors.lime,
-    '짭짤': AppColors.skyBlue,
-  };
-
-  Color _fillColorFor(String taste) =>
-      _tasteFillColors[taste] ?? AppColors.lime;
-
   @override
   Widget build(BuildContext context) {
     return Column(
       children: ratings.entries.map((entry) {
-        final fillColor = _fillColorFor(entry.key);
         return Padding(
           padding: const EdgeInsets.only(bottom: 12),
           child: Column(
@@ -11337,11 +11401,13 @@ class _TasteRatingEditor extends StatelessWidget {
                             alignment: Alignment.center,
                             decoration: BoxDecoration(
                               color: active
-                                  ? fillColor
-                                  : AppColors.surfaceMuted,
+                                  ? AppColors.lime
+                                  : AppColors.limeSoft,
                               borderRadius: BorderRadius.circular(999),
                               border: Border.all(
-                                color: active ? fillColor : AppColors.line,
+                                color: active
+                                    ? AppColors.lime
+                                    : const Color(0xFFDCEABF),
                               ),
                             ),
                             child: Text(
@@ -11405,8 +11471,8 @@ class _PriorityChoiceWrap extends StatelessWidget {
                   ? rank == 0
                         ? AppColors.lime
                         : AppColors.skyBlue
-                  : AppColors.surfaceMuted,
-              borderRadius: BorderRadius.circular(999),
+                  : Colors.white,
+              borderRadius: BorderRadius.circular(8),
               border: Border.all(
                 color: active
                     ? rank == 0

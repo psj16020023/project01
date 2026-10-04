@@ -273,8 +273,6 @@ class ReviewComposerPage extends StatelessWidget {
 
 class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
   final _textController = TextEditingController();
-  final _cautionController = TextEditingController();
-  final _tags = <String>{};
   double _rating = 3;
   int _sweet = 3;
   int _salty = 3;
@@ -287,8 +285,6 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
     final review = widget.initialReview;
     if (review == null) return;
     _textController.text = review.text;
-    _cautionController.text = review.caution;
-    _tags.addAll(review.tags);
     _rating = review.rating;
     _sweet = review.sweet;
     _salty = review.salty;
@@ -299,7 +295,6 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
   @override
   void dispose() {
     _textController.dispose();
-    _cautionController.dispose();
     super.dispose();
   }
 
@@ -314,12 +309,12 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
         authorNickname: widget.currentUser.nickname,
         text: _textController.text.trim(),
         rating: _rating,
-        tags: _tags.toList(),
+        tags: widget.initialReview?.tags ?? const <String>[],
         sweet: _sweet,
         salty: _salty,
         spicy: _spicy,
         sour: _sour,
-        caution: _cautionController.text.trim(),
+        caution: widget.initialReview?.caution ?? '',
         createdAt: widget.initialReview?.createdAt ?? DateTime.now(),
       ),
     );
@@ -329,16 +324,16 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
   Widget build(BuildContext context) {
     return Container(
       padding: EdgeInsets.fromLTRB(
-        20,
-        widget.pageMode ? 18 : 14,
-        20,
-        MediaQuery.of(context).viewInsets.bottom + 22,
+        18,
+        widget.pageMode ? 16 : 10,
+        18,
+        MediaQuery.of(context).viewInsets.bottom + 14,
       ),
       decoration: BoxDecoration(
         color: Colors.white,
         borderRadius: widget.pageMode
             ? BorderRadius.zero
-            : const BorderRadius.vertical(top: Radius.circular(30)),
+            : const BorderRadius.vertical(top: Radius.circular(20)),
       ),
       child: SafeArea(
         top: false,
@@ -349,74 +344,47 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
               if (!widget.pageMode) ...[
                 const Center(
                   child: SizedBox(
-                    width: 54,
-                    child: Divider(thickness: 5, color: Color(0xFFD6E0E6)),
+                    width: 34,
+                    child: Divider(thickness: 3, color: Color(0xFFD6E0E6)),
                   ),
                 ),
-                const SizedBox(height: 12),
+                const SizedBox(height: 6),
               ],
               Row(
                 children: [
                   Expanded(
                     child: Text(
-                      widget.initialReview == null ? '후기 쓰기' : '후기 편집',
+                      widget.initialReview == null ? '후기 남기기' : '후기 수정',
                       style: const TextStyle(
                         color: AppColors.ink,
-                        fontSize: 23,
-                        fontWeight: FontWeight.w900,
+                        fontSize: 18,
+                        fontWeight: FontWeight.w700,
                       ),
                     ),
                   ),
                   IconButton(
+                    visualDensity: VisualDensity.compact,
                     onPressed: () => Navigator.of(context).pop(),
-                    icon: const Icon(Icons.close_rounded),
-                    color: AppColors.ink,
+                    icon: const Icon(Icons.close_rounded, size: 21),
+                    color: AppColors.muted,
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              TextField(
-                controller: _textController,
-                maxLines: 3,
-                decoration: _reviewInputDecoration('간단한 후기를 적어 주세요'),
-              ),
-              const SizedBox(height: 16),
-              _ScorePicker(
-                label: '평점',
-                value: _rating.round(),
-                onChanged: (value) =>
-                    setState(() => _rating = value.toDouble()),
-                star: true,
-              ),
-              const SizedBox(height: 16),
+              const SizedBox(height: 10),
               const Text(
-                '어디에 해당하나요?',
+                '맛 점수',
                 style: TextStyle(
                   color: AppColors.ink,
-                  fontWeight: FontWeight.w900,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
                 ),
               ),
-              const SizedBox(height: 9),
-              Wrap(
-                spacing: 8,
-                runSpacing: 8,
-                children: communityReviewTags.map((tag) {
-                  final selected = _tags.contains(tag);
-                  return FilterChip(
-                    selected: selected,
-                    label: Text(tag),
-                    onSelected: (_) => setState(() {
-                      selected ? _tags.remove(tag) : _tags.add(tag);
-                    }),
-                  );
-                }).toList(),
-              ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 8),
               LayoutBuilder(
                 builder: (context, constraints) {
-                  final width = (constraints.maxWidth - 12) / 2;
+                  final width = (constraints.maxWidth - 10) / 2;
                   return Wrap(
-                    spacing: 12,
+                    spacing: 10,
                     runSpacing: 8,
                     children: [
                       SizedBox(
@@ -455,13 +423,24 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
                   );
                 },
               ),
-              const SizedBox(height: 12),
-              TextField(
-                controller: _cautionController,
-                maxLines: 2,
-                decoration: _reviewInputDecoration('주의사항이 있다면 적어 주세요'),
+              const SizedBox(height: 10),
+              _ScorePicker(
+                label: '평점',
+                value: _rating.round(),
+                onChanged: (value) =>
+                    setState(() => _rating = value.toDouble()),
+                star: true,
               ),
-              const SizedBox(height: 18),
+              const SizedBox(height: 8),
+              TextField(
+                key: const Key('review-free-text'),
+                controller: _textController,
+                minLines: 2,
+                maxLines: 3,
+                textInputAction: TextInputAction.newline,
+                decoration: _reviewInputDecoration('짧게 먹은 느낌을 적어 주세요'),
+              ),
+              const SizedBox(height: 12),
               SizedBox(
                 width: double.infinity,
                 child: FilledButton(
@@ -469,7 +448,7 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
                   style: FilledButton.styleFrom(
                     backgroundColor: AppColors.skyBlue,
                     foregroundColor: AppColors.ink,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    padding: const EdgeInsets.symmetric(vertical: 13),
                   ),
                   child: const Text(
                     '후기 등록',
@@ -500,43 +479,49 @@ class _ScorePicker extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 10),
+    return SizedBox(
+      height: 38,
       child: Row(
         children: [
           SizedBox(
-            width: 52,
+            width: 42,
             child: Text(
               label,
               style: const TextStyle(
                 color: AppColors.ink,
-                fontWeight: FontWeight.w900,
+                fontSize: 13,
+                fontWeight: FontWeight.w700,
               ),
             ),
           ),
           ...List.generate(5, (index) {
             final score = index + 1;
-            return IconButton(
-              visualDensity: VisualDensity.compact,
-              onPressed: () => onChanged(score),
-              icon: Icon(
-                star
-                    ? (score <= value
-                          ? Icons.star_rounded
-                          : Icons.star_outline_rounded)
-                    : (score <= value
-                          ? Icons.circle_rounded
-                          : Icons.circle_outlined),
-                color: star ? const Color(0xFFF4B942) : const Color(0xFF79B9C9),
-                size: star ? 27 : 18,
+            return InkResponse(
+              radius: 18,
+              onTap: () => onChanged(score),
+              child: SizedBox(
+                width: 34,
+                child: Icon(
+                  star
+                      ? (score <= value
+                            ? Icons.star_rounded
+                            : Icons.star_outline_rounded)
+                      : (score <= value
+                            ? Icons.circle_rounded
+                            : Icons.circle_outlined),
+                  color: star ? const Color(0xFFF4B942) : AppColors.skyBlueDeep,
+                  size: star ? 24 : 17,
+                ),
               ),
             );
           }),
+          const Spacer(),
           Text(
             '$value/5',
             style: const TextStyle(
               color: Color(0xFF708596),
-              fontWeight: FontWeight.w800,
+              fontSize: 12,
+              fontWeight: FontWeight.w600,
             ),
           ),
         ],
@@ -561,23 +546,34 @@ class _CompactTastePicker extends StatelessWidget {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Text(label, style: const TextStyle(fontWeight: FontWeight.w800)),
-        const SizedBox(height: 4),
+        Text(
+          label,
+          style: const TextStyle(fontSize: 12, fontWeight: FontWeight.w600),
+        ),
+        const SizedBox(height: 5),
         Row(
           children: List.generate(5, (index) {
             final score = index + 1;
             return Expanded(
-              child: IconButton(
-                padding: EdgeInsets.zero,
-                constraints: const BoxConstraints(minHeight: 34),
-                visualDensity: VisualDensity.compact,
-                onPressed: () => onChanged(score),
-                icon: Icon(
-                  score <= value ? Icons.circle_rounded : Icons.circle_outlined,
-                  size: 16,
-                  color: score <= value
-                      ? AppColors.skyBlueDeep
-                      : AppColors.line,
+              child: Padding(
+                padding: EdgeInsets.only(right: index == 4 ? 0 : 4),
+                child: InkWell(
+                  borderRadius: BorderRadius.circular(4),
+                  onTap: () => onChanged(score),
+                  child: Container(
+                    height: 22,
+                    decoration: BoxDecoration(
+                      color: score <= value
+                          ? AppColors.lime
+                          : AppColors.limeSoft,
+                      borderRadius: BorderRadius.circular(4),
+                      border: Border.all(
+                        color: score <= value
+                            ? AppColors.lime
+                            : const Color(0xFFDDEABF),
+                      ),
+                    ),
+                  ),
                 ),
               ),
             );

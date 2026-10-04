@@ -116,7 +116,7 @@ void main() {
     expect(tester.takeException(), isNull);
   });
 
-  testWidgets('taste setup uses both accents without white score labels', (
+  testWidgets('taste setup uses light lime blanks and darker lime scores', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(1440, 1000);
@@ -134,7 +134,7 @@ void main() {
         .map((w) => w.decoration)
         .whereType<BoxDecoration>()
         .map((d) => d.color);
-    expect(colors, containsAll([AppColors.lime, AppColors.skyBlue]));
+    expect(colors, containsAll([AppColors.lime, AppColors.limeSoft]));
     for (final label in tester.widgetList<Text>(find.text('1'))) {
       expect(label.style!.color, AppColors.ink);
     }

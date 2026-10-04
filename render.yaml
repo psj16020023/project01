@@ -5,7 +5,7 @@ services:
     plan: free
     dockerfilePath: ./Dockerfile
     autoDeploy: true
-    healthCheckPath: /api/posts
+    healthCheckPath: /api/health
     envVars:
       - key: MONGO_URI
         sync: false

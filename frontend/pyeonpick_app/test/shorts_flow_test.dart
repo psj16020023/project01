@@ -30,7 +30,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets(
-    'vertical votes reveal 12:2 for one second then stay hidden after reload',
+    'side-by-side votes reveal 12:2 for one second then stay hidden after reload',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -70,7 +70,9 @@ void main() {
           .data!;
       final votedId = votedTitle.split(' ').last;
       final nextTitle = votedId == 'first' ? '투표 second' : '투표 first';
-      expect(find.byKey(const Key('battle-vertical-options')), findsWidgets);
+      expect(find.byKey(const Key('battle-horizontal-options')), findsWidgets);
+      expect(find.byKey(const Key('battle-topic-title')), findsWidgets);
+      expect(find.byKey(const Key('battle-total-votes')), findsWidgets);
       expect(find.text('11표'), findsNothing);
       expect(find.text('2표'), findsNothing);
       await tester.tap(find.byKey(const Key('battle-vote-left')).first);
