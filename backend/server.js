@@ -32,13 +32,10 @@ app.get("/api/version", (_req, res) => {
 
 app.get("/api/health", (_req, res) => {
   res.setHeader("Cache-Control", "no-store");
-  if (!databaseReady) {
-    return res.status(503).json({
-      status: databaseStartupError ? "failed" : "starting",
-      databaseReady: false,
-    });
-  }
-  return res.json({ status: "ok", databaseReady: true });
+  return res.json({
+    status: databaseStartupError ? "failed" : databaseReady ? "ok" : "starting",
+    databaseReady,
+  });
 });
 
 function isValidObjectId(value) {
