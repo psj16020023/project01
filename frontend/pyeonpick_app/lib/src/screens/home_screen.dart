@@ -2594,6 +2594,11 @@ class _HomeScreenState extends State<HomeScreen> {
             .where(
               (post) => _postMatchesSelectedTags(post, _selectedSearchTags),
             )
+            .where(
+              (post) =>
+                  !_pickedAuthorsOnly ||
+                  widget.currentUser.pickedAuthorIds.contains(post.authorId),
+            )
             .toList();
     final title = switch (type) {
       HighlightCollectionType.popular => '이번 주 인기',
@@ -3103,13 +3108,30 @@ class CommunicationBody extends StatelessWidget {
         ? posts.map(PostFeatureInfo.fromPost).toList()
         : allFeatureInfo;
     final filteredFeatureIndex = featureIndex
-        .where((post) => _featureMatchesSelectedTags(post, selectedTags))
+        .where(
+          (post) =>
+              _featureMatchesSelectedTags(post, selectedTags) &&
+              (!pickedAuthorsOnly ||
+                  currentUser.pickedAuthorIds.contains(post.authorId)),
+        )
         .toList();
+    final visibleFeatureIds = filteredFeatureIndex
+        .map((post) => post.id)
+        .toSet();
+    final filteredBattleHighlights = battleHighlights.where((match) {
+      if (pickedAuthorsOnly &&
+          !currentUser.pickedAuthorIds.contains(match.authorId)) {
+        return false;
+      }
+      if (selectedTags.isEmpty) return true;
+      return visibleFeatureIds.contains(match.leftPostId) ||
+          visibleFeatureIds.contains(match.rightPostId);
+    }).toList();
     final trendPicks = _buildCommunityTrendPicks(filteredFeatureIndex);
     final discoveryTopics = _buildDiscoveryTopics(
       filteredFeatureIndex,
       trendPicks,
-      battleHighlights,
+      filteredBattleHighlights,
     );
 
     return LayoutBuilder(
@@ -4935,15 +4957,6 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
       widget.collectionType == HighlightCollectionType.newProduct ||
       widget.collectionType == HighlightCollectionType.pbProduct;
 
-  String get _collectionCaption => switch (widget.collectionType) {
-    HighlightCollectionType.popular => '최근 반응이 가장 많이 모인 조합',
-    HighlightCollectionType.malePicks => '남성 사용자의 하트 비중이 높은 조합',
-    HighlightCollectionType.femalePicks => '여성 사용자의 하트 비중이 높은 조합',
-    HighlightCollectionType.newProduct => '신상품이 포함된 최신 조합',
-    HighlightCollectionType.pbProduct => '편의점 PB 상품이 포함된 조합',
-    HighlightCollectionType.rediscovered => '최근 다시 반응이 늘어난 조합',
-  };
-
   @override
   void initState() {
     super.initState();
@@ -5007,14 +5020,6 @@ class _HighlightPostsPageState extends State<HighlightPostsPage> {
                   child: Column(
                     crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Text(
-                        _collectionCaption,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 12,
-                          fontWeight: FontWeight.w600,
-                        ),
-                      ),
                       if (_supportsStoreFilter) ...[
                         const SizedBox(height: 12),
                         _HighlightStoreFilter(
@@ -6037,6 +6042,65 @@ class _ComposerSheetState extends State<ComposerSheet> {
     );
   }
 
+  int get _composerImageCount =>
+      selectedImageBytes.length + selectedImageUrls.length;
+
+  Widget _composerImageAt(int index) {
+    if (index < selectedImageBytes.length) {
+      return Image.memory(
+        selectedImageBytes[index],
+        fit: BoxFit.cover,
+        width: double.infinity,
+        height: double.infinity,
+      );
+    }
+    final url = selectedImageUrls[index - selectedImageBytes.length];
+    return Image.network(
+      _displayImageUrl(url),
+      fit: BoxFit.cover,
+      width: double.infinity,
+      height: double.infinity,
+      errorBuilder: (_, _, _) => const _ImageErrorPlaceholder(),
+    );
+  }
+
+  Widget _composerImagePreview() {
+    final imageCount = _composerImageCount;
+    if (imageCount == 0) {
+      return const Center(
+        child: Text(
+          '사진을 추가해주세요',
+          textAlign: TextAlign.center,
+          style: TextStyle(
+            color: Color(0xFF9DB0C0),
+            fontWeight: FontWeight.w700,
+            height: 1.6,
+          ),
+        ),
+      );
+    }
+    if (imageCount == 1) {
+      return ClipRRect(
+        borderRadius: BorderRadius.circular(AppColors.radiusMedium),
+        child: _composerImageAt(0),
+      );
+    }
+    return ClipRRect(
+      borderRadius: BorderRadius.circular(AppColors.radiusMedium),
+      child: GridView.builder(
+        padding: EdgeInsets.zero,
+        physics: const NeverScrollableScrollPhysics(),
+        gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+          crossAxisCount: 2,
+          crossAxisSpacing: 2,
+          mainAxisSpacing: 2,
+        ),
+        itemCount: imageCount,
+        itemBuilder: (_, index) => _composerImageAt(index),
+      ),
+    );
+  }
+
   Future<void> submit() async {
     final customTitle = titleController.text.trim();
     final usedProducts = productController.text
@@ -6163,16 +6227,6 @@ class _ComposerSheetState extends State<ComposerSheet> {
                               fontSize: 22,
                             ),
                           ),
-                          const SizedBox(height: 8),
-                          Text(
-                            isEditing
-                                ? '내 게시글을 다시 다듬어 보세요.'
-                                : '조합 사진과 제목, 사용한 상품을 남겨보세요.',
-                            style: const TextStyle(
-                              color: Color(0xFF8CA0B3),
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
                         ],
                       ),
                     ),
@@ -6196,66 +6250,16 @@ class _ComposerSheetState extends State<ComposerSheet> {
                       ),
                       border: Border.all(color: AppColors.line),
                     ),
-                    child: selectedImageBytes.isNotEmpty
-                        ? ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: GridView.builder(
-                              padding: const EdgeInsets.all(8),
-                              physics: const NeverScrollableScrollPhysics(),
-                              gridDelegate:
-                                  const SliverGridDelegateWithFixedCrossAxisCount(
-                                    crossAxisCount: 2,
-                                    crossAxisSpacing: 8,
-                                    mainAxisSpacing: 8,
-                                  ),
-                              itemCount: selectedImageBytes.length.clamp(1, 4),
-                              itemBuilder: (context, index) => ClipRRect(
-                                borderRadius: BorderRadius.circular(16),
-                                child: Image.memory(
-                                  selectedImageBytes[index],
-                                  fit: BoxFit.cover,
-                                ),
-                              ),
-                            ),
-                          )
+                    child: _composerImageCount > 0
+                        ? _composerImagePreview()
                         : widget.initialPost != null
-                        ? selectedImageUrls.isNotEmpty
-                              ? ClipRRect(
-                                  borderRadius: BorderRadius.circular(24),
-                                  child: Image.network(
-                                    _displayImageUrl(selectedImageUrls.first),
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) =>
-                                        const _ImageErrorPlaceholder(),
-                                  ),
-                                )
-                              : ClipRRect(
-                                  borderRadius: BorderRadius.circular(24),
-                                  child: _PostImageGallery(
-                                    post: widget.initialPost!,
-                                  ),
-                                )
-                        : selectedImageUrls.isNotEmpty
                         ? ClipRRect(
-                            borderRadius: BorderRadius.circular(24),
-                            child: Image.network(
-                              _displayImageUrl(selectedImageUrls.first),
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) =>
-                                  const _ImageErrorPlaceholder(),
+                            borderRadius: BorderRadius.circular(
+                              AppColors.radiusMedium,
                             ),
+                            child: _PostImageGallery(post: widget.initialPost!),
                           )
-                        : const Center(
-                            child: Text(
-                              '사진을 추가해주세요',
-                              textAlign: TextAlign.center,
-                              style: TextStyle(
-                                color: Color(0xFF9DB0C0),
-                                fontWeight: FontWeight.w700,
-                                height: 1.6,
-                              ),
-                            ),
-                          ),
+                        : _composerImagePreview(),
                   ),
                 ),
                 const SizedBox(height: 14),

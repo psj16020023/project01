@@ -80,7 +80,9 @@ abstract final class AppTheme {
       selectedColor: AppColors.sky,
       checkmarkColor: AppColors.skyBlueDeep,
       labelStyle: const TextStyle(color: AppColors.ink),
-      shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(999)),
+      shape: RoundedRectangleBorder(
+        borderRadius: BorderRadius.circular(AppColors.radiusSmall),
+      ),
       side: BorderSide.none,
     ),
     checkboxTheme: CheckboxThemeData(

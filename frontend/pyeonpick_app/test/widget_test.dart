@@ -71,13 +71,13 @@ void main() {
 
     await tester.pumpWidget(page(HighlightCollectionType.popular, '이번 주 인기'));
     expect(find.text('CU'), findsNothing);
-    expect(find.text('최근 반응이 가장 많이 모인 조합'), findsOneWidget);
+    expect(find.text('최근 반응이 가장 많이 모인 조합'), findsNothing);
     expect(find.text('인기순'), findsOneWidget);
 
     await tester.pumpWidget(page(HighlightCollectionType.pbProduct, 'PB'));
     await tester.pump();
     expect(find.text('CU'), findsOneWidget);
-    expect(find.text('편의점 PB 상품이 포함된 조합'), findsOneWidget);
+    expect(find.text('편의점 PB 상품이 포함된 조합'), findsNothing);
   });
 
   test('shared Pick Shorts counts keep only the current viewer choice', () {

@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 
 abstract final class AppColors {
   static const Color skyBlue = Color(0xFF91D5F0);
-  static const Color skyBlueDeep = Color(0xFF286B83);
+  static const Color skyBlueDeep = Color(0xFF39758A);
   static const Color sky = Color(0xFFEAF7FC);
   static const Color lime = Color(0xFFCBEA89);
   static const Color limeSoft = Color(0xFFF1F8DF);
