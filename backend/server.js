@@ -209,6 +209,10 @@ const postSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
+postSchema.index({ createdAt: -1, _id: -1 });
+postSchema.index({ likes: -1, createdAt: -1, _id: -1 });
+postSchema.index({ dislikes: -1, createdAt: -1, _id: -1 });
+
 const productSchema = new mongoose.Schema(
   {
     barcode: { type: String, required: true, unique: true, index: true },
@@ -338,6 +342,9 @@ const battleMatchSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
+battleMatchSchema.index({ authorId: 1, createdAt: -1, _id: -1 });
+battleMatchSchema.index({ endsAt: -1, _id: -1 });
 
 const userSchema = new mongoose.Schema(
   {
@@ -1051,7 +1058,20 @@ function serializePost(post, currentUser = null) {
   };
 }
 
-function serializeBattleMatch(match, viewerId = "") {
+function isInlineImage(value) {
+  return /^data:image\/[^;]+;base64,/i.test(String(value || ""));
+}
+
+function battleImageUrl(match, side, req) {
+  const field = side === "left" ? "leftCustomImageUrl" : "rightCustomImageUrl";
+  const metadataField = side === "left" ? "_leftHasInlineImage" : "_rightHasInlineImage";
+  const raw = match[field];
+  if (raw && !isInlineImage(raw)) return raw;
+  if (!(match[metadataField] || isInlineImage(raw)) || !req) return null;
+  return `${requestOrigin(req)}/api/battles/${match._id.toString()}/images/${side}`;
+}
+
+function serializeBattleMatch(match, viewerId = "", req = null) {
   const leftVoterIds = Array.isArray(match.leftVoterIds) ? match.leftVoterIds.map(String) : [];
   const rightVoterIds = Array.isArray(match.rightVoterIds) ? match.rightVoterIds.map(String) : [];
   return {
@@ -1067,8 +1087,8 @@ function serializeBattleMatch(match, viewerId = "") {
     requiredTitleKey: match.requiredTitleKey || null,
     leftCustomTitle: match.leftCustomTitle || null,
     rightCustomTitle: match.rightCustomTitle || null,
-    leftCustomImageUrl: match.leftCustomImageUrl || null,
-    rightCustomImageUrl: match.rightCustomImageUrl || null,
+    leftCustomImageUrl: battleImageUrl(match, "left", req),
+    rightCustomImageUrl: battleImageUrl(match, "right", req),
     createdAt: match.createdAt || new Date(),
     leftVotes: leftVoterIds.length,
     rightVotes: rightVoterIds.length,
@@ -1079,6 +1099,45 @@ function serializeBattleMatch(match, viewerId = "") {
         ? "right"
         : null,
   };
+}
+
+async function attachBattleImageMetadata(matches) {
+  if (matches.length === 0) return;
+  const metadata = await BattleMatch.aggregate([
+    { $match: { _id: { $in: matches.map((match) => match._id) } } },
+    {
+      $project: {
+        leftHasInlineImage: {
+          $regexMatch: { input: { $ifNull: ["$leftCustomImageUrl", ""] }, regex: /^data:image\//i },
+        },
+        rightHasInlineImage: {
+          $regexMatch: { input: { $ifNull: ["$rightCustomImageUrl", ""] }, regex: /^data:image\//i },
+        },
+        leftRemoteImageUrl: {
+          $cond: [
+            { $regexMatch: { input: { $ifNull: ["$leftCustomImageUrl", ""] }, regex: /^https?:\/\//i } },
+            "$leftCustomImageUrl",
+            null,
+          ],
+        },
+        rightRemoteImageUrl: {
+          $cond: [
+            { $regexMatch: { input: { $ifNull: ["$rightCustomImageUrl", ""] }, regex: /^https?:\/\//i } },
+            "$rightCustomImageUrl",
+            null,
+          ],
+        },
+      },
+    },
+  ]);
+  const byId = new Map(metadata.map((entry) => [entry._id.toString(), entry]));
+  for (const match of matches) {
+    const entry = byId.get(match._id.toString());
+    match._leftHasInlineImage = Boolean(entry?.leftHasInlineImage);
+    match._rightHasInlineImage = Boolean(entry?.rightHasInlineImage);
+    match.leftCustomImageUrl = entry?.leftRemoteImageUrl || null;
+    match.rightCustomImageUrl = entry?.rightRemoteImageUrl || null;
+  }
 }
 
 function normalizeBattlePayload(raw) {
@@ -1106,7 +1165,9 @@ function normalizeBattlePayload(raw) {
 function serializePostFeatureInfo(post, audienceCounts = { male: 0, female: 0 }) {
   const recentLikeCutoff = Date.now() - (7 * 24 * 60 * 60 * 1000);
   const storedImageUrl = (post.imageUrls || [])[0] || post.imageUrl || "";
-  const hasStoredImage = (post.imageDatas || []).length > 0 || Boolean(post.imageData);
+  const hasStoredImage = Number(post._storedImageCount || 0) > 0
+    || (post.imageDatas || []).length > 0
+    || Boolean(post.imageData);
   return {
     id: post._id.toString(),
     authorId: post.authorId,
@@ -1296,6 +1357,7 @@ async function hydratePostAuthorImages(posts) {
 
 async function serializeUser(user) {
   const pickedByCount = await User.countDocuments({ pickedAuthorIds: user._id.toString() });
+  const battleState = user.battleState || {};
   return {
     id: user._id.toString(),
     username: user.username,
@@ -1310,7 +1372,15 @@ async function serializeUser(user) {
     dislikedPostIds: user.dislikedPostIds || [],
     savedPostIds: user.savedPostIds || [],
     pickedAuthorIds: user.pickedAuthorIds || [],
-    battleState: user.battleState || {},
+    battleState: {
+      matches: [],
+      notifiedExpiredMatchIds: Array.isArray(battleState.notifiedExpiredMatchIds)
+        ? battleState.notifiedExpiredMatchIds
+        : [],
+      todayEndedSummarySeenMatchIds: Array.isArray(battleState.todayEndedSummarySeenMatchIds)
+        ? battleState.todayEndedSummarySeenMatchIds
+        : [],
+    },
     profilePublic: user.profilePublic !== false,
     profileVisibility: user.profileVisibility || {
       username: false,
@@ -3332,13 +3402,16 @@ async function seedConvenienceProductCommunityPosts(crawledAt) {
 }
 
 async function refreshTopFiveBadges() {
-  const ranked = (await Post.find({})).filter(qualifiesForPopularBadge).sort((a, b) => {
+  const posts = await Post.find({})
+    .select("likes dislikes createdAt topFiveEnteredAt topWorstEnteredAt")
+    .lean();
+  const ranked = posts.filter(qualifiesForPopularBadge).sort((a, b) => {
     const likeCompare = Number(b.likes || 0) - Number(a.likes || 0);
     if (likeCompare !== 0) return likeCompare;
     return new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime();
   }).slice(0, 5);
   const ids = new Set(ranked.map((post) => post._id.toString()));
-  const worstRanked = (await Post.find({})).filter(qualifiesForWorstBadge).sort((a, b) => {
+  const worstRanked = posts.filter(qualifiesForWorstBadge).sort((a, b) => {
     const dislikeCompare = Number(b.dislikes || 0) - Number(a.dislikes || 0);
     if (dislikeCompare !== 0) return dislikeCompare;
     const ratioA = dislikeRatio(a);
@@ -3348,25 +3421,21 @@ async function refreshTopFiveBadges() {
   }).slice(0, 5);
   const worstIds = new Set(worstRanked.map((post) => post._id.toString()));
   const now = new Date();
-  const posts = await Post.find({});
-
-  await Promise.all(
-    posts.map(async (post) => {
-      if (ids.has(post._id.toString()) && !post.topFiveEnteredAt) {
-        post.topFiveEnteredAt = now;
-      }
-      if (!ids.has(post._id.toString()) && post.topFiveEnteredAt) {
-        post.topFiveEnteredAt = null;
-      }
-      if (worstIds.has(post._id.toString()) && !post.topWorstEnteredAt) {
-        post.topWorstEnteredAt = now;
-      }
-      if (!worstIds.has(post._id.toString()) && post.topWorstEnteredAt) {
-        post.topWorstEnteredAt = null;
-      }
-      await post.save();
-    })
-  );
+  const updates = posts.flatMap((post) => {
+    const shouldBeTop = ids.has(post._id.toString());
+    const shouldBeWorst = worstIds.has(post._id.toString());
+    const set = {};
+    if (shouldBeTop !== Boolean(post.topFiveEnteredAt)) {
+      set.topFiveEnteredAt = shouldBeTop ? now : null;
+    }
+    if (shouldBeWorst !== Boolean(post.topWorstEnteredAt)) {
+      set.topWorstEnteredAt = shouldBeWorst ? now : null;
+    }
+    return Object.keys(set).length === 0
+      ? []
+      : [{ updateOne: { filter: { _id: post._id }, update: { $set: set } } }];
+  });
+  if (updates.length > 0) await Post.bulkWrite(updates);
 }
 
 let topFiveBadgeRefreshRequested = false;
@@ -3840,7 +3909,16 @@ app.put("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
   user.dislikedPostIds = Array.isArray(req.body.dislikedPostIds) ? req.body.dislikedPostIds : (user.dislikedPostIds || []);
   user.savedPostIds = Array.isArray(req.body.savedPostIds) ? req.body.savedPostIds : (user.savedPostIds || []);
   user.pickedAuthorIds = Array.isArray(req.body.pickedAuthorIds) ? req.body.pickedAuthorIds : (user.pickedAuthorIds || []);
-  user.battleState = req.body.battleState || user.battleState || {};
+  const requestedBattleState = req.body.battleState || user.battleState || {};
+  user.battleState = {
+    matches: [],
+    notifiedExpiredMatchIds: Array.isArray(requestedBattleState.notifiedExpiredMatchIds)
+      ? requestedBattleState.notifiedExpiredMatchIds
+      : [],
+    todayEndedSummarySeenMatchIds: Array.isArray(requestedBattleState.todayEndedSummarySeenMatchIds)
+      ? requestedBattleState.todayEndedSummarySeenMatchIds
+      : [],
+  };
   user.profilePublic = req.body.profilePublic == null ? (user.profilePublic !== false) : Boolean(req.body.profilePublic);
   user.profileVisibility = req.body.profileVisibility || user.profileVisibility || {};
 
@@ -3917,12 +3995,13 @@ app.get("/api/battles/results", requireAuth, async (req, res) => {
   try {
     const [matches, next, user] = await Promise.all([
       BattleMatch.find({ authorId, endsAt: { $ne: null, $lte: now } })
-        .select("id title endsAt leftPostId rightPostId leftCustomTitle rightCustomTitle leftCustomImageUrl rightCustomImageUrl leftVoterIds rightVoterIds")
+        .select("id title endsAt leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds")
         .sort({ endsAt: -1, _id: -1 }).lean(),
       BattleMatch.findOne({ authorId, endsAt: { $gt: now } }).sort({ endsAt: 1 }).select("endsAt").lean(),
       User.findById(authorId).select("battleResultReadIds").lean(),
     ]);
     if (!user) return res.status(401).json({ message: "로그인이 필요해요." });
+    await attachBattleImageMetadata(matches);
     const ids = matches.flatMap((match) => [match.leftPostId, match.rightPostId]).filter(isValidObjectId);
     const posts = await Post.find({ _id: { $in: ids } })
       .select("title imageUrl imageUrls")
@@ -3944,8 +4023,8 @@ app.get("/api/battles/results", requireAuth, async (req, res) => {
         endsAt: match.endsAt,
         leftTitle: match.leftCustomTitle || titleFor(match.leftPostId) || "첫 번째 조합",
         rightTitle: match.rightCustomTitle || titleFor(match.rightPostId) || "두 번째 조합",
-        leftImageUrl: match.leftCustomImageUrl || imageFor(match.leftPostId),
-        rightImageUrl: match.rightCustomImageUrl || imageFor(match.rightPostId),
+        leftImageUrl: battleImageUrl(match, "left", req) || imageFor(match.leftPostId),
+        rightImageUrl: battleImageUrl(match, "right", req) || imageFor(match.rightPostId),
         leftVotes: match.leftVoterIds.length,
         rightVotes: match.rightVoterIds.length,
         unread: !readIds.has(match.id),
@@ -3980,25 +4059,50 @@ app.get("/api/battles", requireAuth, async (req, res) => {
     { endsAt: null },
     { endsAt: { $gt: new Date() } },
   ] })
+    .select("-leftCustomImageUrl -rightCustomImageUrl")
     .sort({ createdAt: -1, _id: -1 })
     .limit(500)
     .lean();
+  await attachBattleImageMetadata(matches);
   return res.json({
-    matches: matches.map((match) => serializeBattleMatch(match, req.auth.sub)),
+    matches: matches.map((match) => serializeBattleMatch(match, req.auth.sub, req)),
   });
 });
 
 app.get("/api/battles/highlights", requireAuth, async (req, res) => {
   const matches = await BattleMatch.find({ endsAt: { $lte: new Date() } })
+    .select("-leftCustomImageUrl -rightCustomImageUrl")
     .sort({ endsAt: -1 })
     .limit(200)
     .lean();
+  await attachBattleImageMetadata(matches);
   const highlighted = matches.filter((match) =>
     (match.leftVoterIds?.length || 0) + (match.rightVoterIds?.length || 0) >= 8
   );
   return res.json({
-    matches: highlighted.map((match) => serializeBattleMatch(match, req.auth.sub)),
+    matches: highlighted.map((match) => serializeBattleMatch(match, req.auth.sub, req)),
   });
+});
+
+app.get("/api/battles/:mongoId/images/:side", async (req, res) => {
+  const side = String(req.params.side || "");
+  if (!["left", "right"].includes(side) || !isValidObjectId(req.params.mongoId)) {
+    return res.status(400).send("Invalid battle image");
+  }
+  const field = side === "left" ? "leftCustomImageUrl" : "rightCustomImageUrl";
+  const match = await BattleMatch.findById(req.params.mongoId).select(field).lean();
+  const rawImage = match?.[field];
+  if (!isInlineImage(rawImage)) return res.status(404).send("Image not found");
+
+  const dataUrlMatch = String(rawImage).match(/^data:([^;]+);base64,(.+)$/s);
+  try {
+    const imageBuffer = Buffer.from(dataUrlMatch[2], "base64");
+    res.setHeader("Content-Type", dataUrlMatch[1]);
+    res.setHeader("Cache-Control", "public, max-age=86400");
+    return res.send(imageBuffer);
+  } catch (_) {
+    return res.status(415).send("Invalid image data");
+  }
 });
 
 app.post("/api/battles", requireAuth, async (req, res) => {
@@ -4017,14 +4121,14 @@ app.post("/api/battles", requireAuth, async (req, res) => {
   }
   try {
     const match = await BattleMatch.create(payload);
-    return res.status(201).json({ match: serializeBattleMatch(match, req.auth.sub) });
+    return res.status(201).json({ match: serializeBattleMatch(match, req.auth.sub, req) });
   } catch (error) {
     if (error?.code === 11000) {
       const existing = await BattleMatch.findOne({ id: payload.id }).lean();
       if (String(existing?.authorId || "") !== String(req.auth.sub)) {
         return res.status(409).json({ message: "이미 사용 중인 픽 쇼츠 ID입니다." });
       }
-      return res.json({ match: serializeBattleMatch(existing, req.auth.sub) });
+      return res.json({ match: serializeBattleMatch(existing, req.auth.sub, req) });
     }
     throw error;
   }
@@ -4049,18 +4153,22 @@ app.post("/api/battles/:id/vote", requireAuth, async (req, res) => {
     },
     { $addToSet: side === "left" ? { leftVoterIds: userId } : { rightVoterIds: userId } },
     { returnDocument: "after" }
-  ).lean();
+  ).select("-leftCustomImageUrl -rightCustomImageUrl").lean();
 
   if (match) {
-    return res.json({ accepted: true, match: serializeBattleMatch(match, userId) });
+    await attachBattleImageMetadata([match]);
+    return res.json({ accepted: true, match: serializeBattleMatch(match, userId, req) });
   }
 
-  const existing = await BattleMatch.findOne({ id: req.params.id }).lean();
+  const existing = await BattleMatch.findOne({ id: req.params.id })
+    .select("-leftCustomImageUrl -rightCustomImageUrl")
+    .lean();
   if (!existing) return res.status(404).json({ message: "픽 쇼츠를 찾을 수 없습니다." });
   if (existing.endsAt && existing.endsAt <= now) {
     return res.status(410).json({ message: "이미 종료된 픽 쇼츠입니다." });
   }
-  return res.json({ accepted: false, match: serializeBattleMatch(existing, userId) });
+  await attachBattleImageMetadata([existing]);
+  return res.json({ accepted: false, match: serializeBattleMatch(existing, userId, req) });
 });
 
 app.put("/api/battles/:id", requireAuth, async (req, res) => {
@@ -4080,9 +4188,10 @@ app.put("/api/battles/:id", requireAuth, async (req, res) => {
     { id: req.params.id, authorId: String(req.auth.sub) },
     { $set: editable },
     { returnDocument: "after", runValidators: true },
-  ).lean();
+  ).select("-leftCustomImageUrl -rightCustomImageUrl").lean();
   if (!updated) return res.status(404).json({ message: "픽 쇼츠를 찾을 수 없습니다." });
-  return res.json({ match: serializeBattleMatch(updated, req.auth.sub) });
+  await attachBattleImageMetadata([updated]);
+  return res.json({ match: serializeBattleMatch(updated, req.auth.sub, req) });
 });
 
 app.delete("/api/battles/:id", requireAuth, async (req, res) => {
@@ -4282,9 +4391,11 @@ app.get("/api/posts/catalog", async (req, res) => {
 
 app.get("/api/posts/feature-index", async (req, res) => {
   const posts = await Post.find({})
-    .select("authorId title details.usedProducts likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt imageUrl imageUrls imageData imageDatas")
+    .select("authorId title details.usedProducts likes dislikes comments reviews likeEvents createdAt topFiveEnteredAt topWorstEnteredAt imageUrl imageUrls")
     .sort({ createdAt: -1, _id: -1 })
-    .limit(1000);
+    .limit(1000)
+    .lean();
+  await attachStoredImageCounts(posts);
   const usersWithGender = await User.find({
     "botSetup.gender": { $in: ["남자", "여자"] },
     likedPostIds: { $exists: true, $ne: [] },
@@ -4516,92 +4627,97 @@ app.delete("/api/posts/:id", async (req, res) => {
   res.json({ success: true });
 });
 
-app.post("/api/posts/:id/like", async (req, res) => {
-  const userId = String(req.body.userId || "");
-  if (!userId) return res.status(400).json({ message: "사용자 정보가 필요합니다." });
-
-  const post = await Post.findById(req.params.id);
-  if (!post) return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
-  const user = await findUserByIdOrNull(userId);
-  if (!user) return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
-
+function nextReactionState(post, user, userId, reaction) {
   const postId = post._id.toString();
-  const likedIndex = (user.likedPostIds || []).findIndex((id) => String(id) == postId);
-  const dislikedIndex = (user.dislikedPostIds || []).findIndex((id) => String(id) == postId);
+  const likedPostIds = new Set((user.likedPostIds || []).map(String));
+  const dislikedPostIds = new Set((user.dislikedPostIds || []).map(String));
+  const wasLiked = likedPostIds.has(postId);
+  const wasDisliked = dislikedPostIds.has(postId);
+  let likes = Number(post.likes || 0);
+  let dislikes = Number(post.dislikes || 0);
+  let likeEvents = (post.likeEvents || []).filter(
+    (event) => String(event.userId) !== userId,
+  );
 
-  if (likedIndex >= 0) {
-    post.likes = Math.max(0, post.likes - 1);
-    post.likeEvents = (post.likeEvents || []).filter(
-      (event) => String(event.userId) !== userId
-    );
-    user.likedPostIds.splice(likedIndex, 1);
+  if (reaction === "like") {
+    if (wasLiked) {
+      likedPostIds.delete(postId);
+      likes = Math.max(0, likes - 1);
+    } else {
+      likedPostIds.add(postId);
+      likes += 1;
+      likeEvents.push({ userId, createdAt: new Date() });
+      if (wasDisliked) {
+        dislikedPostIds.delete(postId);
+        dislikes = Math.max(0, dislikes - 1);
+      }
+    }
+  } else if (wasDisliked) {
+    dislikedPostIds.delete(postId);
+    dislikes = Math.max(0, dislikes - 1);
   } else {
-    post.likes += 1;
-    post.likeEvents = [
-      ...(post.likeEvents || []).filter(
-        (event) => String(event.userId) !== userId
-      ),
-      { userId, createdAt: new Date() },
-    ];
-    user.likedPostIds.push(postId);
-    if (dislikedIndex >= 0) {
-      post.dislikes = Math.max(0, post.dislikes - 1);
-      user.dislikedPostIds.splice(dislikedIndex, 1);
+    dislikedPostIds.add(postId);
+    dislikes += 1;
+    if (wasLiked) {
+      likedPostIds.delete(postId);
+      likes = Math.max(0, likes - 1);
     }
   }
 
-  await Promise.all([post.save(), user.save()]);
+  return {
+    postId,
+    likes,
+    dislikes,
+    likeEvents,
+    likedPostIds: [...likedPostIds],
+    dislikedPostIds: [...dislikedPostIds],
+    likedByMe: likedPostIds.has(postId),
+    dislikedByMe: dislikedPostIds.has(postId),
+  };
+}
+
+async function updatePostReaction(req, res, reaction) {
+  const userId = String(req.body.userId || "");
+  if (!userId) return res.status(400).json({ message: "사용자 정보가 필요합니다." });
+
+  const [post, user] = await Promise.all([
+    Post.findById(req.params.id).select("likes dislikes likeEvents").lean(),
+    isValidObjectId(userId)
+      ? User.findById(userId).select("likedPostIds dislikedPostIds").lean()
+      : Promise.resolve(null),
+  ]);
+  if (!post) return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
+  if (!user) return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
+
+  const next = nextReactionState(post, user, userId, reaction);
+  await Promise.all([
+    Post.updateOne(
+      { _id: post._id },
+      { $set: { likes: next.likes, dislikes: next.dislikes, likeEvents: next.likeEvents } },
+    ),
+    User.updateOne(
+      { _id: user._id },
+      { $set: { likedPostIds: next.likedPostIds, dislikedPostIds: next.dislikedPostIds } },
+    ),
+  ]);
   res.json({
     reaction: {
-      id: postId,
-      likes: post.likes,
-      dislikes: post.dislikes,
-      likedByMe: likedIndex < 0,
-      dislikedByMe: false,
+      id: next.postId,
+      likes: next.likes,
+      dislikes: next.dislikes,
+      likedByMe: next.likedByMe,
+      dislikedByMe: next.dislikedByMe,
     },
   });
   scheduleTopFiveBadgeRefresh();
+}
+
+app.post("/api/posts/:id/like", async (req, res) => {
+  return updatePostReaction(req, res, "like");
 });
 
 app.post("/api/posts/:id/dislike", async (req, res) => {
-  const userId = String(req.body.userId || "");
-  if (!userId) return res.status(400).json({ message: "사용자 정보가 필요합니다." });
-
-  const post = await Post.findById(req.params.id);
-  if (!post) return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
-  const user = await findUserByIdOrNull(userId);
-  if (!user) return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
-
-  const postId = post._id.toString();
-  const dislikedIndex = (user.dislikedPostIds || []).findIndex((id) => String(id) == postId);
-  const likedIndex = (user.likedPostIds || []).findIndex((id) => String(id) == postId);
-
-  if (dislikedIndex >= 0) {
-    post.dislikes = Math.max(0, post.dislikes - 1);
-    user.dislikedPostIds.splice(dislikedIndex, 1);
-  } else {
-    post.dislikes += 1;
-    user.dislikedPostIds.push(postId);
-    if (likedIndex >= 0) {
-      post.likes = Math.max(0, post.likes - 1);
-      post.likeEvents = (post.likeEvents || []).filter(
-        (event) => String(event.userId) !== userId
-      );
-      user.likedPostIds.splice(likedIndex, 1);
-    }
-  }
-
-  await Promise.all([post.save(), user.save()]);
-  res.json({
-    reaction: {
-      id: postId,
-      likes: post.likes,
-      dislikes: post.dislikes,
-      likedByMe: false,
-      dislikedByMe: dislikedIndex < 0,
-    },
-  });
-  scheduleTopFiveBadgeRefresh();
+  return updatePostReaction(req, res, "dislike");
 });
 
 app.post("/api/posts/:id/comments", async (req, res) => {
@@ -5106,6 +5222,8 @@ if (require.main === module) {
 }
 
 module.exports = {
+  nextReactionState,
+  serializeBattleMatch,
   serializePostCatalog,
   requestAllConvenienceRefresh,
   refreshAllConvenienceProducts,
