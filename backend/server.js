@@ -1144,9 +1144,11 @@ function serializePostCatalog(post, currentUser, req) {
   const remoteImageUrls = (post.imageUrls && post.imageUrls.length > 0)
     ? post.imageUrls.filter(Boolean)
     : (post.imageUrl ? [post.imageUrl] : []);
-  const storedImageCount = (post.imageDatas && post.imageDatas.length > 0)
-    ? post.imageDatas.length
-    : (post.imageData ? 1 : 0);
+  const storedImageCount = Number.isInteger(post._storedImageCount)
+    ? post._storedImageCount
+    : (post.imageDatas && post.imageDatas.length > 0)
+        ? post.imageDatas.length
+        : (post.imageData ? 1 : 0);
   const storedImageUrls = Array.from(
     { length: storedImageCount },
     (_, index) => `${requestOrigin(req)}/api/posts/${postId}/images/${index}`
@@ -1180,6 +1182,31 @@ function serializePostCatalog(post, currentUser, req) {
     topFiveEnteredAt: post.topFiveEnteredAt || null,
     topWorstEnteredAt: post.topWorstEnteredAt || null,
   };
+}
+
+async function attachStoredImageCounts(posts) {
+  if (posts.length === 0) return;
+
+  const counts = await Post.aggregate([
+    { $match: { _id: { $in: posts.map((post) => post._id) } } },
+    {
+      $project: {
+        storedImageCount: {
+          $cond: [
+            { $gt: [{ $size: { $ifNull: ["$imageDatas", []] } }, 0] },
+            { $size: { $ifNull: ["$imageDatas", []] } },
+            { $cond: [{ $ne: [{ $ifNull: ["$imageData", ""] }, ""] }, 1, 0] },
+          ],
+        },
+      },
+    },
+  ]);
+  const countByPostId = new Map(
+    counts.map((entry) => [entry._id.toString(), entry.storedImageCount]),
+  );
+  for (const post of posts) {
+    post._storedImageCount = countByPostId.get(post._id.toString()) || 0;
+  }
 }
 
 function serializeProduct(product, { cached }) {
@@ -4212,6 +4239,7 @@ app.get("/api/posts", async (req, res) => {
   const pageSize = Math.min(Math.max(Number(limit) || 6, 1), 20);
   const [posts, currentUser] = await Promise.all([
     Post.find(filters)
+      .select("-imageData -imageDatas")
       .sort({ ...sortOption, _id: -1 })
       .limit(pageSize + 1)
       .lean(),
@@ -4219,12 +4247,15 @@ app.get("/api/posts", async (req, res) => {
   ]);
   const hasMore = posts.length > pageSize;
   const pagePosts = hasMore ? posts.slice(0, pageSize) : posts;
-  await hydratePostAuthorImages(pagePosts);
+  await Promise.all([
+    hydratePostAuthorImages(pagePosts),
+    attachStoredImageCounts(pagePosts),
+  ]);
   const nextCursor = hasMore && pagePosts.length > 0
     ? encodePostCursor(pagePosts[pagePosts.length - 1], String(sort))
     : null;
   res.json({
-    posts: pagePosts.map((post) => serializePost(post, currentUser)),
+    posts: pagePosts.map((post) => serializePostCatalog(post, currentUser, req)),
     hasMore,
     nextCursor,
   });
@@ -4235,11 +4266,15 @@ app.get("/api/posts/catalog", async (req, res) => {
   const currentUser = viewerId ? await findUserByIdLeanOrNull(viewerId) : null;
   const posts = await Post.find({})
     .select(
-      "authorId authorNickname authorProfileImageUrl title content priceMin priceMax categories likes dislikes comments reviews calories rating createdAt imageData imageUrl imageDatas imageUrls details topFiveEnteredAt topWorstEnteredAt"
+      "authorId authorNickname authorProfileImageUrl title content priceMin priceMax categories likes dislikes comments reviews calories rating createdAt imageUrl imageUrls details topFiveEnteredAt topWorstEnteredAt"
     )
     .sort({ createdAt: -1, _id: -1 })
-    .limit(1000);
-  await hydratePostAuthorImages(posts);
+    .limit(1000)
+    .lean();
+  await Promise.all([
+    hydratePostAuthorImages(posts),
+    attachStoredImageCounts(posts),
+  ]);
   return res.json({
     posts: posts.map((post) => serializePostCatalog(post, currentUser, req)),
   });
@@ -5071,6 +5106,7 @@ if (require.main === module) {
 }
 
 module.exports = {
+  serializePostCatalog,
   requestAllConvenienceRefresh,
   refreshAllConvenienceProducts,
   refreshConvenienceProducts,

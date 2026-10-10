@@ -282,7 +282,7 @@ class RemotePostRepository implements PostRepository {
       },
     );
 
-    final response = await http.get(uri).timeout(const Duration(seconds: 12));
+    final response = await http.get(uri).timeout(const Duration(seconds: 30));
     if (response.statusCode != 200) {
       throw Exception('게시글 조회 실패');
     }
