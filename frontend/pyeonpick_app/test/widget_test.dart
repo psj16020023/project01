@@ -480,44 +480,48 @@ void main() {
       password: '1234',
       nickname: '커뮤니케이션테스터',
     );
+    var shuffleSeed = 0;
 
     await tester.pumpWidget(
       MaterialApp(
         home: Scaffold(
-          body: CommunicationBody(
-            loading: false,
-            error: null,
-            posts: mockPosts.take(2).toList(),
-            allFeatureInfo: mockPosts.map(PostFeatureInfo.fromPost).toList(),
-            currentUser: user,
-            searchController: searchController,
-            minFilterController: minController,
-            maxFilterController: maxController,
-            sortMode: SortMode.latest,
-            selectedTags: const <String>{},
-            scrollController: scrollController,
-            hasMorePosts: false,
-            loadingMore: false,
-            onReload: () async {},
-            onChangeSort: (_) {},
-            onToggleLike: (_) async {},
-            onToggleDislike: (_) async {},
-            onToggleSave: (_) async {},
-            onAddComment: (_, _) async {},
-            onEditPost: (_) async {},
-            onDeletePost: (_) async {},
-            onOpenAuthor: (_) {},
-            onOpenPost: (_) async {},
-            onOpenFeaturePost: (_) async {},
-            onToggleSearchTag: (_) async {},
-            onOpenCollection: (_) {},
-            onShuffle: () {},
-            onScanBarcode: () async {},
-            pickedAuthorsOnly: false,
-            hasPickedAuthors: false,
-            onTogglePickedAuthors: () async {},
-            battleHighlights: const [],
-            onOpenBattleHighlights: (_) {},
+          body: StatefulBuilder(
+            builder: (context, setHostState) => CommunicationBody(
+              loading: false,
+              error: null,
+              posts: mockPosts.take(2).toList(),
+              allFeatureInfo: mockPosts.map(PostFeatureInfo.fromPost).toList(),
+              currentUser: user,
+              searchController: searchController,
+              minFilterController: minController,
+              maxFilterController: maxController,
+              sortMode: SortMode.latest,
+              selectedTags: const <String>{},
+              scrollController: scrollController,
+              hasMorePosts: false,
+              loadingMore: false,
+              onReload: () async {},
+              onChangeSort: (_) {},
+              onToggleLike: (_) async {},
+              onToggleDislike: (_) async {},
+              onToggleSave: (_) async {},
+              onAddComment: (_, _) async {},
+              onEditPost: (_) async {},
+              onDeletePost: (_) async {},
+              onOpenAuthor: (_) {},
+              onOpenPost: (_) async {},
+              onOpenFeaturePost: (_) async {},
+              onToggleSearchTag: (_) async {},
+              onOpenCollection: (_) {},
+              onShuffle: () => setHostState(() => shuffleSeed += 1),
+              shuffleSeed: shuffleSeed,
+              onScanBarcode: () async {},
+              pickedAuthorsOnly: false,
+              hasPickedAuthors: false,
+              onTogglePickedAuthors: () async {},
+              battleHighlights: const [],
+              onOpenBattleHighlights: (_) {},
+            ),
           ),
         ),
       ),
@@ -555,6 +559,29 @@ void main() {
     await tester.pump();
     expect(find.text('취향 필터'), findsOneWidget);
     expect(find.byKey(const Key('preference-filter-options')), findsOneWidget);
+    final firstTopicBeforeShuffle = tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(const Key('discovery-topic-0')),
+                matching: find.byType(Text),
+              )
+              .first,
+        )
+        .data;
+    await tester.tap(find.byKey(const Key('shuffle-posts-and-topics')));
+    await tester.pump();
+    final firstTopicAfterShuffle = tester
+        .widget<Text>(
+          find
+              .descendant(
+                of: find.byKey(const Key('discovery-topic-0')),
+                matching: find.byType(Text),
+              )
+              .first,
+        )
+        .data;
+    expect(firstTopicAfterShuffle, isNot(firstTopicBeforeShuffle));
     expect(tester.takeException(), isNull);
   });
 }

@@ -573,6 +573,31 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
   ];
 }
 
+List<_DiscoveryTopic> _shuffleDiscoveryTopics(
+  List<_DiscoveryTopic> topics,
+  int shuffleSeed,
+) {
+  if (shuffleSeed == 0) return topics;
+  final shuffled = topics.map((topic) {
+    final topicSeed = shuffleSeed ^ topic.label.hashCode;
+    final posts = [...topic.posts]..shuffle(math.Random(topicSeed));
+    final battles = [...topic.battles]
+      ..shuffle(math.Random(topicSeed ^ 0x5f3759df));
+    return _DiscoveryTopic(
+      label: topic.label,
+      caption: topic.caption,
+      icon: topic.icon,
+      color: topic.color,
+      posts: posts,
+      collectionType: topic.collectionType,
+      battles: battles,
+      decisiveBattleCollection: topic.decisiveBattleCollection,
+    );
+  }).toList();
+  shuffled.shuffle(math.Random(shuffleSeed));
+  return shuffled;
+}
+
 class HomeScreen extends StatefulWidget {
   const HomeScreen({
     super.key,
@@ -621,6 +646,7 @@ class _HomeScreenState extends State<HomeScreen> {
   String? _nextPostsCursor;
   bool _loadingFeaturePostPool = false;
   bool _pickedAuthorsOnly = false;
+  int _shuffleSeed = 0;
   List<BattleMatchEntry> _battleHighlights = <BattleMatchEntry>[];
   List<PyeonUser> _knownUsers = <PyeonUser>[];
 
@@ -2665,7 +2691,8 @@ class _HomeScreenState extends State<HomeScreen> {
 
   void _shufflePosts() {
     setState(() {
-      _posts = [..._posts]..shuffle(math.Random());
+      _shuffleSeed += 1;
+      _posts = [..._posts]..shuffle(math.Random(_shuffleSeed));
     });
   }
 
@@ -2941,6 +2968,7 @@ class _HomeScreenState extends State<HomeScreen> {
           onToggleSearchTag: _toggleSearchTag,
           onOpenCollection: _openHighlightCollection,
           onShuffle: _shufflePosts,
+          shuffleSeed: _shuffleSeed,
           onScanBarcode: _scanCommunicationBarcode,
           pickedAuthorsOnly: _pickedAuthorsOnly,
           hasPickedAuthors: widget.currentUser.pickedAuthorIds.isNotEmpty,
@@ -3020,6 +3048,7 @@ class CommunicationBody extends StatelessWidget {
     required this.onToggleSearchTag,
     required this.onOpenCollection,
     required this.onShuffle,
+    required this.shuffleSeed,
     required this.onScanBarcode,
     required this.pickedAuthorsOnly,
     required this.hasPickedAuthors,
@@ -3055,6 +3084,7 @@ class CommunicationBody extends StatelessWidget {
   final Future<void> Function(String tag) onToggleSearchTag;
   final void Function(HighlightCollectionType type) onOpenCollection;
   final VoidCallback onShuffle;
+  final int shuffleSeed;
   final Future<void> Function() onScanBarcode;
   final bool pickedAuthorsOnly;
   final bool hasPickedAuthors;
@@ -3123,10 +3153,13 @@ class CommunicationBody extends StatelessWidget {
           visibleFeatureIds.contains(match.rightPostId);
     }).toList();
     final trendPicks = _buildCommunityTrendPicks(filteredFeatureIndex);
-    final discoveryTopics = _buildDiscoveryTopics(
-      filteredFeatureIndex,
-      trendPicks,
-      filteredBattleHighlights,
+    final discoveryTopics = _shuffleDiscoveryTopics(
+      _buildDiscoveryTopics(
+        filteredFeatureIndex,
+        trendPicks,
+        filteredBattleHighlights,
+      ),
+      shuffleSeed,
     );
 
     return LayoutBuilder(
@@ -4594,6 +4627,7 @@ class _ToolbarState extends State<Toolbar> {
             ),
             const Spacer(),
             IconButton(
+              key: const Key('shuffle-posts-and-topics'),
               onPressed: widget.onShuffle,
               tooltip: '섞기',
               icon: const Icon(Icons.shuffle_rounded, size: 20),
