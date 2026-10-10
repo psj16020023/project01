@@ -1,7 +1,12 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { nextReactionState, serializeBattleMatch, serializePostCatalog } = require("./server");
+const {
+  nextReactionState,
+  setReactionState,
+  serializeBattleMatch,
+  serializePostCatalog,
+} = require("./server");
 
 test("post catalog replaces stored base64 images with lightweight image URLs", () => {
   const post = {
@@ -91,4 +96,29 @@ test("reaction state switches like and dislike without touching unrelated user d
   assert.deepEqual(disliked.likedPostIds, ["post-2"]);
   assert.deepEqual(disliked.dislikedPostIds.sort(), ["post-1", "post-3"]);
   assert.equal(disliked.likeEvents.length, 0);
+});
+
+test("desired reaction state is idempotent for safe request retries", () => {
+  const existingEvent = { userId: "user-1", createdAt: new Date("2026-01-01") };
+  const post = {
+    _id: { toString: () => "post-1" },
+    likes: 4,
+    dislikes: 2,
+    likeEvents: [existingEvent],
+  };
+  const user = {
+    likedPostIds: ["post-1", "post-2"],
+    dislikedPostIds: ["post-3"],
+  };
+
+  const liked = setReactionState(post, user, "user-1", "like");
+
+  assert.equal(liked.likes, 4);
+  assert.equal(liked.dislikes, 2);
+  assert.equal(liked.likedByMe, true);
+  assert.equal(liked.dislikedByMe, false);
+  assert.deepEqual(liked.likedPostIds, ["post-1", "post-2"]);
+  assert.deepEqual(liked.dislikedPostIds, ["post-3"]);
+  assert.equal(liked.likeEvents.length, 1);
+  assert.equal(liked.likeEvents[0], existingEvent);
 });

@@ -40,6 +40,13 @@ test('shared immutable votes feed only the authenticated user taste profile', { 
   const a = await api('/api/auth/signup', null, { username: 'test-a', nickname: '테스트 A', password: 'fixture-only' });
   const b = await api('/api/auth/signup', null, { username: 'test-b', nickname: '테스트 B', password: 'fixture-only' });
   const reactionPost = (await api('/api/posts?limit=12', null, null, 'GET')).posts[0];
+  const desiredLike = await api(`/api/posts/${reactionPost.id}/reaction`, null, { userId: a.user.id, reaction: 'like' }, 'PUT');
+  assert.equal(desiredLike.reaction.likedByMe, true);
+  const repeatedLike = await api(`/api/posts/${reactionPost.id}/reaction`, null, { userId: a.user.id, reaction: 'like' }, 'PUT');
+  assert.equal(repeatedLike.reaction.likes, desiredLike.reaction.likes);
+  assert.equal(repeatedLike.reaction.likedByMe, true);
+  const clearedDesired = await api(`/api/posts/${reactionPost.id}/reaction`, null, { userId: a.user.id, reaction: null }, 'PUT');
+  assert.equal(clearedDesired.reaction.likedByMe, false);
   const liked = await api(`/api/posts/${reactionPost.id}/like`, null, { userId: a.user.id });
   assert.deepEqual(Object.keys(liked), ['reaction']);
   assert.equal(liked.reaction.likedByMe, true);
@@ -55,6 +62,12 @@ test('shared immutable votes feed only the authenticated user taste profile', { 
   const cleared = await api(`/api/posts/${reactionPost.id}/like`, null, { userId: a.user.id });
   assert.equal(cleared.reaction.likedByMe, false);
   assert.equal(cleared.reaction.dislikedByMe, false);
+  const saved = await api(`/api/users/${a.user.id}/saved-posts/${reactionPost.id}`, a.token, { saved: true }, 'PUT');
+  assert.equal(saved.user.savedPostIds.includes(reactionPost.id), true);
+  const repeatedSave = await api(`/api/users/${a.user.id}/saved-posts/${reactionPost.id}`, a.token, { saved: true }, 'PUT');
+  assert.equal(repeatedSave.user.savedPostIds.filter((id) => id === reactionPost.id).length, 1);
+  const unsaved = await api(`/api/users/${a.user.id}/saved-posts/${reactionPost.id}`, a.token, { saved: false }, 'PUT');
+  assert.equal(unsaved.user.savedPostIds.includes(reactionPost.id), false);
   const match = { id: 'test-battle', title: '조합 테스트', leftCustomTitle: '우유 + 쿠키', rightCustomTitle: '라면 + 치즈',
     endsAt: new Date(Date.now() + 3600000).toISOString(), leftColorValue: 1, rightColorValue: 2 };
   await api('/api/battles', a.token, match);

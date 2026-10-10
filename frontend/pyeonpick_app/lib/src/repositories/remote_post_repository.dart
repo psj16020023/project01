@@ -19,6 +19,32 @@ class RemotePostRepository implements PostRepository {
   final String baseUrl;
   static const _authTokenKey = 'pyeonpick_auth_token_v1';
 
+  Future<http.Response> _setReaction({
+    required String postId,
+    required String userId,
+    required String? reaction,
+  }) async {
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await http
+            .put(
+              Uri.parse('$baseUrl/posts/$postId/reaction'),
+              headers: {'Content-Type': 'application/json'},
+              body: jsonEncode({'userId': userId, 'reaction': reaction}),
+            )
+            .timeout(const Duration(seconds: 10));
+        if (response.statusCode < 500 || attempt == 1) return response;
+        lastError = Exception('반응 저장 서버 오류');
+      } catch (error) {
+        lastError = error;
+        if (attempt == 1) rethrow;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    throw StateError(lastError?.toString() ?? '반응을 저장하지 못했어요.');
+  }
+
   Future<Map<String, String>> _battleHeaders({bool contentType = false}) async {
     final prefs = await SharedPreferences.getInstance();
     final token = prefs.getString(_authTokenKey);
@@ -345,13 +371,11 @@ class RemotePostRepository implements PostRepository {
 
   @override
   Future<Post> toggleLike(Post post, String currentUserId) async {
-    final response = await http
-        .post(
-          Uri.parse('$baseUrl/posts/${post.id}/like'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'userId': currentUserId}),
-        )
-        .timeout(const Duration(seconds: 8));
+    final response = await _setReaction(
+      postId: post.id,
+      userId: currentUserId,
+      reaction: post.likedByMe ? null : 'like',
+    );
     if (response.statusCode != 200) {
       throw Exception('좋아요 실패');
     }
@@ -367,13 +391,11 @@ class RemotePostRepository implements PostRepository {
 
   @override
   Future<Post> toggleDislike(Post post, String currentUserId) async {
-    final response = await http
-        .post(
-          Uri.parse('$baseUrl/posts/${post.id}/dislike'),
-          headers: {'Content-Type': 'application/json'},
-          body: jsonEncode({'userId': currentUserId}),
-        )
-        .timeout(const Duration(seconds: 8));
+    final response = await _setReaction(
+      postId: post.id,
+      userId: currentUserId,
+      reaction: post.dislikedByMe ? null : 'dislike',
+    );
     if (response.statusCode != 200) {
       throw Exception('싫어요 실패');
     }

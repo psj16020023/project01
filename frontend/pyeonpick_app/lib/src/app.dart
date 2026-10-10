@@ -105,6 +105,35 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
     });
   }
 
+  Future<void> _handleSavedPostChanged(String postId, bool saved) async {
+    final store = _accountStore!;
+    final previousUser = _currentUser;
+    if (previousUser == null) return;
+    final nextIds = previousUser.savedPostIds.toSet();
+    saved ? nextIds.add(postId) : nextIds.remove(postId);
+    setState(
+      () =>
+          _currentUser = previousUser.copyWith(savedPostIds: nextIds.toList()),
+    );
+    try {
+      final persisted = await store.setPostSaved(
+        user: previousUser,
+        postId: postId,
+        saved: saved,
+      );
+      if (!mounted) return;
+      setState(() => _currentUser = persisted);
+    } catch (error) {
+      if (!mounted) rethrow;
+      if (error is StateError && error.message.contains('로그인이 만료')) {
+        setState(() => _currentUser = null);
+        return;
+      }
+      setState(() => _currentUser = previousUser);
+      rethrow;
+    }
+  }
+
   Future<void> _handleLogout() async {
     final store = _accountStore!;
     await store.signOut();
@@ -173,6 +202,7 @@ class _PyeonPickAppState extends State<PyeonPickApp> {
               currentUser: _currentUser!,
               onUserChanged: _handleUserChanged,
               onPostReactionChanged: _handlePostReactionChanged,
+              onSavedPostChanged: _handleSavedPostChanged,
               onLogout: _handleLogout,
               onDeleteAccount: _handleDeleteAccount,
             ),

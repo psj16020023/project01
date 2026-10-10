@@ -581,6 +581,7 @@ class HomeScreen extends StatefulWidget {
     required this.currentUser,
     required this.onUserChanged,
     required this.onPostReactionChanged,
+    required this.onSavedPostChanged,
     required this.onLogout,
     required this.onDeleteAccount,
   });
@@ -590,6 +591,7 @@ class HomeScreen extends StatefulWidget {
   final PyeonUser currentUser;
   final Future<void> Function(PyeonUser user) onUserChanged;
   final ValueChanged<Post> onPostReactionChanged;
+  final Future<void> Function(String postId, bool saved) onSavedPostChanged;
   final Future<void> Function() onLogout;
   final Future<void> Function(String password) onDeleteAccount;
 
@@ -1111,15 +1113,8 @@ class _HomeScreenState extends State<HomeScreen> {
   }
 
   Future<void> _toggleSavedPost(String postId) async {
-    final current = widget.currentUser.savedPostIds.toSet();
-    if (current.contains(postId)) {
-      current.remove(postId);
-    } else {
-      current.add(postId);
-    }
-    await widget.onUserChanged(
-      widget.currentUser.copyWith(savedPostIds: current.toList()),
-    );
+    final saved = !widget.currentUser.savedPostIds.contains(postId);
+    await widget.onSavedPostChanged(postId, saved);
   }
 
   Future<void> _togglePickedAuthor(String authorId) async {

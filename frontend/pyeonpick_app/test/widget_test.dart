@@ -244,6 +244,7 @@ void main() {
           currentUser: user,
           onUserChanged: (_) async {},
           onPostReactionChanged: (_) {},
+          onSavedPostChanged: (_, _) async {},
           onLogout: () async {},
           onDeleteAccount: (_) async {},
         ),

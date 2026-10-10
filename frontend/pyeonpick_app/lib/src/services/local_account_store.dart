@@ -314,6 +314,58 @@ class LocalAccountStore {
     await _cacheCurrentUser(saved);
   }
 
+  Future<PyeonUser> setPostSaved({
+    required PyeonUser user,
+    required String postId,
+    required bool saved,
+  }) async {
+    final nextIds = user.savedPostIds.toSet();
+    saved ? nextIds.add(postId) : nextIds.remove(postId);
+    final optimistic = user.copyWith(savedPostIds: nextIds.toList());
+    if (!_usesRemoteAuth) {
+      await saveUser(optimistic);
+      return optimistic;
+    }
+
+    Object? lastError;
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final response = await http
+            .put(
+              Uri.parse(
+                '${environment.apiBaseUrl}/users/${user.id}/saved-posts/$postId',
+              ),
+              headers: _authorizedHeaders(contentType: true),
+              body: jsonEncode({'saved': saved}),
+            )
+            .timeout(const Duration(seconds: 10));
+        if (response.statusCode == 200) {
+          final json = jsonDecode(response.body) as Map<String, dynamic>;
+          final persisted = _mergePassword(
+            fresh: PyeonUser.fromJson(json['user'] as Map<String, dynamic>),
+            fallback: optimistic,
+          );
+          await _cacheCurrentUser(persisted);
+          return persisted;
+        }
+        if (response.statusCode == 401 || response.statusCode == 403) {
+          await signOut();
+          throw StateError('로그인이 만료됐어요. 다시 로그인해 주세요.');
+        }
+        if (response.statusCode < 500 || attempt == 1) {
+          final message = _extractMessage(response.body, '보관함을 저장하지 못했어요.');
+          throw StateError(message);
+        }
+        lastError = StateError('보관함 저장 서버 오류');
+      } catch (error) {
+        lastError = error;
+        if (error is StateError || attempt == 1) rethrow;
+      }
+      await Future<void>.delayed(const Duration(milliseconds: 250));
+    }
+    throw StateError(lastError?.toString() ?? '보관함을 저장하지 못했어요.');
+  }
+
   Future<void> signOut() async {
     await _store.remove(_currentUserIdKey);
     await _store.remove(_cachedCurrentUserKey);

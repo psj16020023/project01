@@ -3926,6 +3926,23 @@ app.put("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
   return res.json({ user: await serializeUser(user) });
 });
 
+app.put("/api/users/:id/saved-posts/:postId", requireAuth, requireSelf, async (req, res) => {
+  const saved = req.body.saved === true;
+  const postId = String(req.params.postId || "").trim();
+  if (!isValidObjectId(postId) || !(await Post.exists({ _id: postId }))) {
+    return res.status(404).json({ message: "게시글을 찾을 수 없어요." });
+  }
+
+  const update = saved
+    ? { $addToSet: { savedPostIds: postId } }
+    : { $pull: { savedPostIds: postId } };
+  const user = await User.findByIdAndUpdate(req.params.id, update, { new: true });
+  if (!user) {
+    return res.status(404).json({ message: "사용자를 찾을 수 없어요." });
+  }
+  return res.json({ user: await serializeUser(user) });
+});
+
 app.delete("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
   const user = await User.findById(req.params.id);
   if (!user) {
@@ -4676,6 +4693,58 @@ function nextReactionState(post, user, userId, reaction) {
   };
 }
 
+function setReactionState(post, user, userId, reaction) {
+  const postId = post._id.toString();
+  const likedPostIds = new Set((user.likedPostIds || []).map(String));
+  const dislikedPostIds = new Set((user.dislikedPostIds || []).map(String));
+  const wasLiked = likedPostIds.has(postId);
+  const wasDisliked = dislikedPostIds.has(postId);
+  const shouldLike = reaction === "like";
+  const shouldDislike = reaction === "dislike";
+  let likes = Number(post.likes || 0);
+  let dislikes = Number(post.dislikes || 0);
+  const ownLikeEvents = (post.likeEvents || []).filter(
+    (event) => String(event.userId) === userId,
+  );
+  let likeEvents = (post.likeEvents || []).filter(
+    (event) => String(event.userId) !== userId,
+  );
+
+  if (shouldLike !== wasLiked) {
+    likes = Math.max(0, likes + (shouldLike ? 1 : -1));
+  }
+  if (shouldDislike !== wasDisliked) {
+    dislikes = Math.max(0, dislikes + (shouldDislike ? 1 : -1));
+  }
+
+  if (shouldLike) {
+    likedPostIds.add(postId);
+    likeEvents.push(
+      ...(wasLiked && ownLikeEvents.length > 0
+        ? ownLikeEvents
+        : [{ userId, createdAt: new Date() }]),
+    );
+  } else {
+    likedPostIds.delete(postId);
+  }
+  if (shouldDislike) {
+    dislikedPostIds.add(postId);
+  } else {
+    dislikedPostIds.delete(postId);
+  }
+
+  return {
+    postId,
+    likes,
+    dislikes,
+    likeEvents,
+    likedPostIds: [...likedPostIds],
+    dislikedPostIds: [...dislikedPostIds],
+    likedByMe: shouldLike,
+    dislikedByMe: shouldDislike,
+  };
+}
+
 async function updatePostReaction(req, res, reaction) {
   const userId = String(req.body.userId || "");
   if (!userId) return res.status(400).json({ message: "사용자 정보가 필요합니다." });
@@ -4712,12 +4781,56 @@ async function updatePostReaction(req, res, reaction) {
   scheduleTopFiveBadgeRefresh();
 }
 
+async function setPostReaction(req, res) {
+  const userId = String(req.body.userId || "");
+  const reaction = req.body.reaction == null ? null : String(req.body.reaction);
+  if (!userId) return res.status(400).json({ message: "사용자 정보가 필요합니다." });
+  if (![null, "like", "dislike"].includes(reaction)) {
+    return res.status(400).json({ message: "올바른 반응이 아닙니다." });
+  }
+
+  const [post, user] = await Promise.all([
+    Post.findById(req.params.id).select("likes dislikes likeEvents").lean(),
+    isValidObjectId(userId)
+      ? User.findById(userId).select("likedPostIds dislikedPostIds").lean()
+      : Promise.resolve(null),
+  ]);
+  if (!post) return res.status(404).json({ message: "게시글을 찾을 수 없습니다." });
+  if (!user) return res.status(404).json({ message: "사용자를 찾을 수 없습니다." });
+
+  const next = setReactionState(post, user, userId, reaction);
+  await Promise.all([
+    Post.updateOne(
+      { _id: post._id },
+      { $set: { likes: next.likes, dislikes: next.dislikes, likeEvents: next.likeEvents } },
+    ),
+    User.updateOne(
+      { _id: user._id },
+      { $set: { likedPostIds: next.likedPostIds, dislikedPostIds: next.dislikedPostIds } },
+    ),
+  ]);
+  res.json({
+    reaction: {
+      id: next.postId,
+      likes: next.likes,
+      dislikes: next.dislikes,
+      likedByMe: next.likedByMe,
+      dislikedByMe: next.dislikedByMe,
+    },
+  });
+  scheduleTopFiveBadgeRefresh();
+}
+
 app.post("/api/posts/:id/like", async (req, res) => {
   return updatePostReaction(req, res, "like");
 });
 
 app.post("/api/posts/:id/dislike", async (req, res) => {
   return updatePostReaction(req, res, "dislike");
+});
+
+app.put("/api/posts/:id/reaction", async (req, res) => {
+  return setPostReaction(req, res);
 });
 
 app.post("/api/posts/:id/comments", async (req, res) => {
@@ -5223,6 +5336,7 @@ if (require.main === module) {
 
 module.exports = {
   nextReactionState,
+  setReactionState,
   serializeBattleMatch,
   serializePostCatalog,
   requestAllConvenienceRefresh,
