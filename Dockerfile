@@ -6,15 +6,16 @@ COPY frontend/pyeonpick_app/pubspec.yaml frontend/pyeonpick_app/pubspec.lock ./f
 WORKDIR /app/frontend/pyeonpick_app
 RUN flutter pub get
 
-COPY frontend/pyeonpick_app/ ./
+COPY frontend/pyeonpick_app/lib ./lib
+COPY frontend/pyeonpick_app/web ./web
 RUN flutter build web --release --dart-define=DATA_MODE=remote --pwa-strategy=none --no-wasm-dry-run
 
 FROM node:20-slim AS runtime
 
 WORKDIR /app
 
-COPY backend/package.json /app/backend/package.json
-RUN cd /app/backend && npm install --omit=dev
+COPY backend/package.json backend/package-lock.json /app/backend/
+RUN cd /app/backend && npm ci --omit=dev --no-audit --no-fund
 
 COPY backend /app/backend
 COPY --from=web_builder /app/frontend/pyeonpick_app/build/web /app/frontend/pyeonpick_app/build/web

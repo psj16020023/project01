@@ -15,3 +15,12 @@ frontend/pyeonpick_app/android/local.properties
 frontend/pyeonpick_app/ios/Pods
 frontend/pyeonpick_app/macos/Pods
 .DS_Store
+.config
+.dartServer
+.flutter
+.pub-cache
+PyeonPick Preview.app
+*.zip
+*.command
+*.c
+study
