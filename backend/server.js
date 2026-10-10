@@ -3,7 +3,6 @@ require("dotenv").config({ path: require("path").join(__dirname, ".env") });
 const express = require("express");
 const cors = require("cors");
 const mongoose = require("mongoose");
-const { MongoMemoryServer } = require("mongodb-memory-server");
 const path = require("path");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
@@ -5038,6 +5037,7 @@ async function start() {
       await mongoose.connect(MONGO_URI, { serverSelectionTimeoutMS: 20000 });
       mongoLabel = "external MongoDB";
     } else if (process.env.ALLOW_IN_MEMORY_MONGO === "true") {
+      const { MongoMemoryServer } = require("mongodb-memory-server");
       const mongoServer = await MongoMemoryServer.create();
       await mongoose.connect(mongoServer.getUri());
     } else {
