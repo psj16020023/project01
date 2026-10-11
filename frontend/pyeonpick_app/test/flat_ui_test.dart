@@ -18,7 +18,7 @@ void main() {
     nickname: '테스트',
   );
 
-  testWidgets('profile taste summary expands and collapses cleanly', (
+  testWidgets('profile shows current taste and an explicit setup edit action', (
     tester,
   ) async {
     tester.view.physicalSize = const Size(390, 844);
@@ -62,20 +62,16 @@ void main() {
       tester.widget(find.byKey(const Key('bot-setup-summary'))),
       isA<Column>(),
     );
+    expect(find.text('현재 취향'), findsOneWidget);
+    expect(find.text('편봇 초기설정 수정'), findsOneWidget);
     expect(find.text('기본 정보'), findsOneWidget);
     expect(find.text('맛 선호도'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('bot-setup-toggle')));
-    await tester.pumpAndSettle();
-    expect(find.text('기본 정보'), findsNothing);
-    expect(find.text('남자 · 15세 · 시간절약 · 호불호'), findsOneWidget);
-    await tester.tap(find.byKey(const Key('bot-setup-toggle')));
-    await tester.pumpAndSettle();
-    expect(find.text('기본 정보'), findsOneWidget);
+    expect(find.byKey(const Key('bot-setup-toggle')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
   testWidgets(
-    'profile keeps account controls and offers private Pick Shorts results on mobile',
+    'profile keeps account controls without redundant result and visibility rows',
     (tester) async {
       tester.view.physicalSize = const Size(390, 844);
       tester.view.devicePixelRatio = 1;
@@ -102,15 +98,12 @@ void main() {
         ),
       );
       expect(find.text('픽 쇼츠'), findsOneWidget);
-      expect(find.byKey(const Key('profile-battle-shortcut')), findsOneWidget);
+      expect(find.byKey(const Key('profile-battle-shortcut')), findsNothing);
+      expect(find.text('내 픽쇼츠 결과'), findsNothing);
+      expect(find.text('프로필 공개 설정'), findsNothing);
+      expect(find.byType(Switch), findsNothing);
       expect(find.text('로그아웃'), findsOneWidget);
       expect(find.text('계정 삭제'), findsOneWidget);
-      await tester.tap(find.text('프로필 공개 설정'));
-      await tester.pumpAndSettle();
-      expect(find.byType(Switch), findsNWidgets(8));
-      await tester.tap(find.byKey(const Key('profile-battle-shortcut')));
-      await tester.pump();
-      expect(find.text('내 픽 쇼츠 결과'), findsOneWidget);
       expect(tester.takeException(), isNull);
     },
   );
@@ -223,6 +216,19 @@ void main() {
         .dy;
     expect(reviewTop, greaterThan(authorBottom));
     expect(photoTop, greaterThan(reviewBottom));
+    await tester.tap(find.byKey(const Key('post-review-action')));
+    await tester.pumpAndSettle();
+    expect(find.byType(ReviewComposerSheet), findsOneWidget);
+    expect(find.byType(PostReviewsScreen), findsNothing);
+    await tester.tap(find.byIcon(Icons.close_rounded).last);
+    await tester.pumpAndSettle();
+    await tester.drag(find.byType(ListView), const Offset(0, -1200));
+    await tester.pumpAndSettle();
+    await tester.tap(find.byKey(const Key('post-reviews-view-button')));
+    await tester.pumpAndSettle();
+    expect(find.text('후기 보기'), findsOneWidget);
+    expect(find.byType(PostReviewsScreen), findsOneWidget);
+    expect(find.byKey(const Key('review-compose-input')), findsNothing);
     expect(tester.takeException(), isNull);
   });
 }

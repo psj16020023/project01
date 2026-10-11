@@ -13,6 +13,8 @@ class PostReviewsScreen extends StatefulWidget {
     required this.onUpdateReview,
     required this.onDeleteReview,
     this.scrollController,
+    this.showComposer = true,
+    this.pageMode = false,
   });
 
   final Post post;
@@ -21,6 +23,8 @@ class PostReviewsScreen extends StatefulWidget {
   final Future<Post> Function(PostReview review) onUpdateReview;
   final Future<Post> Function(PostReview review) onDeleteReview;
   final ScrollController? scrollController;
+  final bool showComposer;
+  final bool pageMode;
 
   @override
   State<PostReviewsScreen> createState() => _PostReviewsScreenState();
@@ -87,21 +91,25 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
     return Material(
       key: const Key('reviews-bottom-sheet'),
       color: Colors.white,
-      borderRadius: const BorderRadius.vertical(top: Radius.circular(22)),
+      borderRadius: widget.pageMode
+          ? BorderRadius.zero
+          : const BorderRadius.vertical(top: Radius.circular(22)),
       clipBehavior: Clip.antiAlias,
       child: SafeArea(
         top: false,
         child: Column(
           children: [
-            const SizedBox(height: 8),
-            Container(
-              width: 32,
-              height: 4,
-              decoration: BoxDecoration(
-                color: const Color(0xFFD8DADC),
-                borderRadius: BorderRadius.circular(3),
+            if (!widget.pageMode) ...[
+              const SizedBox(height: 8),
+              Container(
+                width: 32,
+                height: 4,
+                decoration: BoxDecoration(
+                  color: const Color(0xFFD8DADC),
+                  borderRadius: BorderRadius.circular(3),
+                ),
               ),
-            ),
+            ],
             Padding(
               padding: const EdgeInsets.fromLTRB(20, 8, 8, 0),
               child: Row(
@@ -114,11 +122,12 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
                     ),
                   ),
                   const Spacer(),
-                  IconButton(
-                    onPressed: () => Navigator.of(context).pop(),
-                    tooltip: '닫기',
-                    icon: const Icon(Icons.close_rounded),
-                  ),
+                  if (!widget.pageMode)
+                    IconButton(
+                      onPressed: () => Navigator.of(context).pop(),
+                      tooltip: '닫기',
+                      icon: const Icon(Icons.close_rounded),
+                    ),
                 ],
               ),
             ),
@@ -179,52 +188,95 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
                           .toList(),
               ),
             ),
-            ColoredBox(
-              color: AppColors.sky,
-              child: Padding(
-                padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
-                child: Row(
-                  children: [
-                    CircleAvatar(
-                      radius: 17,
-                      backgroundColor: const Color(0xFFF0F1F2),
-                      child: Text(
-                        widget.currentUser.nickname.isEmpty
-                            ? '?'
-                            : widget.currentUser.nickname.characters.first,
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 13,
+            if (widget.showComposer)
+              ColoredBox(
+                color: AppColors.sky,
+                child: Padding(
+                  padding: const EdgeInsets.fromLTRB(18, 10, 18, 10),
+                  child: Row(
+                    children: [
+                      CircleAvatar(
+                        radius: 17,
+                        backgroundColor: const Color(0xFFF0F1F2),
+                        child: Text(
+                          widget.currentUser.nickname.isEmpty
+                              ? '?'
+                              : widget.currentUser.nickname.characters.first,
+                          style: const TextStyle(
+                            color: AppColors.muted,
+                            fontSize: 13,
+                          ),
                         ),
                       ),
-                    ),
-                    const SizedBox(width: 12),
-                    Expanded(
-                      child: TextField(
-                        key: const Key('review-compose-input'),
-                        readOnly: true,
-                        onTap: _writeReview,
-                        decoration: const InputDecoration(
-                          hintText: '후기 남기기...',
-                          filled: false,
-                          border: InputBorder.none,
-                          enabledBorder: InputBorder.none,
-                          focusedBorder: InputBorder.none,
-                          isDense: true,
+                      const SizedBox(width: 12),
+                      Expanded(
+                        child: TextField(
+                          key: const Key('review-compose-input'),
+                          readOnly: true,
+                          onTap: _writeReview,
+                          decoration: const InputDecoration(
+                            hintText: '후기 남기기...',
+                            filled: false,
+                            border: InputBorder.none,
+                            enabledBorder: InputBorder.none,
+                            focusedBorder: InputBorder.none,
+                            isDense: true,
+                          ),
                         ),
                       ),
-                    ),
-                    IconButton(
-                      onPressed: _writeReview,
-                      tooltip: '후기 쓰기',
-                      icon: const Icon(Icons.edit_outlined, size: 21),
-                    ),
-                  ],
+                      IconButton(
+                        onPressed: _writeReview,
+                        tooltip: '후기 쓰기',
+                        icon: const Icon(Icons.edit_outlined, size: 21),
+                      ),
+                    ],
+                  ),
                 ),
               ),
-            ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+class PostReviewsPage extends StatelessWidget {
+  const PostReviewsPage({
+    super.key,
+    required this.post,
+    required this.currentUser,
+    required this.onAddReview,
+    required this.onUpdateReview,
+    required this.onDeleteReview,
+  });
+
+  final Post post;
+  final PyeonUser currentUser;
+  final Future<Post> Function(PostReview review) onAddReview;
+  final Future<Post> Function(PostReview review) onUpdateReview;
+  final Future<Post> Function(PostReview review) onDeleteReview;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: const Color(0xFFF7FBFD),
+      appBar: AppBar(
+        backgroundColor: Colors.white,
+        foregroundColor: AppColors.ink,
+        elevation: 0,
+        title: const Text(
+          '후기 보기',
+          style: TextStyle(fontWeight: FontWeight.w900),
+        ),
+      ),
+      body: PostReviewsScreen(
+        post: post,
+        currentUser: currentUser,
+        onAddReview: onAddReview,
+        onUpdateReview: onUpdateReview,
+        onDeleteReview: onDeleteReview,
+        showComposer: false,
+        pageMode: true,
       ),
     );
   }

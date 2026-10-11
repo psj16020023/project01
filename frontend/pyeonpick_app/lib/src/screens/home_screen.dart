@@ -2971,7 +2971,6 @@ class _HomeScreenState extends State<HomeScreen> {
           shuffleSeed: _shuffleSeed,
           onScanBarcode: _scanCommunicationBarcode,
           pickedAuthorsOnly: _pickedAuthorsOnly,
-          hasPickedAuthors: widget.currentUser.pickedAuthorIds.isNotEmpty,
           onTogglePickedAuthors: _togglePickedAuthorsOnly,
           battleHighlights: _battleHighlights,
           onOpenBattleHighlights: _openBattleHighlights,
@@ -3051,7 +3050,6 @@ class CommunicationBody extends StatelessWidget {
     required this.shuffleSeed,
     required this.onScanBarcode,
     required this.pickedAuthorsOnly,
-    required this.hasPickedAuthors,
     required this.onTogglePickedAuthors,
     required this.battleHighlights,
     required this.onOpenBattleHighlights,
@@ -3087,7 +3085,6 @@ class CommunicationBody extends StatelessWidget {
   final int shuffleSeed;
   final Future<void> Function() onScanBarcode;
   final bool pickedAuthorsOnly;
-  final bool hasPickedAuthors;
   final Future<void> Function() onTogglePickedAuthors;
   final List<BattleMatchEntry> battleHighlights;
   final ValueChanged<bool> onOpenBattleHighlights;
@@ -3201,7 +3198,6 @@ class CommunicationBody extends StatelessWidget {
                   onShuffle: onShuffle,
                   onScanBarcode: onScanBarcode,
                   pickedAuthorsOnly: pickedAuthorsOnly,
-                  hasPickedAuthors: hasPickedAuthors,
                   onTogglePickedAuthors: onTogglePickedAuthors,
                 ),
                 topics: discoveryTopics,
@@ -3221,6 +3217,12 @@ class CommunicationBody extends StatelessWidget {
                         fontWeight: FontWeight.w900,
                       ),
                     ),
+                  ),
+                  IconButton(
+                    key: const Key('shuffle-posts-and-topics'),
+                    onPressed: onShuffle,
+                    tooltip: '전체 게시글 섞기',
+                    icon: const Icon(Icons.shuffle_rounded, size: 20),
                   ),
                   SortSelector(
                     sortMode: sortMode,
@@ -4496,7 +4498,6 @@ class Toolbar extends StatefulWidget {
     required this.onShuffle,
     required this.onScanBarcode,
     required this.pickedAuthorsOnly,
-    required this.hasPickedAuthors,
     required this.onTogglePickedAuthors,
   });
 
@@ -4510,7 +4511,6 @@ class Toolbar extends StatefulWidget {
   final VoidCallback onShuffle;
   final Future<void> Function() onScanBarcode;
   final bool pickedAuthorsOnly;
-  final bool hasPickedAuthors;
   final Future<void> Function() onTogglePickedAuthors;
 
   @override
@@ -4598,12 +4598,10 @@ class _ToolbarState extends State<Toolbar> {
               size: 20,
               color: AppColors.muted,
             ),
-            const SizedBox(width: 6),
+            const Spacer(),
             TextButton.icon(
               key: const Key('picked-author-filter'),
-              onPressed: widget.hasPickedAuthors
-                  ? widget.onTogglePickedAuthors
-                  : widget.onTogglePickedAuthors,
+              onPressed: widget.onTogglePickedAuthors,
               style: TextButton.styleFrom(
                 foregroundColor: widget.pickedAuthorsOnly
                     ? AppColors.skyBlueDeep
@@ -4624,13 +4622,6 @@ class _ToolbarState extends State<Toolbar> {
                 '픽한 사람',
                 style: TextStyle(fontWeight: FontWeight.w700),
               ),
-            ),
-            const Spacer(),
-            IconButton(
-              key: const Key('shuffle-posts-and-topics'),
-              onPressed: widget.onShuffle,
-              tooltip: '섞기',
-              icon: const Icon(Icons.shuffle_rounded, size: 20),
             ),
           ],
         ),
@@ -5504,7 +5495,7 @@ class PostCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: ActionChipButton(
-                    label: isSaved ? '보관함에서 삭제' : '보관함에 추가',
+                    label: isSaved ? '북마크 해제' : '북마크',
                     icon: isSaved
                         ? Icons.bookmark_rounded
                         : Icons.bookmark_border_rounded,
@@ -5786,7 +5777,26 @@ class ActionChipButton extends StatelessWidget {
               fontSize: compact ? 10 : 11,
             ),
           )
-        : Icon(buttonIcon, color: foregroundColor, size: compact ? 15 : 18);
+        : Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Icon(buttonIcon, color: foregroundColor, size: compact ? 14 : 17),
+              const SizedBox(width: 3),
+              Flexible(
+                child: Text(
+                  label,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: TextStyle(
+                    color: foregroundColor,
+                    fontWeight: FontWeight.w800,
+                    fontSize: compact ? 9 : 10.5,
+                  ),
+                ),
+              ),
+            ],
+          );
     final button = Material(
       color: Colors.transparent,
       child: InkWell(
@@ -6839,16 +6849,6 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
     });
   }
 
-  Future<void> _handleMenu(String value) async {
-    if (value == 'setup') {
-      await widget.onResetSetup();
-      return;
-    }
-    if (value == 'conversation') {
-      await _resetConversation();
-    }
-  }
-
   Future<void> _loadMoreRecommendations() async {
     setState(() => _sending = true);
     try {
@@ -6880,39 +6880,10 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
         messages.last.recommendedPostIds.isNotEmpty;
     return Column(
       children: [
-        Padding(
-          padding: const EdgeInsets.fromLTRB(18, 18, 18, 8),
-          child: Row(
-            children: [
-              const Expanded(
-                child: Text(
-                  '편봇',
-                  style: TextStyle(
-                    color: AppColors.ink,
-                    fontWeight: FontWeight.w900,
-                    fontSize: 24,
-                  ),
-                ),
-              ),
-              PopupMenuButton<String>(
-                tooltip: '편봇 메뉴',
-                icon: const Icon(
-                  Icons.more_horiz_rounded,
-                  color: AppColors.skyBlueDeep,
-                ),
-                onSelected: _handleMenu,
-                itemBuilder: (context) => const [
-                  PopupMenuItem(value: 'setup', child: Text('초기설정 다시 하기')),
-                  PopupMenuItem(value: 'conversation', child: Text('대화 초기화')),
-                ],
-              ),
-            ],
-          ),
-        ),
         Expanded(
           child: ListView(
             controller: _scrollController,
-            padding: const EdgeInsets.fromLTRB(16, 6, 16, 16),
+            padding: const EdgeInsets.fromLTRB(16, 18, 16, 16),
             children: [
               if (messages.isEmpty)
                 const _BotIntroCard()
@@ -7078,6 +7049,44 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                               horizontal: 9,
                               vertical: 8,
                             ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        key: const Key('bot-reset-setup-button'),
+                        onPressed: _sending
+                            ? null
+                            : () => unawaited(widget.onResetSetup()),
+                        icon: const Icon(Icons.tune_rounded, size: 15),
+                        label: const Text('초기설정 다시하기'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.skyBlueDeep,
+                          side: const BorderSide(color: AppColors.line),
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          textStyle: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      OutlinedButton.icon(
+                        key: const Key('bot-reset-conversation-button'),
+                        onPressed: _sending
+                            ? null
+                            : () => unawaited(_resetConversation()),
+                        icon: const Icon(Icons.refresh_rounded, size: 15),
+                        label: const Text('대화 초기화'),
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: AppColors.muted,
+                          side: const BorderSide(color: AppColors.line),
+                          minimumSize: const Size(0, 36),
+                          padding: const EdgeInsets.symmetric(horizontal: 10),
+                          textStyle: const TextStyle(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
                           ),
                         ),
                       ),
@@ -7432,7 +7441,6 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   bool _resultError = false;
   bool _markingResultsRead = false;
   int _resultGeneration = 0;
-  bool _tasteSummaryExpanded = true;
   final Set<String> _confirmedReadIds = {};
 
   int get _unreadResultCount => _battleResults.results
@@ -7803,65 +7811,8 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
         const Divider(height: 1, color: AppColors.line),
         const SizedBox(height: 20),
         if (_mode == _ProfileViewMode.overview) ...[
-          InkWell(
-            key: const Key('profile-battle-shortcut'),
-            onTap: _showBattleResults,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
-                children: [
-                  const Icon(
-                    Icons.play_circle_outline_rounded,
-                    size: 22,
-                    color: AppColors.skyBlueDeep,
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '내 픽쇼츠 결과',
-                          style: TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w600,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          _unreadResultCount > 0
-                              ? '새로운 결과 $_unreadResultCount개가 있어요'
-                              : '종료된 투표의 조합별 득표를 확인해요',
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const Icon(
-                    Icons.chevron_right_rounded,
-                    size: 21,
-                    color: AppColors.muted,
-                  ),
-                ],
-              ),
-            ),
-          ),
-          const Divider(height: 1, color: AppColors.line),
-          const SizedBox(height: 10),
           if (setup != null) ...[
-            _BotSetupSummaryCard(
-              setup: setup,
-              expanded: _tasteSummaryExpanded,
-              onToggle: () => setState(
-                () => _tasteSummaryExpanded = !_tasteSummaryExpanded,
-              ),
-              onEdit: widget.onResetBotSetup,
-            ),
+            _BotSetupSummaryCard(setup: setup, onEdit: widget.onResetBotSetup),
             const SizedBox(height: 16),
           ] else
             ListTile(
@@ -7872,99 +7823,6 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               onTap: widget.onResetBotSetup,
             ),
           const Divider(height: 24, color: AppColors.line),
-          Theme(
-            data: Theme.of(context).copyWith(dividerColor: Colors.transparent),
-            child: ExpansionTile(
-              tilePadding: EdgeInsets.zero,
-              childrenPadding: EdgeInsets.zero,
-              title: const Text('프로필 공개 설정', style: TextStyle(fontSize: 15)),
-              leading: const Icon(Icons.visibility_outlined, size: 21),
-              children: [
-                _VisibilitySwitchRow(
-                  label: '프로필 공개',
-                  value: user.profilePublic,
-                  onChanged: widget.onToggleProfilePublic,
-                ),
-                _VisibilitySwitchRow(
-                  label: '아이디',
-                  value: user.profileVisibility.username,
-                  onChanged: (v) => widget.onUserChanged(
-                    user.copyWith(
-                      profileVisibility: user.profileVisibility.copyWith(
-                        username: v,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '하트',
-                  value: user.profileVisibility.likes,
-                  onChanged: (v) => widget.onUserChanged(
-                    user.copyWith(
-                      profileVisibility: user.profileVisibility.copyWith(
-                        likes: v,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '싫어요',
-                  value: user.profileVisibility.dislikes,
-                  onChanged: (v) => widget.onUserChanged(
-                    user.copyWith(
-                      profileVisibility: user.profileVisibility.copyWith(
-                        dislikes: v,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '보관',
-                  value: user.profileVisibility.saved,
-                  onChanged: (v) => widget.onUserChanged(
-                    user.copyWith(
-                      profileVisibility: user.profileVisibility.copyWith(
-                        saved: v,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '내 글',
-                  value: user.profileVisibility.myPosts,
-                  onChanged: (v) => widget.onUserChanged(
-                    user.copyWith(
-                      profileVisibility: user.profileVisibility.copyWith(
-                        myPosts: v,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '픽한 작성자',
-                  value: user.profileVisibility.picks,
-                  onChanged: (v) => widget.onUserChanged(
-                    user.copyWith(
-                      profileVisibility: user.profileVisibility.copyWith(
-                        picks: v,
-                      ),
-                    ),
-                  ),
-                ),
-                _VisibilitySwitchRow(
-                  label: '받은 픽',
-                  value: user.profileVisibility.pickedBy,
-                  onChanged: (v) => widget.onUserChanged(
-                    user.copyWith(
-                      profileVisibility: user.profileVisibility.copyWith(
-                        pickedBy: v,
-                      ),
-                    ),
-                  ),
-                ),
-              ],
-            ),
-          ),
           ListTile(
             contentPadding: EdgeInsets.zero,
             title: const Text('로그아웃', style: TextStyle(fontSize: 15)),
@@ -8279,36 +8137,6 @@ class _ProfileModeChip extends StatelessWidget {
   }
 }
 
-class _VisibilitySwitchRow extends StatelessWidget {
-  const _VisibilitySwitchRow({
-    required this.label,
-    required this.value,
-    required this.onChanged,
-  });
-
-  final String label;
-  final bool value;
-  final ValueChanged<bool> onChanged;
-
-  @override
-  Widget build(BuildContext context) {
-    return SwitchListTile.adaptive(
-      contentPadding: EdgeInsets.zero,
-      title: Text(
-        label,
-        style: const TextStyle(fontSize: 14, fontWeight: FontWeight.w400),
-      ),
-      value: value,
-      onChanged: onChanged,
-      activeTrackColor: AppColors.lime,
-      activeThumbColor: AppColors.limeDeep,
-      inactiveTrackColor: const Color(0xFFEAECEE),
-      inactiveThumbColor: Colors.white,
-      trackOutlineColor: const WidgetStatePropertyAll(Colors.transparent),
-    );
-  }
-}
-
 class _AuthorProfileSection extends StatelessWidget {
   const _AuthorProfileSection({
     required this.title,
@@ -8483,166 +8311,82 @@ class _PickedAuthorMiniCard extends StatelessWidget {
 }
 
 class _BotSetupSummaryCard extends StatelessWidget {
-  const _BotSetupSummaryCard({
-    required this.setup,
-    required this.expanded,
-    required this.onToggle,
-    required this.onEdit,
-  });
+  const _BotSetupSummaryCard({required this.setup, required this.onEdit});
 
   final BotSetup setup;
-  final bool expanded;
-  final VoidCallback onToggle;
   final VoidCallback onEdit;
 
   @override
   Widget build(BuildContext context) {
-    final collapsedSummary = <String>[
-      setup.gender,
-      '${setup.age}세',
-      ...setup.priorityValues,
-    ].join(' · ');
-
     return Column(
       key: const Key('bot-setup-summary'),
       crossAxisAlignment: CrossAxisAlignment.start,
       children: [
-        Semantics(
-          button: true,
-          expanded: expanded,
-          label: expanded ? '나의 초기 설정 접기' : '나의 초기 설정 펼치기',
-          child: InkWell(
-            key: const Key('bot-setup-toggle'),
-            onTap: onToggle,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(vertical: 12),
-              child: Row(
+        Row(
+          children: [
+            const Expanded(
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  Container(
-                    width: 3,
-                    height: 34,
-                    decoration: BoxDecoration(
-                      color: AppColors.lime,
-                      borderRadius: BorderRadius.circular(2),
+                  Text(
+                    '현재 취향',
+                    style: TextStyle(
+                      color: AppColors.ink,
+                      fontSize: 17,
+                      fontWeight: FontWeight.w800,
                     ),
                   ),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        const Text(
-                          '편봇 취향 설정',
-                          style: TextStyle(
-                            color: AppColors.ink,
-                            fontSize: 15,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                        const SizedBox(height: 3),
-                        Text(
-                          expanded ? '추천에 사용하는 내 취향' : collapsedSummary,
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                          style: const TextStyle(
-                            color: AppColors.muted,
-                            fontSize: 12,
-                            fontWeight: FontWeight.w400,
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(width: 8),
-                  AnimatedRotation(
-                    turns: expanded ? .5 : 0,
-                    duration: const Duration(milliseconds: 180),
-                    child: const Icon(
-                      Icons.keyboard_arrow_down_rounded,
-                      size: 22,
-                      color: AppColors.muted,
-                    ),
+                  SizedBox(height: 3),
+                  Text(
+                    '편봇 추천에 사용하고 있어요',
+                    style: TextStyle(color: AppColors.muted, fontSize: 12),
                   ),
                 ],
               ),
             ),
-          ),
+            TextButton.icon(
+              key: const Key('bot-setup-edit'),
+              onPressed: onEdit,
+              icon: const Icon(Icons.edit_outlined, size: 17),
+              label: const Text('편봇 초기설정 수정'),
+              style: TextButton.styleFrom(
+                foregroundColor: AppColors.skyBlueDeep,
+                textStyle: const TextStyle(fontWeight: FontWeight.w800),
+              ),
+            ),
+          ],
         ),
         const Divider(height: 1, color: AppColors.line),
-        AnimatedSize(
-          duration: const Duration(milliseconds: 200),
-          curve: Curves.easeOutCubic,
-          child: expanded
-              ? Column(
-                  children: [
-                    _PreferenceInfoRow(
-                      title: '기본 정보',
-                      value: '${setup.gender} · ${setup.age}세',
-                    ),
-                    if (setup.priorityValues.isNotEmpty)
-                      _PreferenceInfoRow(
-                        title: '추천 기준',
-                        value: setup.priorityValues.join(' · '),
-                      ),
-                    if (setup.tasteRatings.isNotEmpty) ...[
-                      const Divider(height: 1, color: AppColors.divider),
-                      const Padding(
-                        padding: EdgeInsets.only(top: 14, bottom: 12),
-                        child: Align(
-                          alignment: Alignment.centerLeft,
-                          child: Text(
-                            '맛 선호도',
-                            style: TextStyle(
-                              color: AppColors.ink,
-                              fontSize: 13,
-                              fontWeight: FontWeight.w500,
-                            ),
-                          ),
-                        ),
-                      ),
-                      ...setup.tasteRatings.entries.map(
-                        (entry) => _TastePreferenceMeter(
-                          label: entry.key,
-                          value: entry.value,
-                        ),
-                      ),
-                    ],
-                    const Divider(height: 1, color: AppColors.divider),
-                    InkWell(
-                      onTap: onEdit,
-                      child: const Padding(
-                        padding: EdgeInsets.symmetric(vertical: 13),
-                        child: Row(
-                          children: [
-                            Icon(
-                              Icons.edit_outlined,
-                              size: 17,
-                              color: AppColors.muted,
-                            ),
-                            SizedBox(width: 9),
-                            Expanded(
-                              child: Text(
-                                '취향 설정 수정',
-                                style: TextStyle(
-                                  color: AppColors.ink,
-                                  fontSize: 13,
-                                  fontWeight: FontWeight.w400,
-                                ),
-                              ),
-                            ),
-                            Icon(
-                              Icons.chevron_right_rounded,
-                              size: 20,
-                              color: AppColors.muted,
-                            ),
-                          ],
-                        ),
-                      ),
-                    ),
-                  ],
-                )
-              : const SizedBox(width: double.infinity),
+        _PreferenceInfoRow(
+          title: '기본 정보',
+          value: '${setup.gender} · ${setup.age}세',
         ),
+        if (setup.priorityValues.isNotEmpty)
+          _PreferenceInfoRow(
+            title: '추천 기준',
+            value: setup.priorityValues.join(' · '),
+          ),
+        if (setup.tasteRatings.isNotEmpty) ...[
+          const Divider(height: 1, color: AppColors.divider),
+          const Padding(
+            padding: EdgeInsets.only(top: 14, bottom: 12),
+            child: Align(
+              alignment: Alignment.centerLeft,
+              child: Text(
+                '맛 선호도',
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w500,
+                ),
+              ),
+            ),
+          ),
+          ...setup.tasteRatings.entries.map(
+            (entry) =>
+                _TastePreferenceMeter(label: entry.key, value: entry.value),
+          ),
+        ],
       ],
     );
   }
@@ -9109,19 +8853,30 @@ class _PostDetailPageState extends State<PostDetailPage> {
     );
   }
 
-  Future<void> _openReviews() async {
-    await showModalBottomSheet<void>(
+  Future<void> _writeReview() async {
+    final review = await showModalBottomSheet<PostReview>(
       context: context,
       isScrollControlled: true,
       backgroundColor: Colors.transparent,
-      constraints: const BoxConstraints(maxWidth: 720),
-      builder: (context) => DraggableScrollableSheet(
-        initialChildSize: 0.76,
-        minChildSize: 0.45,
-        maxChildSize: 0.94,
-        expand: false,
-        builder: (context, scrollController) => PostReviewsScreen(
-          scrollController: scrollController,
+      builder: (context) =>
+          ReviewComposerSheet(currentUser: widget.currentUser),
+    );
+    if (review == null) return;
+    try {
+      final updated = await widget.onAddReview(review);
+      if (mounted) setState(() => _post = updated);
+    } catch (_) {
+      if (!mounted) return;
+      ScaffoldMessenger.of(context).showSnackBar(
+        const SnackBar(content: Text('후기를 저장하지 못했어요. 다시 시도해 주세요.')),
+      );
+    }
+  }
+
+  Future<void> _openReviews() async {
+    await Navigator.of(context).push<void>(
+      MaterialPageRoute<void>(
+        builder: (context) => PostReviewsPage(
           post: _post,
           currentUser: widget.currentUser,
           onAddReview: (review) async {
@@ -9252,7 +9007,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                       alignment: Alignment.centerRight,
                       child: FilledButton.icon(
                         key: const Key('post-review-action'),
-                        onPressed: _openReviews,
+                        onPressed: _writeReview,
                         icon: const Icon(Icons.rate_review_outlined, size: 17),
                         label: const Text(
                           '후기 작성',
@@ -9387,7 +9142,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ActionChipButton(
-                            label: _saved ? '보관함에서 삭제' : '보관함에 추가',
+                            label: _saved ? '북마크 해제' : '북마크',
                             icon: _saved
                                 ? Icons.bookmark_rounded
                                 : Icons.bookmark_border_rounded,
@@ -9416,10 +9171,32 @@ class _PostDetailPageState extends State<PostDetailPage> {
           Center(
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 820),
-              child: _PostLikeAudienceCard(
-                likedUsers: _likedUsers,
-                audienceStats: _audienceStats,
-                reviews: _post.reviews,
+              child: Column(
+                children: [
+                  _PostLikeAudienceCard(
+                    likedUsers: _likedUsers,
+                    audienceStats: _audienceStats,
+                    reviews: _post.reviews,
+                  ),
+                  const SizedBox(height: 14),
+                  SizedBox(
+                    width: double.infinity,
+                    child: OutlinedButton.icon(
+                      key: const Key('post-reviews-view-button'),
+                      onPressed: _openReviews,
+                      icon: const Icon(Icons.reviews_outlined, size: 18),
+                      label: Text(
+                        '후기 보기 (${_post.reviews.length})',
+                        style: const TextStyle(fontWeight: FontWeight.w800),
+                      ),
+                      style: OutlinedButton.styleFrom(
+                        foregroundColor: AppColors.skyBlueDeep,
+                        side: const BorderSide(color: AppColors.line),
+                        padding: const EdgeInsets.symmetric(vertical: 14),
+                      ),
+                    ),
+                  ),
+                ],
               ),
             ),
           ),

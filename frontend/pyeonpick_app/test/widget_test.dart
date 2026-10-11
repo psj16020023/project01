@@ -177,7 +177,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('save actions use bookmark icons instead of visible text', (
+  testWidgets('save actions show bookmark text next to bookmark icons', (
     tester,
   ) async {
     var tapCount = 0;
@@ -203,8 +203,8 @@ void main() {
       ),
     );
 
-    expect(find.text('보관함에 추가'), findsNothing);
-    expect(find.text('보관함에서 삭제'), findsNothing);
+    expect(find.text('보관함에 추가'), findsOneWidget);
+    expect(find.text('보관함에서 삭제'), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_rounded), findsOneWidget);
     expect(find.byTooltip('보관함에 추가'), findsOneWidget);
@@ -405,7 +405,12 @@ void main() {
     expect(find.text('권장 칼로리 반영'), findsOneWidget);
     expect(find.byKey(const Key('bot-budget-input')), findsOneWidget);
     expect(find.byKey(const Key('bot-message-input')), findsOneWidget);
-    expect(find.byIcon(Icons.more_horiz_rounded), findsOneWidget);
+    expect(find.byKey(const Key('bot-reset-setup-button')), findsOneWidget);
+    expect(
+      find.byKey(const Key('bot-reset-conversation-button')),
+      findsOneWidget,
+    );
+    expect(find.text('편봇'), findsNothing);
     expect(tester.takeException(), isNull);
   });
 
@@ -517,7 +522,6 @@ void main() {
               shuffleSeed: shuffleSeed,
               onScanBarcode: () async {},
               pickedAuthorsOnly: false,
-              hasPickedAuthors: false,
               onTogglePickedAuthors: () async {},
               battleHighlights: const [],
               onOpenBattleHighlights: (_) {},
@@ -569,6 +573,8 @@ void main() {
               .first,
         )
         .data;
+    await tester.drag(find.byType(ListView).first, const Offset(0, -1600));
+    await tester.pumpAndSettle();
     await tester.tap(find.byKey(const Key('shuffle-posts-and-topics')));
     await tester.pump();
     final firstTopicAfterShuffle = tester
