@@ -33,6 +33,7 @@ class PostReviewsScreen extends StatefulWidget {
 class _PostReviewsScreenState extends State<PostReviewsScreen> {
   late Post _post;
   bool _sortByRating = false;
+  String? _selectedCategory;
 
   @override
   void initState() {
@@ -82,12 +83,19 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final reviews = [..._post.reviews]
-      ..sort(
-        (a, b) => _sortByRating && a.rating != b.rating
-            ? b.rating.compareTo(a.rating)
-            : b.createdAt.compareTo(a.createdAt),
-      );
+    final reviews =
+        _post.reviews
+            .where(
+              (review) =>
+                  _selectedCategory == null ||
+                  review.tags.contains(_selectedCategory),
+            )
+            .toList()
+          ..sort(
+            (a, b) => _sortByRating && a.rating != b.rating
+                ? b.rating.compareTo(a.rating)
+                : b.createdAt.compareTo(a.createdAt),
+          );
     return Material(
       key: const Key('reviews-bottom-sheet'),
       color: Colors.white,
@@ -156,6 +164,32 @@ class _PostReviewsScreenState extends State<PostReviewsScreen> {
                         fontWeight: _sortByRating
                             ? FontWeight.w700
                             : FontWeight.w400,
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+            SizedBox(
+              height: 42,
+              child: ListView(
+                key: const Key('review-category-filters'),
+                scrollDirection: Axis.horizontal,
+                padding: const EdgeInsets.symmetric(horizontal: 18),
+                children: [
+                  _ReviewCategoryChip(
+                    label: '전체',
+                    selected: _selectedCategory == null,
+                    onSelected: () => setState(() => _selectedCategory = null),
+                  ),
+                  ...communityReviewTags.map(
+                    (category) => Padding(
+                      padding: const EdgeInsets.only(left: 7),
+                      child: _ReviewCategoryChip(
+                        label: category,
+                        selected: _selectedCategory == category,
+                        onSelected: () =>
+                            setState(() => _selectedCategory = category),
                       ),
                     ),
                   ),
@@ -325,6 +359,8 @@ class ReviewComposerPage extends StatelessWidget {
 
 class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
   final _textController = TextEditingController();
+  final _categories = <String>{};
+  bool _showValidation = false;
   double _rating = 3;
   int _sweet = 3;
   int _salty = 3;
@@ -337,6 +373,7 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
     final review = widget.initialReview;
     if (review == null) return;
     _textController.text = review.text;
+    _categories.addAll(review.tags.where(communityReviewTags.contains));
     _rating = review.rating;
     _sweet = review.sweet;
     _salty = review.salty;
@@ -351,7 +388,10 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
   }
 
   void _submit() {
-    if (_textController.text.trim().isEmpty) return;
+    if (_textController.text.trim().isEmpty || _categories.isEmpty) {
+      setState(() => _showValidation = true);
+      return;
+    }
     Navigator.of(context).pop(
       PostReview(
         id:
@@ -361,7 +401,7 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
         authorNickname: widget.currentUser.nickname,
         text: _textController.text.trim(),
         rating: _rating,
-        tags: widget.initialReview?.tags ?? const <String>[],
+        tags: _categories.toList(),
         sweet: _sweet,
         salty: _salty,
         spicy: _spicy,
@@ -423,6 +463,47 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
                 ],
               ),
               const SizedBox(height: 10),
+              const Text(
+                '후기 카테고리',
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 13,
+                  fontWeight: FontWeight.w700,
+                ),
+              ),
+              const SizedBox(height: 8),
+              Wrap(
+                key: const Key('review-category-picker'),
+                spacing: 7,
+                runSpacing: 7,
+                children: communityReviewTags.map((category) {
+                  final selected = _categories.contains(category);
+                  return FilterChip(
+                    key: Key('review-category-$category'),
+                    selected: selected,
+                    label: Text(category),
+                    onSelected: (_) => setState(() {
+                      selected
+                          ? _categories.remove(category)
+                          : _categories.add(category);
+                      _showValidation = false;
+                    }),
+                  );
+                }).toList(),
+              ),
+              if (_showValidation && _categories.isEmpty) ...[
+                const SizedBox(height: 6),
+                const Text(
+                  '카테고리를 하나 이상 선택해 주세요.',
+                  key: Key('review-category-error'),
+                  style: TextStyle(
+                    color: Colors.redAccent,
+                    fontSize: 12,
+                    fontWeight: FontWeight.w700,
+                  ),
+                ),
+              ],
+              const SizedBox(height: 12),
               const Text(
                 '맛 점수',
                 style: TextStyle(
@@ -511,6 +592,38 @@ class _ReviewComposerSheetState extends State<ReviewComposerSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+class _ReviewCategoryChip extends StatelessWidget {
+  const _ReviewCategoryChip({
+    required this.label,
+    required this.selected,
+    required this.onSelected,
+  });
+
+  final String label;
+  final bool selected;
+  final VoidCallback onSelected;
+
+  @override
+  Widget build(BuildContext context) {
+    return ChoiceChip(
+      key: Key('review-filter-$label'),
+      label: Text(label),
+      selected: selected,
+      onSelected: (_) => onSelected(),
+      showCheckmark: false,
+      visualDensity: VisualDensity.compact,
+      selectedColor: AppColors.skyBlue,
+      side: BorderSide(
+        color: selected ? AppColors.skyBlueDeep : const Color(0xFFDCE6EB),
+      ),
+      labelStyle: TextStyle(
+        color: AppColors.ink,
+        fontWeight: selected ? FontWeight.w800 : FontWeight.w600,
       ),
     );
   }

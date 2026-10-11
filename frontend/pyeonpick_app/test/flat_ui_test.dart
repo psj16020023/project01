@@ -151,10 +151,11 @@ void main() {
       await tester.tap(find.byKey(const Key('review-compose-input')));
       await tester.pumpAndSettle();
       expect(find.byType(ReviewComposerSheet), findsOneWidget);
+      expect(find.text('후기 카테고리'), findsOneWidget);
+      expect(find.byKey(const Key('review-category-picker')), findsOneWidget);
       expect(find.text('맛 점수'), findsOneWidget);
       expect(find.text('평점'), findsOneWidget);
       expect(find.byKey(const Key('review-free-text')), findsOneWidget);
-      expect(find.text('어디에 해당하나요?'), findsNothing);
       expect(find.text('주의사항이 있다면 적어 주세요'), findsNothing);
       tester.view.viewInsets = const FakeViewPadding(bottom: 300);
       addTearDown(tester.view.resetViewInsets);
@@ -170,7 +171,7 @@ void main() {
     tester.view.devicePixelRatio = 1;
     addTearDown(tester.view.resetPhysicalSize);
     addTearDown(tester.view.resetDevicePixelRatio);
-    final post = mockPosts.first;
+    final post = mockPosts.firstWhere((item) => item.reviews.isNotEmpty);
     await tester.pumpWidget(
       MaterialApp(
         home: PostDetailPage(
@@ -228,7 +229,58 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('후기 보기'), findsOneWidget);
     expect(find.byType(PostReviewsScreen), findsOneWidget);
+    expect(find.byKey(const Key('review-category-filters')), findsOneWidget);
+    expect(find.byKey(const Key('review-filter-전체')), findsOneWidget);
+    expect(find.byKey(const Key('review-filter-가성비')), findsOneWidget);
+    expect(find.text(post.reviews.first.text), findsOneWidget);
+    await tester.tap(find.byKey(const Key('review-filter-저칼로리')));
+    await tester.pump();
+    expect(find.text(post.reviews.first.text), findsNothing);
     expect(find.byKey(const Key('review-compose-input')), findsNothing);
     expect(tester.takeException(), isNull);
+  });
+
+  testWidgets('review categories are required and saved with a review', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    PostReview? submitted;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: Builder(
+            builder: (context) => TextButton(
+              onPressed: () async {
+                submitted = await showModalBottomSheet<PostReview>(
+                  context: context,
+                  isScrollControlled: true,
+                  builder: (_) => const ReviewComposerSheet(currentUser: user),
+                );
+              },
+              child: const Text('작성'),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.tap(find.text('작성'));
+    await tester.pumpAndSettle();
+    await tester.enterText(
+      find.byKey(const Key('review-free-text')),
+      '카테고리 테스트 후기',
+    );
+    await tester.tap(find.text('후기 등록'));
+    await tester.pump();
+    expect(find.byKey(const Key('review-category-error')), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('review-category-가성비')));
+    await tester.tap(find.text('후기 등록'));
+    await tester.pumpAndSettle();
+    expect(submitted?.tags, contains('가성비'));
   });
 }
