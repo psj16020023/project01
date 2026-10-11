@@ -2,11 +2,21 @@ const test = require("node:test");
 const assert = require("node:assert/strict");
 
 const {
+  firstPostImageUrl,
   nextReactionState,
   setReactionState,
   serializeBattleMatch,
   serializePostCatalog,
 } = require("./server");
+
+const request = {
+  protocol: "https",
+  get(name) {
+    if (name === "x-forwarded-proto") return "https";
+    if (name === "host") return "pyeonpick.example";
+    return "";
+  },
+};
 
 test("post catalog replaces stored base64 images with lightweight image URLs", () => {
   const post = {
@@ -24,16 +34,7 @@ test("post catalog replaces stored base64 images with lightweight image URLs", (
     imageUrls: [],
     _storedImageCount: 2,
   };
-  const req = {
-    protocol: "https",
-    get(name) {
-      if (name === "x-forwarded-proto") return "https";
-      if (name === "host") return "pyeonpick.example";
-      return "";
-    },
-  };
-
-  const result = serializePostCatalog(post, null, req);
+  const result = serializePostCatalog(post, null, request);
 
   assert.equal(result.imageData, null);
   assert.deepEqual(result.imageDatas, []);
@@ -56,16 +57,7 @@ test("battle serialization replaces inline images with lightweight image URLs", 
     leftCustomImageUrl: "data:image/png;base64,AAAA",
     rightCustomImageUrl: "https://example.com/right.jpg",
   };
-  const req = {
-    protocol: "https",
-    get(name) {
-      if (name === "x-forwarded-proto") return "https";
-      if (name === "host") return "pyeonpick.example";
-      return "";
-    },
-  };
-
-  const result = serializeBattleMatch(match, "", req);
+  const result = serializeBattleMatch(match, "", request);
 
   assert.equal(
     result.leftCustomImageUrl,
@@ -73,6 +65,27 @@ test("battle serialization replaces inline images with lightweight image URLs", 
   );
   assert.equal(result.rightCustomImageUrl, "https://example.com/right.jpg");
   assert.equal(JSON.stringify(result).includes("base64"), false);
+});
+
+test("battle results keep MongoDB-stored post photos loadable", () => {
+  const storedPhotoPost = {
+    _id: { toString: () => "507f1f77bcf86cd799439012" },
+    imageUrl: null,
+    imageUrls: [],
+    _storedImageCount: 1,
+  };
+
+  assert.equal(
+    firstPostImageUrl(storedPhotoPost, request),
+    "https://pyeonpick.example/api/posts/507f1f77bcf86cd799439012/images/0",
+  );
+  assert.equal(
+    firstPostImageUrl(
+      { ...storedPhotoPost, imageUrls: ["https://example.com/photo.jpg"] },
+      request,
+    ),
+    "https://example.com/photo.jpg",
+  );
 });
 
 test("reaction state switches like and dislike without touching unrelated user data", () => {

@@ -62,8 +62,11 @@ void main() {
       tester.widget(find.byKey(const Key('bot-setup-summary'))),
       isA<Column>(),
     );
-    expect(find.text('현재 취향'), findsOneWidget);
-    expect(find.text('편봇 초기설정 수정'), findsOneWidget);
+    expect(find.text('내 취향'), findsOneWidget);
+    expect(find.text('현재 취향'), findsNothing);
+    expect(find.text('편봇 추천에 사용하고 있어요'), findsNothing);
+    expect(find.text('초기설정 수정'), findsOneWidget);
+    expect(find.text('편봇 초기설정 수정'), findsNothing);
     expect(find.text('기본 정보'), findsOneWidget);
     expect(find.text('맛 선호도'), findsOneWidget);
     expect(find.byKey(const Key('bot-setup-toggle')), findsNothing);

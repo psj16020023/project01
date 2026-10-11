@@ -1198,6 +1198,14 @@ function requestOrigin(req) {
   return `${forwardedProto || req.protocol}://${req.get("host")}`;
 }
 
+function firstPostImageUrl(post, req) {
+  if (!post) return null;
+  const remoteImageUrl = post.imageUrls?.find(Boolean) || post.imageUrl || null;
+  if (remoteImageUrl) return remoteImageUrl;
+  if (Number(post._storedImageCount || 0) < 1 || !req) return null;
+  return `${requestOrigin(req)}/api/posts/${post._id.toString()}/images/0`;
+}
+
 function serializePostCatalog(post, currentUser, req) {
   const postId = post._id.toString();
   const likedPostIds = new Set((currentUser?.likedPostIds || []).map(String));
@@ -4023,12 +4031,10 @@ app.get("/api/battles/results", requireAuth, async (req, res) => {
     const posts = await Post.find({ _id: { $in: ids } })
       .select("title imageUrl imageUrls")
       .lean();
+    await attachStoredImageCounts(posts);
     const postsById = new Map(posts.map((post) => [String(post._id), post]));
     const titleFor = (id) => postsById.get(id)?.title;
-    const imageFor = (id) => {
-      const post = postsById.get(id);
-      return post?.imageUrls?.find(Boolean) || post?.imageUrl || null;
-    };
+    const imageFor = (id) => firstPostImageUrl(postsById.get(id), req);
     const readIds = new Set(user.battleResultReadIds || []);
     res.setHeader("Cache-Control", "no-store");
     return res.json({
@@ -5339,6 +5345,7 @@ module.exports = {
   setReactionState,
   serializeBattleMatch,
   serializePostCatalog,
+  firstPostImageUrl,
   requestAllConvenienceRefresh,
   refreshAllConvenienceProducts,
   refreshConvenienceProducts,

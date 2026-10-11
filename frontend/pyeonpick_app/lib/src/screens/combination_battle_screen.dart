@@ -1325,41 +1325,52 @@ class _BattleManualCreateSlot extends StatelessWidget {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Container(
-                width: 108,
-                height: 108,
-                decoration: BoxDecoration(
-                  color: const Color(0xFFF4F7FA),
+              Semantics(
+                button: true,
+                label: '$label 사진 선택',
+                child: InkWell(
+                  key: Key('battle-manual-image-picker-$label'),
+                  onTap: onPickImage,
                   borderRadius: BorderRadius.circular(16),
-                  border: Border.all(color: const Color(0xFFDCE6F0)),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: hasImage
-                    ? _BattleImageFill(
-                        imageUrl: imageUrl,
-                        fallbackColor: const Color(0xFFF4F7FA),
-                        iconColor: _battleSubtle,
-                      )
-                    : const Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Icon(
-                            Icons.photo_library_outlined,
-                            color: _battleSubtle,
-                            size: 30,
-                          ),
-                          SizedBox(height: 8),
-                          Text(
-                            '사진을 추가해주세요',
-                            textAlign: TextAlign.center,
-                            style: TextStyle(
-                              color: Color(0xFF96A4B2),
-                              fontSize: 12,
-                              fontWeight: FontWeight.w700,
+                  child: Ink(
+                    width: 108,
+                    height: 108,
+                    decoration: BoxDecoration(
+                      color: const Color(0xFFF4F7FA),
+                      borderRadius: BorderRadius.circular(16),
+                      border: Border.all(color: const Color(0xFFDCE6F0)),
+                    ),
+                    child: ClipRRect(
+                      borderRadius: BorderRadius.circular(15),
+                      child: hasImage
+                          ? _BattleImageFill(
+                              imageUrl: imageUrl,
+                              fallbackColor: const Color(0xFFF4F7FA),
+                              iconColor: _battleSubtle,
+                            )
+                          : const Column(
+                              mainAxisAlignment: MainAxisAlignment.center,
+                              children: [
+                                Icon(
+                                  Icons.photo_library_outlined,
+                                  color: _battleSubtle,
+                                  size: 30,
+                                ),
+                                SizedBox(height: 8),
+                                Text(
+                                  '사진을 추가해주세요',
+                                  textAlign: TextAlign.center,
+                                  style: TextStyle(
+                                    color: Color(0xFF96A4B2),
+                                    fontSize: 12,
+                                    fontWeight: FontWeight.w700,
+                                  ),
+                                ),
+                              ],
                             ),
-                          ),
-                        ],
-                      ),
+                    ),
+                  ),
+                ),
               ),
               const SizedBox(width: 12),
               Expanded(
@@ -1372,27 +1383,6 @@ class _BattleManualCreateSlot extends StatelessWidget {
                 ),
               ),
             ],
-          ),
-          const SizedBox(height: 10),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
-              onPressed: onPickImage,
-              style: OutlinedButton.styleFrom(
-                backgroundColor: const Color(0xFFF5FAFC),
-                foregroundColor: const Color(0xFF276A85),
-                side: const BorderSide(color: Color(0xFFCFE4EC)),
-                padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(
-                  borderRadius: BorderRadius.circular(12),
-                ),
-              ),
-              icon: const Icon(Icons.add_photo_alternate_outlined, size: 18),
-              label: const Text(
-                '사진 올리기',
-                style: TextStyle(fontWeight: FontWeight.w900),
-              ),
-            ),
           ),
           const SizedBox(height: 8),
           SizedBox(

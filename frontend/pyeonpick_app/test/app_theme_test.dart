@@ -129,6 +129,8 @@ void main() {
         home: Scaffold(body: BotSetupPage(onComplete: (_) async {})),
       ),
     );
+    expect(find.text('내 입맛 알려주기'), findsNothing);
+    expect(find.text('평소 좋아하는 맛과 중요한 기준을 알려줘. 대화할수록 더 잘 맞춰갈게.'), findsNothing);
     final colors = tester
         .widgetList<AnimatedContainer>(find.byType(AnimatedContainer))
         .map((w) => w.decoration)

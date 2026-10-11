@@ -411,6 +411,13 @@ void main() {
       findsOneWidget,
     );
     expect(find.text('편봇'), findsNothing);
+    final controlHeights = [
+      const Key('bot-calorie-toggle'),
+      const Key('bot-budget-input'),
+      const Key('bot-reset-setup-button'),
+      const Key('bot-reset-conversation-button'),
+    ].map((key) => tester.getSize(find.byKey(key)).height).toList();
+    expect(controlHeights, everyElement(36));
     expect(tester.takeException(), isNull);
   });
 

@@ -111,6 +111,55 @@ void main() {
     expect((await MockPostRepository().fetchBattleState()).matches, isEmpty);
   });
 
+  testWidgets('manual Pick Shorts uses each photo tile as its image button', (
+    tester,
+  ) async {
+    tester.view.physicalSize = const Size(390, 844);
+    tester.view.devicePixelRatio = 1;
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    final repository = MockPostRepository(
+      initialBattleState: const CombinationBattleState(),
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        home: Scaffold(
+          body: CombinationBattleScreen(
+            currentUser: const PyeonUser(
+              id: 'manual-author',
+              username: 'manual-author',
+              password: '',
+              nickname: '작성자',
+            ),
+            posts: const [],
+            repository: repository,
+            onUserChanged: (_) async {},
+            onOpenPost: (_) async {},
+            onOpenAuthor: (_, _) async {},
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('올리기').first);
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('직접 입력'));
+    await tester.pumpAndSettle();
+
+    expect(find.text('사진 올리기'), findsNothing);
+    expect(
+      find.byKey(const Key('battle-manual-image-picker-왼쪽 조합')),
+      findsOneWidget,
+    );
+    expect(
+      find.byKey(const Key('battle-manual-image-picker-오른쪽 조합')),
+      findsOneWidget,
+    );
+    expect(find.text('사진을 추가해주세요'), findsNWidgets(2));
+    expect(tester.takeException(), isNull);
+  });
+
   test(
     'learned taste is a small bonus and scarce votes are not over-weighted',
     () {

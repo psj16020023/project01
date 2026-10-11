@@ -6979,53 +6979,57 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                   scrollDirection: Axis.horizontal,
                   child: Row(
                     children: [
-                      InkWell(
-                        borderRadius: BorderRadius.circular(999),
-                        onTap: _sending
-                            ? null
-                            : () => setState(
-                                () =>
-                                    _useAgeCalorieGuide = !_useAgeCalorieGuide,
-                              ),
-                        child: AnimatedContainer(
-                          duration: const Duration(milliseconds: 160),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 10,
-                            vertical: 8,
-                          ),
-                          decoration: BoxDecoration(
-                            color: _useAgeCalorieGuide
-                                ? AppColors.limeSoft
-                                : const Color(0xFFF1F3F5),
-                            borderRadius: BorderRadius.circular(999),
-                            border: Border.all(
+                      SizedBox(
+                        key: const Key('bot-calorie-toggle'),
+                        height: 36,
+                        child: InkWell(
+                          borderRadius: BorderRadius.circular(999),
+                          onTap: _sending
+                              ? null
+                              : () => setState(
+                                  () => _useAgeCalorieGuide =
+                                      !_useAgeCalorieGuide,
+                                ),
+                          child: AnimatedContainer(
+                            duration: const Duration(milliseconds: 160),
+                            alignment: Alignment.center,
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            decoration: BoxDecoration(
                               color: _useAgeCalorieGuide
-                                  ? AppColors.lime
-                                  : AppColors.line,
-                            ),
-                          ),
-                          child: Row(
-                            mainAxisSize: MainAxisSize.min,
-                            children: [
-                              Icon(
-                                Icons.monitor_heart_outlined,
-                                size: 15,
+                                  ? AppColors.limeSoft
+                                  : const Color(0xFFF1F3F5),
+                              borderRadius: BorderRadius.circular(999),
+                              border: Border.all(
                                 color: _useAgeCalorieGuide
-                                    ? AppColors.limeDeep
-                                    : AppColors.muted,
+                                    ? AppColors.lime
+                                    : AppColors.line,
                               ),
-                              const SizedBox(width: 5),
-                              Text(
-                                _useAgeCalorieGuide ? '권장 칼로리 반영' : '권장 칼로리 제외',
-                                style: TextStyle(
+                            ),
+                            child: Row(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                Icon(
+                                  Icons.monitor_heart_outlined,
+                                  size: 15,
                                   color: _useAgeCalorieGuide
                                       ? AppColors.limeDeep
                                       : AppColors.muted,
-                                  fontWeight: FontWeight.w800,
-                                  fontSize: 11,
                                 ),
-                              ),
-                            ],
+                                const SizedBox(width: 5),
+                                Text(
+                                  _useAgeCalorieGuide
+                                      ? '권장 칼로리 반영'
+                                      : '권장 칼로리 제외',
+                                  style: TextStyle(
+                                    color: _useAgeCalorieGuide
+                                        ? AppColors.limeDeep
+                                        : AppColors.muted,
+                                    fontWeight: FontWeight.w800,
+                                    fontSize: 11,
+                                  ),
+                                ),
+                              ],
+                            ),
                           ),
                         ),
                       ),
@@ -7053,40 +7057,44 @@ class _PyeonBotPageState extends State<PyeonBotPage> {
                         ),
                       ),
                       const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        key: const Key('bot-reset-setup-button'),
-                        onPressed: _sending
-                            ? null
-                            : () => unawaited(widget.onResetSetup()),
-                        icon: const Icon(Icons.tune_rounded, size: 15),
-                        label: const Text('초기설정 다시하기'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.skyBlueDeep,
-                          side: const BorderSide(color: AppColors.line),
-                          minimumSize: const Size(0, 36),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          textStyle: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                      SizedBox(
+                        height: 36,
+                        child: OutlinedButton.icon(
+                          key: const Key('bot-reset-setup-button'),
+                          onPressed: _sending
+                              ? null
+                              : () => unawaited(widget.onResetSetup()),
+                          icon: const Icon(Icons.tune_rounded, size: 15),
+                          label: const Text('초기설정 다시하기'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.skyBlueDeep,
+                            side: const BorderSide(color: AppColors.line),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            textStyle: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
                       const SizedBox(width: 8),
-                      OutlinedButton.icon(
-                        key: const Key('bot-reset-conversation-button'),
-                        onPressed: _sending
-                            ? null
-                            : () => unawaited(_resetConversation()),
-                        icon: const Icon(Icons.refresh_rounded, size: 15),
-                        label: const Text('대화 초기화'),
-                        style: OutlinedButton.styleFrom(
-                          foregroundColor: AppColors.muted,
-                          side: const BorderSide(color: AppColors.line),
-                          minimumSize: const Size(0, 36),
-                          padding: const EdgeInsets.symmetric(horizontal: 10),
-                          textStyle: const TextStyle(
-                            fontSize: 11,
-                            fontWeight: FontWeight.w800,
+                      SizedBox(
+                        height: 36,
+                        child: OutlinedButton.icon(
+                          key: const Key('bot-reset-conversation-button'),
+                          onPressed: _sending
+                              ? null
+                              : () => unawaited(_resetConversation()),
+                          icon: const Icon(Icons.refresh_rounded, size: 15),
+                          label: const Text('대화 초기화'),
+                          style: OutlinedButton.styleFrom(
+                            foregroundColor: AppColors.muted,
+                            side: const BorderSide(color: AppColors.line),
+                            padding: const EdgeInsets.symmetric(horizontal: 10),
+                            textStyle: const TextStyle(
+                              fontSize: 11,
+                              fontWeight: FontWeight.w800,
+                            ),
                           ),
                         ),
                       ),
@@ -7308,27 +7316,7 @@ class _BotSetupPageState extends State<BotSetupPage> {
                       fontWeight: FontWeight.w700,
                     ),
                   ),
-                  const SizedBox(height: 14),
-                  Text(
-                    '내 입맛 알려주기',
-                    style: TextStyle(
-                      color: AppColors.ink,
-                      fontWeight: FontWeight.w900,
-                      fontSize: desktop ? 38 : 24,
-                      letterSpacing: -0.8,
-                    ),
-                  ),
-                  const SizedBox(height: 10),
-                  const Text(
-                    '평소 좋아하는 맛과 중요한 기준을 알려줘. 대화할수록 더 잘 맞춰갈게.',
-                    style: TextStyle(
-                      color: Color(0xFF73889B),
-                      fontSize: 15,
-                      fontWeight: FontWeight.w600,
-                      height: 1.5,
-                    ),
-                  ),
-                  SizedBox(height: desktop ? 42 : 22),
+                  SizedBox(height: desktop ? 30 : 18),
                   const Divider(height: 1, color: Color(0xFFE7ECEF)),
                   SizedBox(height: desktop ? 34 : 24),
                   if (desktop)
@@ -8325,30 +8313,20 @@ class _BotSetupSummaryCard extends StatelessWidget {
         Row(
           children: [
             const Expanded(
-              child: Column(
-                crossAxisAlignment: CrossAxisAlignment.start,
-                children: [
-                  Text(
-                    '현재 취향',
-                    style: TextStyle(
-                      color: AppColors.ink,
-                      fontSize: 17,
-                      fontWeight: FontWeight.w800,
-                    ),
-                  ),
-                  SizedBox(height: 3),
-                  Text(
-                    '편봇 추천에 사용하고 있어요',
-                    style: TextStyle(color: AppColors.muted, fontSize: 12),
-                  ),
-                ],
+              child: Text(
+                '내 취향',
+                style: TextStyle(
+                  color: AppColors.ink,
+                  fontSize: 17,
+                  fontWeight: FontWeight.w800,
+                ),
               ),
             ),
             TextButton.icon(
               key: const Key('bot-setup-edit'),
               onPressed: onEdit,
               icon: const Icon(Icons.edit_outlined, size: 17),
-              label: const Text('편봇 초기설정 수정'),
+              label: const Text('초기설정 수정'),
               style: TextButton.styleFrom(
                 foregroundColor: AppColors.skyBlueDeep,
                 textStyle: const TextStyle(fontWeight: FontWeight.w800),
