@@ -256,30 +256,6 @@ const productLookupMissSchema = new mongoose.Schema(
   { timestamps: true }
 );
 
-const cuProductSchema = new mongoose.Schema(
-  {
-    id: { type: String, required: true, unique: true, index: true },
-    store: { type: String, default: "CU", index: true },
-    productId: { type: String, required: true, unique: true, index: true },
-    name: { type: String, required: true, index: true },
-    normalizedName: { type: String, default: null, index: true },
-    price: { type: String, default: "" },
-    imageUrl: { type: String, default: null },
-    barcode: { type: String, default: null, index: true },
-    isNewFlag: { type: Boolean, default: false },
-    isNewByDiff: { type: Boolean, default: false },
-    isPb: { type: Boolean, default: false },
-    categoryCode: { type: String, default: null },
-    firstSeenAt: { type: Date, default: Date.now },
-    lastSeenAt: { type: Date, default: Date.now },
-    lastCrawledAt: { type: Date, default: Date.now },
-    rawText: { type: String, default: "" },
-  },
-  { timestamps: true }
-);
-
-cuProductSchema.index({ name: "text", normalizedName: "text", barcode: "text" });
-
 const convenienceProductSchema = new mongoose.Schema(
   {
     id: { type: String, required: true, unique: true, index: true },
@@ -293,6 +269,7 @@ const convenienceProductSchema = new mongoose.Schema(
     isNewFlag: { type: Boolean, default: false },
     isNewByDiff: { type: Boolean, default: false },
     isPb: { type: Boolean, default: false },
+    categoryCode: { type: String, default: null },
     tags: { type: [String], default: [] },
     sourcePage: { type: String, default: "" },
     firstSeenAt: { type: Date, default: Date.now },
@@ -371,7 +348,6 @@ const userSchema = new mongoose.Schema(
 const Post = mongoose.model("Post", postSchema);
 const Product = mongoose.model("Product", productSchema);
 const ProductLookupMiss = mongoose.model("ProductLookupMiss", productLookupMissSchema);
-const CuProduct = mongoose.model("CuProduct", cuProductSchema);
 const ConvenienceProduct = mongoose.model("ConvenienceProduct", convenienceProductSchema);
 const CrawlerSchedule = mongoose.model("CrawlerSchedule", crawlerScheduleSchema);
 const BattleMatch = mongoose.model("BattleMatch", battleMatchSchema);
@@ -1416,6 +1392,87 @@ function normalizeName(input) {
     .trim();
 }
 
+function legacyCuProductToConvenienceProduct(product) {
+  const productId = String(product?.productId || "").trim();
+  const name = String(product?.name || "").trim();
+  if (!productId || !name) return null;
+
+  return {
+    id: String(product.id || `cu-${productId}`),
+    store: "CU",
+    productId,
+    name,
+    normalizedName: product.normalizedName || normalizeName(name),
+    price: String(product.price || ""),
+    imageUrl: product.imageUrl || null,
+    barcode: product.barcode || null,
+    isNewFlag: Boolean(product.isNewFlag),
+    isNewByDiff: Boolean(product.isNewByDiff),
+    isPb: Boolean(product.isPb),
+    categoryCode: product.categoryCode || null,
+    tags: [
+      ...(product.isNewFlag || product.isNewByDiff ? ["신상품"] : []),
+      ...(product.isPb ? ["PB"] : []),
+    ],
+    sourcePage: String(product.sourcePage || ""),
+    firstSeenAt: product.firstSeenAt || product.createdAt || new Date(),
+    lastSeenAt: product.lastSeenAt || product.updatedAt || new Date(),
+    lastCrawledAt: product.lastCrawledAt || product.updatedAt || new Date(),
+    rawText: String(product.rawText || ""),
+  };
+}
+
+async function migrateLegacyCuProducts() {
+  const database = mongoose.connection.db;
+  if (!database) throw new Error("MongoDB connection is not ready for CU product migration.");
+
+  const legacyCollectionName = "cuproducts";
+  const hasLegacyCollection = await database
+    .listCollections({ name: legacyCollectionName }, { nameOnly: true })
+    .hasNext();
+  if (!hasLegacyCollection) return { migrated: 0, removedLegacyCollection: false };
+
+  const legacyCollection = database.collection(legacyCollectionName);
+  const legacyProducts = await legacyCollection.find({}).toArray();
+  if (legacyProducts.length === 0) {
+    await legacyCollection.drop();
+    return { migrated: 0, removedLegacyCollection: true };
+  }
+
+  const products = legacyProducts
+    .map(legacyCuProductToConvenienceProduct)
+    .filter(Boolean);
+  if (products.length !== legacyProducts.length) {
+    throw new Error("Legacy CU product migration found documents without a product ID or name.");
+  }
+
+  await ConvenienceProduct.bulkWrite(
+    products.map((product) => ({
+      updateOne: {
+        filter: { id: product.id },
+        update: {
+          $set: product,
+          $setOnInsert: { createdAt: product.firstSeenAt },
+        },
+        upsert: true,
+      },
+    })),
+    { ordered: false }
+  );
+
+  const productIds = [...new Set(products.map((product) => product.id))];
+  const copiedCount = await ConvenienceProduct.countDocuments({
+    store: "CU",
+    id: { $in: productIds },
+  });
+  if (copiedCount !== productIds.length) {
+    throw new Error(`Legacy CU product migration verification failed (${copiedCount}/${productIds.length}).`);
+  }
+
+  await legacyCollection.drop();
+  return { migrated: productIds.length, removedLegacyCollection: true };
+}
+
 function compactStrings(items) {
   return [...new Set((items || []).map((item) => String(item || "").trim()).filter(Boolean))];
 }
@@ -2417,7 +2474,7 @@ async function crawlCuProducts() {
 
 async function refreshCuProducts() {
   const crawledAt = new Date();
-  const hadSnapshot = (await CuProduct.estimatedDocumentCount()) > 0;
+  const hadSnapshot = (await ConvenienceProduct.countDocuments({ store: "CU" })) > 0;
   const crawlResult = await crawlCuProducts();
   const crawledProducts = crawlResult.products;
 
@@ -2427,14 +2484,14 @@ async function refreshCuProducts() {
   let newCount = 0;
 
   for (const product of crawledProducts) {
-    const existing = await CuProduct.findOne({ productId: product.productId });
+    const existing = await ConvenienceProduct.findOne({ id: product.id });
     const isNewByDiff = hadSnapshot && !existing;
     const isNewFlag = Boolean(product.isNewFlag || isNewByDiff);
     if (product.isPb) pbCount += 1;
     if (isNewFlag) newCount += 1;
 
-    await CuProduct.findOneAndUpdate(
-      { productId: product.productId },
+    await ConvenienceProduct.findOneAndUpdate(
+      { id: product.id },
       {
         $set: {
           id: product.id,
@@ -2449,6 +2506,11 @@ async function refreshCuProducts() {
           isNewByDiff,
           isPb: Boolean(product.isPb || existing?.isPb),
           categoryCode: product.categoryCode || existing?.categoryCode || null,
+          tags: [
+            ...(isNewFlag ? ["신상품"] : []),
+            ...(product.isPb || existing?.isPb ? ["PB"] : []),
+          ],
+          sourcePage: "https://cu.bgfretail.com/product/product.do?category=product&depth2=4&sf=N",
           lastSeenAt: crawledAt,
           lastCrawledAt: crawledAt,
           rawText: product.rawText || "",
@@ -2508,7 +2570,8 @@ async function seedCuProductCommunityPosts(crawledAt) {
     }
   );
 
-  const products = await CuProduct.find({
+  const products = await ConvenienceProduct.find({
+    store: "CU",
     $or: [{ isNewFlag: true }, { isNewByDiff: true }, { isPb: true }],
     imageUrl: { $ne: null },
   })
@@ -3177,8 +3240,8 @@ async function resetAllConvenienceCrawlerData({ waitForActiveCrawl = false } = {
 
   const crawlerPostPattern = /^(?:CU 크롤링 데이터에서 확인된|(?:emart24|GS25|7-Eleven) 공개 상품 데이터에서 확인된)/;
   const [cuProducts, convenienceProducts, crawlerPosts, schedules] = await Promise.all([
-    CuProduct.deleteMany({}),
-    ConvenienceProduct.deleteMany({}),
+    ConvenienceProduct.deleteMany({ store: "CU" }),
+    ConvenienceProduct.deleteMany({ store: { $ne: "CU" } }),
     Post.deleteMany({ content: crawlerPostPattern }),
     CrawlerSchedule.deleteMany({ key: ALL_CONVENIENCE_CRAWLER_KEY }),
   ]);
@@ -3350,6 +3413,7 @@ async function seedConvenienceProductCommunityPosts(crawledAt) {
     "7-Eleven": { id: seedUserIds.ai4.toString(), nickname: "7-Eleven 상품봇" },
   };
   const products = await ConvenienceProduct.find({
+    store: { $ne: "CU" },
     $or: [{ isNewFlag: true }, { isNewByDiff: true }, { isPb: true }],
     imageUrl: { $ne: null },
   })
@@ -4946,7 +5010,7 @@ app.get("/api/products/cu", async (req, res) => {
   } = req.query;
   const normalizedQuery = normalizeName(query);
   const pageLimit = Math.min(Math.max(Number(limit || 100), 1), 500);
-  const filter = {};
+  const filter = { store: "CU" };
 
   if (normalizedQuery) {
     filter.$or = [
@@ -4957,7 +5021,7 @@ app.get("/api/products/cu", async (req, res) => {
   if (label === "new") filter.isNewFlag = true;
   if (label === "pb") filter.isPb = true;
 
-  const products = await CuProduct.find(filter)
+  const products = await ConvenienceProduct.find(filter)
     .sort({ isNewFlag: -1, isPb: -1, lastSeenAt: -1, name: 1 })
     .limit(pageLimit)
     .lean();
@@ -4984,7 +5048,7 @@ app.get("/api/products/cu/labels", async (req, res) => {
     });
   }
 
-  const products = await CuProduct.find({ $or: filters }).limit(10).lean();
+  const products = await ConvenienceProduct.find({ store: "CU", $or: filters }).limit(10).lean();
   const hasNew = products.some((product) => product.isNewFlag || product.isNewByDiff);
   const hasPb = products.some((product) => product.isPb);
   return res.json({
@@ -5119,40 +5183,6 @@ app.get("/api/products/lookup/:barcode", async (req, res) => {
     return res.status(400).json({ message: "바코드가 비어 있습니다." });
   }
 
-  const cuProduct = await CuProduct.findOne({ barcode }).lean();
-  if (cuProduct) {
-    return res.json({
-      product: serializeProduct(
-        {
-          barcode,
-          officialName: cuProduct.name,
-          normalizedName: normalizeName(cuProduct.name),
-          brand: null,
-          manufacturer: null,
-          seller: null,
-          store: "CU",
-          capacity: null,
-          price: parseCuPriceToNumber(cuProduct.price),
-          calories: null,
-          aliases: [],
-          categories: [
-            ...(cuProduct.isNewFlag || cuProduct.isNewByDiff ? ["CU 신상품"] : []),
-            ...(cuProduct.isPb ? ["CU PB"] : []),
-          ],
-          images: { product: cuProduct.imageUrl || null, meta: null },
-          source: "cu-crawler",
-          sources: [],
-          verificationStatus: "auto-imported",
-          lookupCount: 1,
-          tentative: false,
-          warning: null,
-          lastVerifiedAt: cuProduct.lastCrawledAt || cuProduct.updatedAt || new Date(),
-        },
-        { cached: true }
-      ),
-    });
-  }
-
   const convenienceProduct = await ConvenienceProduct.findOne({ barcode }).lean();
   if (convenienceProduct) {
     return res.json({
@@ -5174,7 +5204,7 @@ app.get("/api/products/lookup/:barcode", async (req, res) => {
             ...(convenienceProduct.isPb ? [`${convenienceProduct.store} PB`] : []),
           ],
           images: { product: convenienceProduct.imageUrl || null, meta: null },
-          source: "convenience-product-crawler",
+          source: convenienceProduct.store === "CU" ? "cu-crawler" : "convenience-product-crawler",
           sources: [],
           verificationStatus: "auto-imported",
           lookupCount: 1,
@@ -5314,6 +5344,12 @@ async function start() {
       throw new Error("MONGO_URI is required. Add it to backend/.env to use your MongoDB account.");
     }
 
+    const cuMigration = await migrateLegacyCuProducts();
+    if (cuMigration.migrated > 0 || cuMigration.removedLegacyCollection) {
+      console.log(
+        `Unified ${cuMigration.migrated} legacy CU products into the convenienceproducts collection`
+      );
+    }
     await resetDemoDataIfRequested();
     await seedIfNeeded();
     await backfillLegacyPosts();
@@ -5351,4 +5387,6 @@ module.exports = {
   refreshConvenienceProducts,
   refreshCuProducts,
   resetAllConvenienceCrawlerData,
+  legacyCuProductToConvenienceProduct,
+  migrateLegacyCuProducts,
 };
