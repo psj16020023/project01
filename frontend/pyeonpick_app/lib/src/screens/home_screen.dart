@@ -28,7 +28,9 @@ import '../repositories/post_repository.dart';
 import '../services/barcode_camera_quality.dart';
 import '../services/bot_budget_rules.dart';
 import '../services/bot_situation_analyzer.dart';
+import '../services/browser_barcode_detector.dart';
 import '../services/local_account_store.dart';
+import '../services/retail_barcode.dart';
 import '../widgets/cu_product_badges.dart';
 import 'combination_battle_screen.dart';
 import 'post_reviews_screen.dart';
@@ -10459,9 +10461,10 @@ class ProductScannerPage extends StatelessWidget {
 
 String _retailBarcodeFromCapture(BarcodeCapture capture) {
   for (final barcode in capture.barcodes) {
-    final raw = (barcode.rawValue ?? barcode.displayValue ?? '').trim();
-    final digits = raw.replaceAll(RegExp(r'[^0-9]'), '');
-    if (const <int>{8, 12, 13, 14}.contains(digits.length)) return digits;
+    final value = normalizeRetailBarcode(
+      barcode.rawValue ?? barcode.displayValue,
+    );
+    if (value.isNotEmpty) return value;
   }
   return '';
 }
@@ -10492,8 +10495,10 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
       BarcodeFormat.code128,
     ],
   );
+  final BrowserBarcodeDetector _browserDetector = BrowserBarcodeDetector();
   final TextEditingController _manualCodeController = TextEditingController();
 
+  StreamSubscription<String>? _browserBarcodeSubscription;
   bool _handled = false;
   bool _showGuide = true;
   bool _starting = true;
@@ -10504,6 +10509,9 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
   @override
   void initState() {
     super.initState();
+    _browserBarcodeSubscription = _browserDetector.barcodes.listen(
+      _handleDetectedBarcode,
+    );
     _guideTimer = Timer(const Duration(seconds: 3), () {
       if (!mounted) return;
       setState(() => _showGuide = false);
@@ -10522,9 +10530,19 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
   @override
   void dispose() {
     _guideTimer?.cancel();
+    unawaited(_browserBarcodeSubscription?.cancel());
+    _browserDetector.dispose();
     _manualCodeController.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _handleDetectedBarcode(String rawValue) {
+    if (!mounted || _handled) return;
+    final value = normalizeRetailBarcode(rawValue);
+    if (value.isEmpty) return;
+    _handled = true;
+    Navigator.of(context).pop(value);
   }
 
   Future<void> _openManualBarcodeInput() async {
@@ -10570,6 +10588,7 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
     try {
       await _controller.start(cameraDirection: CameraFacing.back);
       unawaited(optimizeBarcodeCameraForWeb());
+      unawaited(_browserDetector.start());
       if (!mounted) return;
       setState(() {
         _starting = false;
@@ -10579,6 +10598,8 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
       if (kIsWeb) {
         try {
           await _controller.start(cameraDirection: CameraFacing.front);
+          unawaited(optimizeBarcodeCameraForWeb());
+          unawaited(_browserDetector.start());
           if (!mounted) return;
           setState(() {
             _starting = false;
@@ -10690,13 +10711,9 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
                                   controller: _controller,
                                   tapToFocus: true,
                                   onDetect: (capture) {
-                                    if (_handled) return;
-                                    final value = _retailBarcodeFromCapture(
-                                      capture,
+                                    _handleDetectedBarcode(
+                                      _retailBarcodeFromCapture(capture),
                                     );
-                                    if (value.isEmpty) return;
-                                    _handled = true;
-                                    Navigator.of(context).pop(value);
                                   },
                                   errorBuilder: (_, exception) {
                                     return _ScannerStatusCard(

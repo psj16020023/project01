@@ -43,9 +43,6 @@ Future<void> optimizePlatformBarcodeCameraForWeb() async {
           ideal: _preferredHeight,
         );
         final frameRate = web.ConstrainDoubleRange(ideal: 30);
-        final rearCamera = web.ConstrainDOMStringParameters(
-          exact: 'environment'.toJS,
-        );
         final continuousFocus = web.ConstrainDOMStringParameters(
           ideal: 'continuous'.toJS,
         );
@@ -55,16 +52,7 @@ Future<void> optimizePlatformBarcodeCameraForWeb() async {
                 width: width,
                 height: height,
                 frameRate: frameRate,
-                facingMode: rearCamera,
                 focusMode: continuousFocus,
-              ),
-            ) ||
-            await apply(
-              web.MediaTrackConstraints(
-                width: width,
-                height: height,
-                frameRate: frameRate,
-                facingMode: rearCamera,
               ),
             ) ||
             await apply(

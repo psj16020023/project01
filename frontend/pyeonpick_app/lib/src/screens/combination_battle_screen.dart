@@ -16,6 +16,8 @@ import '../models/sort_mode.dart';
 import '../repositories/post_repository.dart';
 import '../services/barcode_camera_quality.dart';
 import '../services/battle_state_store.dart';
+import '../services/browser_barcode_detector.dart';
+import '../services/retail_barcode.dart';
 import '../widgets/cu_product_badges.dart';
 
 const _battleInk = AppColors.ink;
@@ -1535,7 +1537,9 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
       BarcodeFormat.code128,
     ],
   );
+  final BrowserBarcodeDetector _browserDetector = BrowserBarcodeDetector();
   final TextEditingController _manualCodeController = TextEditingController();
+  StreamSubscription<String>? _browserBarcodeSubscription;
   bool _handled = false;
   bool _starting = !kIsWeb;
   bool _readyForWebTap = kIsWeb;
@@ -1544,6 +1548,9 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
   @override
   void initState() {
     super.initState();
+    _browserBarcodeSubscription = _browserDetector.barcodes.listen(
+      _handleDetectedBarcode,
+    );
     if (!kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _startScanner();
@@ -1553,9 +1560,19 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
 
   @override
   void dispose() {
+    unawaited(_browserBarcodeSubscription?.cancel());
+    _browserDetector.dispose();
     _manualCodeController.dispose();
     _controller.dispose();
     super.dispose();
+  }
+
+  void _handleDetectedBarcode(String rawValue) {
+    if (!mounted || _handled) return;
+    final value = normalizeRetailBarcode(rawValue);
+    if (value.isEmpty) return;
+    _handled = true;
+    Navigator.of(context).pop(value);
   }
 
   Future<void> _openManualBarcodeInput() async {
@@ -1601,6 +1618,7 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
     try {
       await _controller.start(cameraDirection: CameraFacing.back);
       unawaited(optimizeBarcodeCameraForWeb());
+      unawaited(_browserDetector.start());
       if (!mounted) return;
       setState(() {
         _starting = false;
@@ -1610,6 +1628,8 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
       if (kIsWeb) {
         try {
           await _controller.start(cameraDirection: CameraFacing.front);
+          unawaited(optimizeBarcodeCameraForWeb());
+          unawaited(_browserDetector.start());
           if (!mounted) return;
           setState(() {
             _starting = false;
@@ -1691,29 +1711,12 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
                         controller: _controller,
                         tapToFocus: true,
                         onDetect: (capture) {
-                          if (_handled) return;
-                          var value = '';
                           for (final barcode in capture.barcodes) {
-                            final raw =
-                                (barcode.rawValue ?? barcode.displayValue ?? '')
-                                    .trim();
-                            final digits = raw.replaceAll(
-                              RegExp(r'[^0-9]'),
-                              '',
+                            _handleDetectedBarcode(
+                              barcode.rawValue ?? barcode.displayValue ?? '',
                             );
-                            if (const <int>{
-                              8,
-                              12,
-                              13,
-                              14,
-                            }.contains(digits.length)) {
-                              value = digits;
-                              break;
-                            }
+                            if (_handled) break;
                           }
-                          if (value.isEmpty) return;
-                          _handled = true;
-                          Navigator.of(context).pop(value);
                         },
                         errorBuilder: (_, exception) => _BattleScannerStatus(
                           text: '카메라를 시작하지 못했어요',
