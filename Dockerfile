@@ -8,6 +8,7 @@ RUN flutter pub get
 
 COPY frontend/pyeonpick_app/lib ./lib
 COPY frontend/pyeonpick_app/web ./web
+COPY frontend/pyeonpick_app/assets ./assets
 RUN flutter build web --release --dart-define=DATA_MODE=remote --pwa-strategy=none --no-wasm-dry-run
 
 FROM node:20-slim AS runtime
