@@ -546,6 +546,15 @@ void main() {
     expect(find.text('새로 들어온 조합'), findsOneWidget);
     expect(find.text('PB로 만든 조합'), findsOneWidget);
     expect(find.text('재평가'), findsOneWidget);
+    final firstTopicHeader = tester.widget<Row>(
+      find
+          .descendant(
+            of: find.byKey(const Key('discovery-topic-0')),
+            matching: find.byType(Row),
+          )
+          .first,
+    );
+    expect(firstTopicHeader.children.whereType<Text>(), isEmpty);
     expect(find.text('압도적 픽쇼츠'), findsNothing);
     expect(find.text('박빙 픽쇼츠'), findsNothing);
     expect(find.text('하트 성비'), findsNothing);

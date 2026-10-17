@@ -261,6 +261,10 @@ int _communityMomentumScore(PostFeatureInfo post, DateTime now) {
   return reactionScore + recencyBoost;
 }
 
+bool _hasPopularEngagement(PostFeatureInfo post) {
+  return post.likes > 0 || post.commentCount > 0 || post.reviewCount > 0;
+}
+
 class _CommunityTrendGroup {
   const _CommunityTrendGroup({
     required this.label,
@@ -463,12 +467,15 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
     return result.take(5).toList();
   }
 
-  final popular = trend('이번 주 난리난 조합');
   final rediscovered = trend('다시 뜨는 조합');
   final malePicks = trend('남');
   final femalePicks = trend('여');
   final fallbackPopular = ranked(
     posts,
+    (post) => (post.likes * 5) + (post.reviewCount * 4) - post.dislikes,
+  );
+  final popularPosts = ranked(
+    posts.where(_hasPopularEngagement),
     (post) => (post.likes * 5) + (post.reviewCount * 4) - post.dislikes,
   );
   final newProducts = ranked(
@@ -485,7 +492,7 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       caption: '지금 사람들이 실제로 반응하는 조합',
       icon: Icons.local_fire_department_rounded,
       color: const Color(0xFFFF8A4C),
-      posts: popular?.posts ?? fallbackPopular,
+      posts: popularPosts.isNotEmpty ? popularPosts : fallbackPopular,
       collectionType: HighlightCollectionType.popular,
     ),
     _DiscoveryTopic(
@@ -2562,12 +2569,24 @@ class _HomeScreenState extends State<HomeScreen> {
       };
     }
 
+    final popularFeatureIds = features.values
+        .where(_hasPopularEngagement)
+        .map((feature) => feature.id)
+        .toSet();
     final posts =
         switch (type) {
               HighlightCollectionType.newProduct =>
                 allPosts.where(_postHasNewProduct).toList(),
               HighlightCollectionType.pbProduct =>
                 allPosts.where(_postHasPbProduct).toList(),
+              HighlightCollectionType.popular =>
+                allPosts
+                    .where(
+                      (post) =>
+                          popularFeatureIds.isEmpty ||
+                          popularFeatureIds.contains(post.id),
+                    )
+                    .toList(),
               _ => allPosts.where(matchesFeature).toList(),
             }
             .where(
@@ -3757,15 +3776,6 @@ class _DiscoveryTopicShelf extends StatelessWidget {
                           ],
                         ),
                       ),
-                      Text(
-                        '${topic.itemCount}',
-                        style: const TextStyle(
-                          color: AppColors.muted,
-                          fontSize: 11,
-                          fontWeight: FontWeight.w800,
-                        ),
-                      ),
-                      const SizedBox(width: 5),
                       AnimatedRotation(
                         turns: expanded ? 0.5 : 0,
                         duration: const Duration(milliseconds: 220),

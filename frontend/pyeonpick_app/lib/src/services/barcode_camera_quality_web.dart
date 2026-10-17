@@ -25,16 +25,64 @@ Future<void> optimizePlatformBarcodeCameraForWeb() async {
         final tracks = stream.getVideoTracks().toDart;
         if (tracks.isEmpty) continue;
 
-        await tracks.first
-            .applyConstraints(
+        Future<bool> apply(web.MediaTrackConstraints constraints) async {
+          try {
+            await tracks.first.applyConstraints(constraints).toDart;
+            return true;
+          } catch (_) {
+            return false;
+          }
+        }
+
+        final width = web.ConstrainULongRange(
+          min: 1280,
+          ideal: _preferredWidth,
+        );
+        final height = web.ConstrainULongRange(
+          min: 720,
+          ideal: _preferredHeight,
+        );
+        final frameRate = web.ConstrainDoubleRange(ideal: 30);
+        final rearCamera = web.ConstrainDOMStringParameters(
+          exact: 'environment'.toJS,
+        );
+        final continuousFocus = web.ConstrainDOMStringParameters(
+          ideal: 'continuous'.toJS,
+        );
+
+        if (await apply(
+              web.MediaTrackConstraints(
+                width: width,
+                height: height,
+                frameRate: frameRate,
+                facingMode: rearCamera,
+                focusMode: continuousFocus,
+              ),
+            ) ||
+            await apply(
+              web.MediaTrackConstraints(
+                width: width,
+                height: height,
+                frameRate: frameRate,
+                facingMode: rearCamera,
+              ),
+            ) ||
+            await apply(
+              web.MediaTrackConstraints(
+                width: width,
+                height: height,
+                frameRate: frameRate,
+              ),
+            ) ||
+            await apply(
               web.MediaTrackConstraints(
                 width: web.ConstrainULongRange(ideal: _preferredWidth),
                 height: web.ConstrainULongRange(ideal: _preferredHeight),
-                frameRate: web.ConstrainDoubleRange(ideal: 30),
+                frameRate: frameRate,
               ),
-            )
-            .toDart;
-        return;
+            )) {
+          return;
+        }
       } catch (_) {
         // Some browsers expose the stream before the track is ready. Retrying
         // is safe, and unsupported constraints simply keep the default feed.
