@@ -428,8 +428,8 @@ class _BattleDiscoveryItem {
     required this.match,
     required this.leftTitle,
     required this.rightTitle,
-    this.leftImageUrl,
-    this.rightImageUrl,
+    required this.leftImageUrl,
+    required this.rightImageUrl,
   });
 
   final BattleMatchEntry match;
@@ -441,9 +441,8 @@ class _BattleDiscoveryItem {
 
 List<_DiscoveryTopic> _buildDiscoveryTopics(
   List<PostFeatureInfo> posts,
-  List<_CommunityTrendGroup> trends, [
-  List<BattleMatchEntry> battleHighlights = const <BattleMatchEntry>[],
-]) {
+  List<_CommunityTrendGroup> trends,
+) {
   _CommunityTrendGroup? trend(String label) {
     for (final item in trends) {
       if (item.label == label) return item;
@@ -479,24 +478,6 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
     posts.where(_featureHasPbProduct),
     (post) => (post.likes * 4) + (post.reviewCount * 3),
   );
-  final featuresById = {for (final post in posts) post.id: post};
-  _BattleDiscoveryItem battleItem(BattleMatchEntry match) {
-    final left = featuresById[match.leftPostId];
-    final right = featuresById[match.rightPostId];
-    return _BattleDiscoveryItem(
-      match: match,
-      leftTitle: match.leftCustomTitle ?? left?.title ?? '첫 번째 조합',
-      rightTitle: match.rightCustomTitle ?? right?.title ?? '두 번째 조합',
-      leftImageUrl: match.leftCustomImageUrl ?? left?.imageUrl,
-      rightImageUrl: match.rightCustomImageUrl ?? right?.imageUrl,
-    );
-  }
-
-  final decisiveBattles = battleHighlights
-      .where((match) => match.isDecisiveResult)
-      .take(5)
-      .map(battleItem)
-      .toList();
   return <_DiscoveryTopic>[
     _DiscoveryTopic(
       label: '이번 주 인기',
@@ -545,15 +526,6 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       color: const Color(0xFF8FA7FF),
       posts: rediscovered?.posts ?? const <PostFeatureInfo>[],
       collectionType: HighlightCollectionType.rediscovered,
-    ),
-    _DiscoveryTopic(
-      label: '압도적 픽쇼츠',
-      caption: '8표 이상, 두 배 차이로 선택이 갈린 결과',
-      icon: Icons.bolt_rounded,
-      color: AppColors.skyBlue,
-      posts: const <PostFeatureInfo>[],
-      battles: decisiveBattles,
-      decisiveBattleCollection: true,
     ),
   ];
 }
@@ -3122,25 +3094,9 @@ class CommunicationBody extends StatelessWidget {
                   currentUser.pickedAuthorIds.contains(post.authorId)),
         )
         .toList();
-    final visibleFeatureIds = filteredFeatureIndex
-        .map((post) => post.id)
-        .toSet();
-    final filteredBattleHighlights = battleHighlights.where((match) {
-      if (pickedAuthorsOnly &&
-          !currentUser.pickedAuthorIds.contains(match.authorId)) {
-        return false;
-      }
-      if (selectedTags.isEmpty) return true;
-      return visibleFeatureIds.contains(match.leftPostId) ||
-          visibleFeatureIds.contains(match.rightPostId);
-    }).toList();
     final trendPicks = _buildCommunityTrendPicks(filteredFeatureIndex);
     final discoveryTopics = _shuffleDiscoveryTopics(
-      _buildDiscoveryTopics(
-        filteredFeatureIndex,
-        trendPicks,
-        filteredBattleHighlights,
-      ),
+      _buildDiscoveryTopics(filteredFeatureIndex, trendPicks),
       shuffleSeed,
     );
 
@@ -7410,6 +7366,7 @@ class ProfilePage extends StatefulWidget {
 
 class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
   _ProfileViewMode _mode = _ProfileViewMode.overview;
+  _BattleResultView _battleResultView = _BattleResultView.created;
   SortMode _postSortMode = SortMode.latest;
   final ImagePicker _picker = ImagePicker();
   bool _deletingAccount = false;
@@ -7449,6 +7406,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
       _loadingResults = true;
       _resultError = false;
       _mode = _ProfileViewMode.overview;
+      _battleResultView = _BattleResultView.created;
       unawaited(_loadBattleResults());
     }
   }
@@ -7820,7 +7778,7 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             children: [
               const Expanded(
                 child: Text(
-                  '내 픽 쇼츠 결과',
+                  '픽 쇼츠 결과',
                   style: TextStyle(fontSize: 17, fontWeight: FontWeight.w600),
                 ),
               ),
@@ -7831,6 +7789,24 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
               ),
             ],
           ),
+          const SizedBox(height: 8),
+          Builder(
+            builder: (context) {
+              final createdCount = _battleResults.results
+                  .where((result) => result.isCreated)
+                  .length;
+              final votedCount = _battleResults.results
+                  .where((result) => result.isVoted)
+                  .length;
+              return _BattleResultTabs(
+                selected: _battleResultView,
+                createdCount: createdCount,
+                votedCount: votedCount,
+                onChanged: (value) => setState(() => _battleResultView = value),
+              );
+            },
+          ),
+          const SizedBox(height: 10),
           if (_loadingResults)
             const Center(
               child: Padding(
@@ -7844,17 +7820,28 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
                 '결과를 불러오지 못했어요. 새로고침해 주세요.',
                 style: TextStyle(color: AppColors.muted),
               ),
-            if (!_resultError && _battleResults.results.isEmpty)
-              const Padding(
-                padding: EdgeInsets.symmetric(vertical: 24),
+            if (!_resultError &&
+                !_battleResults.results.any(
+                  (result) => _battleResultView == _BattleResultView.created
+                      ? result.isCreated
+                      : result.isVoted,
+                ))
+              Padding(
+                padding: const EdgeInsets.symmetric(vertical: 28),
                 child: Text(
-                  '내가 올린 픽 쇼츠가 종료되면 여기에 결과가 표시돼요.',
-                  style: TextStyle(color: AppColors.muted),
+                  _battleResultView == _BattleResultView.created
+                      ? '내가 올린 픽 쇼츠가 종료되면 여기에 표시돼요.'
+                      : '내가 투표한 픽 쇼츠가 종료되면 여기에 표시돼요.',
+                  style: const TextStyle(color: AppColors.muted),
                 ),
               ),
-            ..._battleResults.results.map(
-              (result) => _ProfileBattleResult(result: result),
-            ),
+            ..._battleResults.results
+                .where(
+                  (result) => _battleResultView == _BattleResultView.created
+                      ? result.isCreated
+                      : result.isVoted,
+                )
+                .map((result) => _ProfileBattleResult(result: result)),
           ],
         ] else if (_mode == _ProfileViewMode.picks) ...[
           if (pickedAuthors.isEmpty)
@@ -7931,6 +7918,76 @@ enum _ProfileViewMode {
   battleResults,
 }
 
+enum _BattleResultView { created, voted }
+
+class _BattleResultTabs extends StatelessWidget {
+  const _BattleResultTabs({
+    required this.selected,
+    required this.createdCount,
+    required this.votedCount,
+    required this.onChanged,
+  });
+
+  final _BattleResultView selected;
+  final int createdCount;
+  final int votedCount;
+  final ValueChanged<_BattleResultView> onChanged;
+
+  @override
+  Widget build(BuildContext context) {
+    Widget tab(_BattleResultView value, String label, int count) {
+      final active = selected == value;
+      return Expanded(
+        child: InkWell(
+          key: ValueKey('battle-result-tab-${value.name}'),
+          borderRadius: BorderRadius.circular(10),
+          onTap: () => onChanged(value),
+          child: AnimatedContainer(
+            duration: const Duration(milliseconds: 150),
+            padding: const EdgeInsets.symmetric(vertical: 11),
+            decoration: BoxDecoration(
+              color: active ? Colors.white : Colors.transparent,
+              borderRadius: BorderRadius.circular(10),
+              boxShadow: active
+                  ? const [
+                      BoxShadow(
+                        color: Color(0x12000000),
+                        blurRadius: 7,
+                        offset: Offset(0, 2),
+                      ),
+                    ]
+                  : null,
+            ),
+            child: Text(
+              '$label $count',
+              textAlign: TextAlign.center,
+              style: TextStyle(
+                color: active ? AppColors.ink : AppColors.muted,
+                fontSize: 14,
+                fontWeight: active ? FontWeight.w800 : FontWeight.w600,
+              ),
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      padding: const EdgeInsets.all(4),
+      decoration: BoxDecoration(
+        color: const Color(0xFFF2F4F7),
+        borderRadius: BorderRadius.circular(13),
+      ),
+      child: Row(
+        children: [
+          tab(_BattleResultView.created, '내가 올린 것', createdCount),
+          tab(_BattleResultView.voted, '내가 투표한 것', votedCount),
+        ],
+      ),
+    );
+  }
+}
+
 class _ProfileBattleResult extends StatelessWidget {
   const _ProfileBattleResult({required this.result});
 
@@ -7938,68 +7995,100 @@ class _ProfileBattleResult extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final resultType = result.resultTypeLabel;
+    return Container(
       key: ValueKey('battle-result-${result.id}'),
-      crossAxisAlignment: CrossAxisAlignment.start,
-      children: [
-        const SizedBox(height: 18),
-        Text(
-          result.title,
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w600),
-        ),
-        const SizedBox(height: 5),
-        Text(
-          '${DateFormat('M.d HH:mm').format(result.endsAt)} 종료',
-          style: const TextStyle(fontSize: 12, color: AppColors.muted),
-        ),
-        const SizedBox(height: 3),
-        Text(
-          '총 ${result.leftVotes + result.rightVotes}표',
-          style: const TextStyle(
-            fontSize: 12,
-            color: AppColors.skyBlueDeep,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-        const SizedBox(height: 12),
-        SizedBox(
-          height: MediaQuery.sizeOf(context).width < 520 ? 232 : 278,
-          child: Row(
+      margin: const EdgeInsets.only(top: 10),
+      padding: const EdgeInsets.all(14),
+      decoration: BoxDecoration(
+        color: Colors.white,
+        border: Border.all(color: AppColors.line),
+        borderRadius: BorderRadius.circular(16),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
             children: [
               Expanded(
-                child: _BattleResultChoice(
-                  imageUrl: result.leftImageUrl,
-                  title: result.leftTitle,
-                  votes: result.leftVotes,
-                  won: result.leftVotes > result.rightVotes,
+                child: Text(
+                  result.title,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  style: const TextStyle(
+                    fontSize: 16,
+                    fontWeight: FontWeight.w700,
+                  ),
                 ),
               ),
-              const SizedBox(width: 8),
-              Expanded(
-                child: _BattleResultChoice(
-                  imageUrl: result.rightImageUrl,
-                  title: result.rightTitle,
-                  votes: result.rightVotes,
-                  won: result.rightVotes > result.leftVotes,
+              if (resultType != null) ...[
+                const SizedBox(width: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 8,
+                    vertical: 4,
+                  ),
+                  decoration: BoxDecoration(
+                    color: result.isDecisiveResult
+                        ? const Color(0xFFEAF4FF)
+                        : const Color(0xFFFFF3E8),
+                    borderRadius: BorderRadius.circular(20),
+                  ),
+                  child: Text(
+                    resultType,
+                    style: TextStyle(
+                      color: result.isDecisiveResult
+                          ? AppColors.skyBlueDeep
+                          : const Color(0xFFD36A16),
+                      fontSize: 11,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
                 ),
-              ),
+              ],
             ],
           ),
-        ),
-        const SizedBox(height: 12),
-        Text(
-          result.outcome,
-          style: const TextStyle(
-            fontSize: 15,
-            color: AppColors.ink,
-            fontWeight: FontWeight.w600,
+          const SizedBox(height: 5),
+          Text(
+            '${DateFormat('M.d HH:mm').format(result.endsAt)} 종료 · 총 ${result.totalVotes}표',
+            style: const TextStyle(fontSize: 12, color: AppColors.muted),
           ),
-        ),
-        const SizedBox(height: 20),
-        const Divider(height: 1, color: AppColors.line),
-      ],
+          const SizedBox(height: 12),
+          SizedBox(
+            height: MediaQuery.sizeOf(context).width < 520 ? 205 : 245,
+            child: Row(
+              children: [
+                Expanded(
+                  child: _BattleResultChoice(
+                    imageUrl: result.leftImageUrl,
+                    title: result.leftTitle,
+                    votes: result.leftVotes,
+                    won: result.leftVotes > result.rightVotes,
+                  ),
+                ),
+                const SizedBox(width: 8),
+                Expanded(
+                  child: _BattleResultChoice(
+                    imageUrl: result.rightImageUrl,
+                    title: result.rightTitle,
+                    votes: result.rightVotes,
+                    won: result.rightVotes > result.leftVotes,
+                  ),
+                ),
+              ],
+            ),
+          ),
+          const SizedBox(height: 12),
+          Text(
+            result.outcome,
+            style: const TextStyle(
+              fontSize: 14,
+              color: AppColors.ink,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+        ],
+      ),
     );
   }
 }

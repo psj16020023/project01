@@ -109,7 +109,7 @@ void main() {
   setUp(() => SharedPreferences.setMockInitialValues({}));
 
   test(
-    'only ended author results are returned; read state survives reload',
+    'ended created and voted results are separated; read state survives reload',
     () async {
       final state = CombinationBattleState(
         matches: [
@@ -127,6 +127,7 @@ void main() {
         page.results.map((r) => r.id),
         unorderedEquals(['won', 'tie', 'zero', 'right']),
       );
+      expect(page.results.every((result) => result.isCreated), isTrue);
       expect(
         page.results.firstWhere((r) => r.id == 'won').outcome,
         '우유 + 쿠키 승리',
@@ -140,8 +141,13 @@ void main() {
         page.results.firstWhere((r) => r.id == 'right').outcome,
         '라면 + 치즈 승리',
       );
-      expect((await repo.fetchBattleResults('voter')).results, isEmpty);
-      expect(await repo.markBattleResultsRead('voter', ['won']), isEmpty);
+      final voted = await repo.fetchBattleResults('voter');
+      expect(
+        voted.results.map((result) => result.id),
+        unorderedEquals(['won', 'other', 'tie', 'zero', 'right']),
+      );
+      expect(voted.results.every((result) => result.isVoted), isTrue);
+      expect(await repo.markBattleResultsRead('voter', ['won']), ['won']);
       expect(
         await repo.markBattleResultsRead('author', ['won', 'other', 'active']),
         ['won'],
@@ -172,6 +178,9 @@ void main() {
       await tester.tap(find.text('픽 쇼츠 · 새 결과 1'));
       await tester.pumpAndSettle();
       expect(find.text('픽 쇼츠'), findsOneWidget);
+      expect(find.text('내가 올린 것 1'), findsOneWidget);
+      expect(find.text('내가 투표한 것 0'), findsOneWidget);
+      expect(find.text('압도적 픽쇼츠'), findsOneWidget);
       expect(find.text('우유 + 쿠키 승리'), findsOneWidget);
       expect(find.text('12표'), findsOneWidget);
       expect(find.text('2표'), findsOneWidget);
@@ -179,6 +188,39 @@ void main() {
         (await repo.fetchBattleResults(author.id)).results.single.unread,
         isFalse,
       );
+      expect(tester.takeException(), isNull);
+      await tester.pumpWidget(const SizedBox());
+    },
+  );
+
+  testWidgets(
+    'created and voted tabs keep the result list simple and separate',
+    (tester) async {
+      tester.view.physicalSize = const Size(390, 844);
+      tester.view.devicePixelRatio = 1;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
+      final repo = MockPostRepository(
+        initialBattleState: CombinationBattleState(
+          matches: [
+            fixture('mine'),
+            fixture('voted-close', authorId: 'another', left: 5, right: 4),
+          ],
+        ),
+      );
+      await tester.pumpWidget(screen(repo, user: voter));
+      await tester.pumpAndSettle();
+      await tester.tap(find.text('픽 쇼츠 · 새 결과 2'));
+      await tester.pumpAndSettle();
+      expect(find.text('내가 올린 것 0'), findsOneWidget);
+      expect(find.text('내가 투표한 것 2'), findsOneWidget);
+      expect(find.textContaining('내가 올린 픽 쇼츠가 종료되면'), findsOneWidget);
+      await tester.tap(find.text('내가 투표한 것 2'));
+      await tester.pumpAndSettle();
+      expect(find.text('결과 mine'), findsOneWidget);
+      expect(find.text('결과 voted-close'), findsOneWidget);
+      expect(find.text('압도적 픽쇼츠'), findsOneWidget);
+      expect(find.text('박빙 픽쇼츠'), findsOneWidget);
       expect(tester.takeException(), isNull);
       await tester.pumpWidget(const SizedBox());
     },

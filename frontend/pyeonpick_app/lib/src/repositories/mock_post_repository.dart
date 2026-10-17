@@ -44,13 +44,18 @@ class MockPostRepository implements PostRepository {
         prefs.getStringList('pyeonpick_battle_results_read_$currentUserId') ??
         [];
     final now = DateTime.now();
-    final owned = state.matches.where(
-      (match) => match.authorId == currentUserId && match.endsAt != null,
+    final related = state.matches.where(
+      (match) =>
+          match.endsAt != null &&
+          (match.authorId == currentUserId ||
+              match.leftVoterIds.contains(currentUserId) ||
+              match.rightVoterIds.contains(currentUserId)),
     );
-    final ended = owned.where((match) => !match.endsAt!.isAfter(now)).toList()
+    final ended = related.where((match) => !match.endsAt!.isAfter(now)).toList()
       ..sort((a, b) => b.endsAt!.compareTo(a.endsAt!));
-    final upcoming = owned.where((match) => match.endsAt!.isAfter(now)).toList()
-      ..sort((a, b) => a.endsAt!.compareTo(b.endsAt!));
+    final upcoming =
+        related.where((match) => match.endsAt!.isAfter(now)).toList()
+          ..sort((a, b) => a.endsAt!.compareTo(b.endsAt!));
     String title(String? custom, String postId, String fallback) =>
         custom ??
         _posts.where((post) => post.id == postId).firstOrNull?.title ??
@@ -87,6 +92,9 @@ class MockPostRepository implements PostRepository {
               leftVotes: match.leftVotes,
               rightVotes: match.rightVotes,
               unread: !read.contains(match.id),
+              participation: match.authorId == currentUserId
+                  ? BattleResultParticipation.created
+                  : BattleResultParticipation.voted,
               leftImageUrl: image(match.leftCustomImageUrl, match.leftPostId),
               rightImageUrl: image(
                 match.rightCustomImageUrl,

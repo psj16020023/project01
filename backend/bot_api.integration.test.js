@@ -101,7 +101,7 @@ test('shared immutable votes feed only the authenticated user taste profile', { 
   const unauthorized = await fetch(base + '/api/bot/reply', { method: 'POST' });
   assert.equal(unauthorized.status, 401);
 
-  await t.test('only authors receive ended results and read state persists', async () => {
+  await t.test('authors and voters receive their ended results and read state persists', async () => {
     const ends = Date.now() + 2500;
     const source = (await api('/api/posts?limit=1', null, null, 'GET')).posts[0];
     for (const id of ['result-win', 'result-tie', 'result-zero']) {
@@ -124,13 +124,16 @@ test('shared immutable votes feed only the authenticated user taste profile', { 
     assert.equal(win.rightVotes, 0);
     assert.equal(win.leftTitle, source.title);
     assert.equal(win.unread, true);
+    assert.equal(win.participation, 'created');
     assert.equal(win.leftVoterIds, undefined);
     const tie = results.find((result) => result.id === 'result-tie');
     assert.equal(tie.leftVotes, tie.rightVotes);
     const zero = results.find((result) => result.id === 'result-zero');
     assert.equal(zero.leftVotes + zero.rightVotes, 0);
-    assert.deepEqual((await api(`/api/battles/results?authorId=${a.user.id}`, b.token, null, 'GET')).results, []);
-    assert.deepEqual((await api('/api/battles/results/read', b.token, { matchIds: ['result-win'], authorId: a.user.id })).readIds, []);
+    const voterResults = (await api(`/api/battles/results?authorId=${a.user.id}`, b.token, null, 'GET')).results;
+    assert.deepEqual(voterResults.map((result) => result.id).sort(), ['result-tie', 'result-win']);
+    assert.ok(voterResults.every((result) => result.participation === 'voted'));
+    assert.deepEqual((await api('/api/battles/results/read', b.token, { matchIds: ['result-win'], authorId: a.user.id })).readIds, ['result-win']);
     const othersFeed = await api('/api/battles', b.token, null, 'GET');
     assert.equal(othersFeed.matches.some((item) => item.id === 'result-win'), false);
     const acknowledged = await api('/api/battles/results/read', a.token, { matchIds: ['result-win', 'test-battle', 'unknown'] });

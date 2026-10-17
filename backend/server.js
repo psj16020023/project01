@@ -4079,15 +4079,20 @@ app.delete("/api/users/:id", requireAuth, requireSelf, async (req, res) => {
 });
 
 app.get("/api/battles/results", requireAuth, async (req, res) => {
-  const authorId = String(req.auth.sub);
+  const userId = String(req.auth.sub);
   const now = new Date();
+  const relatedToUser = { $or: [
+    { authorId: userId },
+    { leftVoterIds: userId },
+    { rightVoterIds: userId },
+  ] };
   try {
     const [matches, next, user] = await Promise.all([
-      BattleMatch.find({ authorId, endsAt: { $ne: null, $lte: now } })
-        .select("id title endsAt leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds")
+      BattleMatch.find({ $and: [relatedToUser, { endsAt: { $ne: null, $lte: now } }] })
+        .select("id title authorId endsAt leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds")
         .sort({ endsAt: -1, _id: -1 }).lean(),
-      BattleMatch.findOne({ authorId, endsAt: { $gt: now } }).sort({ endsAt: 1 }).select("endsAt").lean(),
-      User.findById(authorId).select("battleResultReadIds").lean(),
+      BattleMatch.findOne({ $and: [relatedToUser, { endsAt: { $gt: now } }] }).sort({ endsAt: 1 }).select("endsAt").lean(),
+      User.findById(userId).select("battleResultReadIds").lean(),
     ]);
     if (!user) return res.status(401).json({ message: "로그인이 필요해요." });
     await attachBattleImageMetadata(matches);
@@ -4115,6 +4120,7 @@ app.get("/api/battles/results", requireAuth, async (req, res) => {
         leftVotes: match.leftVoterIds.length,
         rightVotes: match.rightVoterIds.length,
         unread: !readIds.has(match.id),
+        participation: String(match.authorId) === userId ? "created" : "voted",
       })),
     });
   } catch (_) {
@@ -4123,15 +4129,22 @@ app.get("/api/battles/results", requireAuth, async (req, res) => {
 });
 
 app.post("/api/battles/results/read", requireAuth, async (req, res) => {
-  const authorId = String(req.auth.sub);
+  const userId = String(req.auth.sub);
   const ids = (Array.isArray(req.body.matchIds) ? req.body.matchIds : [])
     .filter((id) => typeof id === "string").slice(0, 500);
   try {
-    const owned = await BattleMatch.find({
-      authorId, id: { $in: ids }, endsAt: { $ne: null, $lte: new Date() },
+    const related = await BattleMatch.find({
+      $and: [
+        { id: { $in: ids }, endsAt: { $ne: null, $lte: new Date() } },
+        { $or: [
+          { authorId: userId },
+          { leftVoterIds: userId },
+          { rightVoterIds: userId },
+        ] },
+      ],
     }).select("id").lean();
-    const readIds = owned.map((match) => match.id);
-    await User.updateOne({ _id: authorId }, {
+    const readIds = related.map((match) => match.id);
+    await User.updateOne({ _id: userId }, {
       $addToSet: { battleResultReadIds: { $each: readIds } },
     });
     return res.json({ readIds });

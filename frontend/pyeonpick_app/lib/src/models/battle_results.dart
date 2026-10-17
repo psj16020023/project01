@@ -1,3 +1,5 @@
+enum BattleResultParticipation { created, voted }
+
 class BattleResultEntry {
   const BattleResultEntry({
     required this.id,
@@ -8,6 +10,7 @@ class BattleResultEntry {
     required this.leftVotes,
     required this.rightVotes,
     required this.unread,
+    this.participation = BattleResultParticipation.created,
     this.leftImageUrl,
     this.rightImageUrl,
   });
@@ -22,6 +25,9 @@ class BattleResultEntry {
         leftVotes: (json['leftVotes'] as num).toInt(),
         rightVotes: (json['rightVotes'] as num).toInt(),
         unread: json['unread'] == true,
+        participation: json['participation'] == 'voted'
+            ? BattleResultParticipation.voted
+            : BattleResultParticipation.created,
         leftImageUrl: json['leftImageUrl'] as String?,
         rightImageUrl: json['rightImageUrl'] as String?,
       );
@@ -34,8 +40,30 @@ class BattleResultEntry {
   final int leftVotes;
   final int rightVotes;
   final bool unread;
+  final BattleResultParticipation participation;
   final String? leftImageUrl;
   final String? rightImageUrl;
+
+  int get totalVotes => leftVotes + rightVotes;
+  bool get isCreated => participation == BattleResultParticipation.created;
+  bool get isVoted => participation == BattleResultParticipation.voted;
+  bool get isDecisiveResult {
+    if (totalVotes < 8 || leftVotes == rightVotes) return false;
+    final higher = leftVotes > rightVotes ? leftVotes : rightVotes;
+    final lower = leftVotes > rightVotes ? rightVotes : leftVotes;
+    return lower == 0 ? higher > 0 : higher >= lower * 2;
+  }
+
+  bool get isCloseResult =>
+      totalVotes >= 8 &&
+      !isDecisiveResult &&
+      (leftVotes - rightVotes).abs() <= 3;
+
+  String? get resultTypeLabel {
+    if (isDecisiveResult) return '압도적 픽쇼츠';
+    if (isCloseResult) return '박빙 픽쇼츠';
+    return null;
+  }
 
   String get outcome {
     if (leftVotes + rightVotes == 0) return '투표 없이 종료';
