@@ -177,7 +177,7 @@ void main() {
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('save actions show bookmark text next to bookmark icons', (
+  testWidgets('save actions show storage text next to bookmark icons', (
     tester,
   ) async {
     var tapCount = 0;
@@ -187,12 +187,12 @@ void main() {
           body: Column(
             children: [
               ActionChipButton(
-                label: '보관함에 추가',
+                label: '보관',
                 icon: Icons.bookmark_border_rounded,
                 onTap: () async => tapCount += 1,
               ),
               ActionChipButton(
-                label: '보관함에서 삭제',
+                label: '보관 해제',
                 icon: Icons.bookmark_rounded,
                 active: true,
                 onTap: () async {},
@@ -203,12 +203,12 @@ void main() {
       ),
     );
 
-    expect(find.text('보관함에 추가'), findsOneWidget);
-    expect(find.text('보관함에서 삭제'), findsOneWidget);
+    expect(find.text('보관'), findsOneWidget);
+    expect(find.text('보관 해제'), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_border_rounded), findsOneWidget);
     expect(find.byIcon(Icons.bookmark_rounded), findsOneWidget);
-    expect(find.byTooltip('보관함에 추가'), findsOneWidget);
-    expect(find.byTooltip('보관함에서 삭제'), findsOneWidget);
+    expect(find.byTooltip('보관'), findsOneWidget);
+    expect(find.byTooltip('보관 해제'), findsOneWidget);
 
     await tester.tap(find.byIcon(Icons.bookmark_border_rounded));
     await tester.pump();
@@ -493,6 +493,7 @@ void main() {
       nickname: '커뮤니케이션테스터',
     );
     var shuffleSeed = 0;
+    var searchCount = 0;
 
     await tester.pumpWidget(
       MaterialApp(
@@ -512,7 +513,7 @@ void main() {
               scrollController: scrollController,
               hasMorePosts: false,
               loadingMore: false,
-              onReload: () async {},
+              onReload: () async => searchCount += 1,
               onChangeSort: (_) {},
               onToggleLike: (_) async {},
               onToggleDislike: (_) async {},
@@ -545,7 +546,18 @@ void main() {
     expect(find.text('새로 들어온 조합'), findsOneWidget);
     expect(find.text('PB로 만든 조합'), findsOneWidget);
     expect(find.text('재평가'), findsOneWidget);
+    expect(find.text('압도적 픽쇼츠'), findsOneWidget);
+    expect(find.text('박빙 픽쇼츠'), findsNothing);
     expect(find.text('하트 성비'), findsNothing);
+    final searchField = tester.widget<TextField>(find.byType(TextField).first);
+    expect(searchField.decoration?.prefixIcon, isA<IconButton>());
+    expect(searchField.decoration?.suffixIcon, isNull);
+    expect(find.byTooltip('검색'), findsOneWidget);
+    await tester.tap(find.byTooltip('검색'));
+    await tester.pump();
+    expect(searchCount, 1);
+    expect(find.text('보관'), findsWidgets);
+    expect(find.textContaining('북마크'), findsNothing);
     expect(
       find.byKey(const Key('discovery-horizontal-이번 주 인기')),
       findsOneWidget,
@@ -566,10 +578,24 @@ void main() {
       find.byKey(const Key('preference-filter-toggle')),
     );
     await tester.pumpAndSettle();
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('preference-filter-toggle')),
+        matching: find.byIcon(Icons.expand_more),
+      ),
+      findsOneWidget,
+    );
     await tester.tap(find.byKey(const Key('preference-filter-toggle')));
     await tester.pump();
     expect(find.text('취향 필터'), findsOneWidget);
     expect(find.byKey(const Key('preference-filter-options')), findsOneWidget);
+    expect(
+      find.descendant(
+        of: find.byKey(const Key('preference-filter-toggle')),
+        matching: find.byIcon(Icons.expand_less),
+      ),
+      findsOneWidget,
+    );
     final firstTopicBeforeShuffle = tester
         .widget<Text>(
           find

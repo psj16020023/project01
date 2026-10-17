@@ -497,12 +497,6 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       .take(5)
       .map(battleItem)
       .toList();
-  final closeBattles = battleHighlights
-      .where((match) => match.isCloseResult)
-      .take(5)
-      .map(battleItem)
-      .toList();
-
   return <_DiscoveryTopic>[
     _DiscoveryTopic(
       label: '이번 주 인기',
@@ -560,15 +554,6 @@ List<_DiscoveryTopic> _buildDiscoveryTopics(
       posts: const <PostFeatureInfo>[],
       battles: decisiveBattles,
       decisiveBattleCollection: true,
-    ),
-    _DiscoveryTopic(
-      label: '박빙 픽쇼츠',
-      caption: '8표 이상, 세 표 이내로 갈린 결과',
-      icon: Icons.balance_rounded,
-      color: AppColors.lime,
-      posts: const <PostFeatureInfo>[],
-      battles: closeBattles,
-      decisiveBattleCollection: false,
     ),
   ];
 }
@@ -4531,8 +4516,7 @@ class _ToolbarState extends State<Toolbar> {
               child: TextField(
                 controller: widget.searchController,
                 decoration: inputDecoration('조합이나 상품 검색').copyWith(
-                  prefixIcon: const Icon(Icons.search_rounded, size: 21),
-                  suffixIcon: IconButton(
+                  prefixIcon: IconButton(
                     onPressed: widget.onSearch,
                     tooltip: '검색',
                     icon: const Icon(Icons.search_rounded, size: 21),
@@ -4573,7 +4557,7 @@ class _ToolbarState extends State<Toolbar> {
           ),
         Row(
           children: [
-            TextButton.icon(
+            TextButton(
               key: const Key('preference-filter-toggle'),
               onPressed: () =>
                   setState(() => _categoriesVisible = !_categoriesVisible),
@@ -4582,21 +4566,28 @@ class _ToolbarState extends State<Toolbar> {
                 minimumSize: const Size(44, 48),
                 padding: const EdgeInsets.only(right: 12),
               ),
-              icon: const Icon(Icons.tune_rounded, size: 20),
-              label: Text(
-                widget.selectedTags.isEmpty
-                    ? '취향 필터'
-                    : '취향 필터 ${widget.selectedTags.length}',
-                style: const TextStyle(
-                  fontSize: 16,
-                  fontWeight: FontWeight.w600,
-                ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  const Icon(Icons.tune_rounded, size: 20),
+                  const SizedBox(width: 8),
+                  Text(
+                    widget.selectedTags.isEmpty
+                        ? '취향 필터'
+                        : '취향 필터 ${widget.selectedTags.length}',
+                    style: const TextStyle(
+                      fontSize: 16,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                  const SizedBox(width: 4),
+                  Icon(
+                    _categoriesVisible ? Icons.expand_less : Icons.expand_more,
+                    size: 20,
+                    color: AppColors.muted,
+                  ),
+                ],
               ),
-            ),
-            Icon(
-              _categoriesVisible ? Icons.expand_less : Icons.expand_more,
-              size: 20,
-              color: AppColors.muted,
             ),
             const Spacer(),
             TextButton.icon(
@@ -5495,7 +5486,7 @@ class PostCard extends StatelessWidget {
                 const SizedBox(width: 4),
                 Expanded(
                   child: ActionChipButton(
-                    label: isSaved ? '북마크 해제' : '북마크',
+                    label: isSaved ? '보관 해제' : '보관',
                     icon: isSaved
                         ? Icons.bookmark_rounded
                         : Icons.bookmark_border_rounded,
@@ -9120,7 +9111,7 @@ class _PostDetailPageState extends State<PostDetailPage> {
                         const SizedBox(width: 10),
                         Expanded(
                           child: ActionChipButton(
-                            label: _saved ? '북마크 해제' : '북마크',
+                            label: _saved ? '보관 해제' : '보관',
                             icon: _saved
                                 ? Icons.bookmark_rounded
                                 : Icons.bookmark_border_rounded,
