@@ -25,6 +25,7 @@ import '../models/product_lookup_result.dart';
 import '../models/pyeon_user.dart';
 import '../models/sort_mode.dart';
 import '../repositories/post_repository.dart';
+import '../services/barcode_camera_quality.dart';
 import '../services/bot_budget_rules.dart';
 import '../services/bot_situation_analyzer.dart';
 import '../services/local_account_store.dart';
@@ -10468,7 +10469,7 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
   final MobileScannerController _controller = MobileScannerController(
     autoStart: false,
     facing: CameraFacing.back,
-    cameraResolution: const Size(1280, 720),
+    cameraResolution: const Size(1920, 1080),
     detectionSpeed: DetectionSpeed.normal,
     detectionTimeoutMs: 120,
     autoZoom: true,
@@ -10558,6 +10559,7 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
 
     try {
       await _controller.start(cameraDirection: CameraFacing.back);
+      unawaited(optimizeBarcodeCameraForWeb());
       if (!mounted) return;
       setState(() {
         _starting = false;
@@ -10676,6 +10678,7 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
                                 borderRadius: BorderRadius.circular(30),
                                 child: MobileScanner(
                                   controller: _controller,
+                                  tapToFocus: true,
                                   onDetect: (capture) {
                                     if (_handled) return;
                                     final value = _retailBarcodeFromCapture(
@@ -10697,11 +10700,13 @@ class _ProductScannerSheetState extends State<ProductScannerSheet> {
                                   },
                                 ),
                               ),
-                              Container(
-                                decoration: BoxDecoration(
-                                  borderRadius: BorderRadius.circular(30),
-                                  border: Border.all(
-                                    color: Colors.white.withAlpha(80),
+                              IgnorePointer(
+                                child: Container(
+                                  decoration: BoxDecoration(
+                                    borderRadius: BorderRadius.circular(30),
+                                    border: Border.all(
+                                      color: Colors.white.withAlpha(80),
+                                    ),
                                   ),
                                 ),
                               ),

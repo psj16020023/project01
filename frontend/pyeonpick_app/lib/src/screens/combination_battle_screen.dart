@@ -14,6 +14,7 @@ import '../models/post.dart';
 import '../models/pyeon_user.dart';
 import '../models/sort_mode.dart';
 import '../repositories/post_repository.dart';
+import '../services/barcode_camera_quality.dart';
 import '../services/battle_state_store.dart';
 import '../widgets/cu_product_badges.dart';
 
@@ -1521,7 +1522,7 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
   final MobileScannerController _controller = MobileScannerController(
     autoStart: false,
     facing: CameraFacing.back,
-    cameraResolution: const Size(1280, 720),
+    cameraResolution: const Size(1920, 1080),
     detectionSpeed: DetectionSpeed.normal,
     detectionTimeoutMs: 120,
     autoZoom: true,
@@ -1599,6 +1600,7 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
     } catch (_) {}
     try {
       await _controller.start(cameraDirection: CameraFacing.back);
+      unawaited(optimizeBarcodeCameraForWeb());
       if (!mounted) return;
       setState(() {
         _starting = false;
@@ -1687,6 +1689,7 @@ class _BattleBarcodeScannerPageState extends State<_BattleBarcodeScannerPage> {
                     children: [
                       MobileScanner(
                         controller: _controller,
+                        tapToFocus: true,
                         onDetect: (capture) {
                           if (_handled) return;
                           var value = '';
