@@ -3,7 +3,7 @@ const assert = require('node:assert/strict');
 const net = require('node:net');
 const { spawn } = require('node:child_process');
 
-test('shared immutable votes feed only the authenticated user taste profile', { timeout: 60000 }, async (t) => {
+test('Pick Shorts votes stay separate from PyeonBot recommendations', { timeout: 60000 }, async (t) => {
   const socket = net.createServer();
   await new Promise((resolve) => socket.listen(0, '127.0.0.1', resolve));
   const port = socket.address().port;
@@ -93,10 +93,9 @@ test('shared immutable votes feed only the authenticated user taste profile', { 
   assert.equal(edited.rightVotes, 1);
 
   const profile = await api('/api/bot/analyze', a.token, { prompt: '간식 추천', userId: b.user.id });
-  assert.equal(profile.analysis.preferences.sampleCount, 1);
-  assert.equal(profile.analysis.preferences.categoryWeights['달달'], 1);
+  assert.equal(Object.hasOwn(profile.analysis, 'preferences'), false);
   const other = await api('/api/bot/analyze', b.token, { prompt: '간식 추천', userId: a.user.id });
-  assert.equal(other.analysis.preferences.categoryWeights['달달'], undefined);
+  assert.equal(Object.hasOwn(other.analysis, 'preferences'), false);
   assert.equal((await api('/api/bot/reply', a.token, { prompt: '대화 테스트' })).source, 'local-fallback');
   const unauthorized = await fetch(base + '/api/bot/reply', { method: 'POST' });
   assert.equal(unauthorized.status, 401);

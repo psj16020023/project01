@@ -7,7 +7,7 @@ const path = require("path");
 const crypto = require("crypto");
 const bcrypt = require("bcryptjs");
 const jwt = require("jsonwebtoken");
-const { buildVotePreferences, eligibleCandidates, dialogueInput } = require("./bot_dialogue");
+const { eligibleCandidates, dialogueInput } = require("./bot_dialogue");
 const { imageProxy } = require("./image_proxy");
 
 const app = express();
@@ -3787,16 +3787,6 @@ app.post("/api/auth/signin", async (req, res) => {
   });
 });
 
-async function loadVotePreferences(userId, prompt = "") {
-  const matches = await BattleMatch.find({
-    $or: [{ leftVoterIds: String(userId) }, { rightVoterIds: String(userId) }],
-  }).sort({ createdAt: -1 }).limit(200)
-    .select("title leftPostId rightPostId leftCustomTitle rightCustomTitle leftVoterIds rightVoterIds").lean();
-  const ids = matches.flatMap((match) => [match.leftPostId, match.rightPostId]).filter(isValidObjectId);
-  const posts = await Post.find({ _id: { $in: ids } }).select("title categories").lean();
-  return buildVotePreferences(matches, posts, userId, prompt);
-}
-
 app.post("/api/bot/analyze", requireAuth, async (req, res) => {
   const prompt = String(req.body.prompt || "").trim();
   const memoryNotes = Array.isArray(req.body.memoryNotes)
@@ -3805,10 +3795,9 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
   if (!prompt) {
     return res.status(400).json({ message: "분석할 문장이 필요해요." });
   }
-  const preferences = await loadVotePreferences(req.auth.sub, prompt);
   const localAnalysis = analyzeBotPromptLocally(prompt);
   if (!OPENAI_API_KEY) {
-    return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
+    return res.json({ analysis: localAnalysis, source: "local-fallback" });
   }
 
   try {
@@ -3905,16 +3894,16 @@ app.post("/api/bot/analyze", requireAuth, async (req, res) => {
     });
 
     if (!response.ok) {
-      return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
+      return res.json({ analysis: localAnalysis, source: "local-fallback" });
     }
     const payload = await response.json();
     const analysis = tryParseJsonObject(extractResponsesText(payload));
     if (!analysis) {
-      return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
+      return res.json({ analysis: localAnalysis, source: "local-fallback" });
     }
-    return res.json({ analysis: { ...analysis, preferences }, source: "openai" });
+    return res.json({ analysis, source: "openai" });
   } catch (_) {
-    return res.json({ analysis: { ...localAnalysis, preferences }, source: "local-fallback" });
+    return res.json({ analysis: localAnalysis, source: "local-fallback" });
   }
 });
 
@@ -3928,10 +3917,9 @@ app.post("/api/bot/reply", requireAuth, async (req, res) => {
     const posts = await Post.find({ _id: { $in: ids } })
       .select("title priceMin priceMax categories details.usedProducts").lean();
     const candidates = eligibleCandidates(posts, req.body.maximumBudget, req.body.minimumPrice);
-    const preferences = await loadVotePreferences(req.auth.sub, prompt);
     const user = await User.findById(req.auth.sub).select("botSetup").lean();
     const input = dialogueInput({
-      prompt, history: req.body.history, candidates, preferences,
+      prompt, history: req.body.history, candidates,
       setup: user?.botSetup ? {
         tasteRatings: user.botSetup.tasteRatings,
         priorityValues: user.botSetup.priorityValues,

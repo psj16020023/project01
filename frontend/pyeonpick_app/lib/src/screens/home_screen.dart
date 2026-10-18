@@ -1971,7 +1971,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   likedPosts,
                   targetCategories.toList(),
                   prompt: recommendationPrompt,
-                  votePreferences: aiSituation?.preferences,
                   useAgeCalorieGuide: useAgeCalorieGuide,
                 ) -
                 _scorePost(
@@ -1980,7 +1979,6 @@ class _HomeScreenState extends State<HomeScreen> {
                   likedPosts,
                   targetCategories.toList(),
                   prompt: recommendationPrompt,
-                  votePreferences: aiSituation?.preferences,
                   useAgeCalorieGuide: useAgeCalorieGuide,
                 ),
           );
@@ -2036,9 +2034,8 @@ class _HomeScreenState extends State<HomeScreen> {
     List<String> targetCategories, {
     required String prompt,
     required bool useAgeCalorieGuide,
-    BotVotePreferences? votePreferences,
   }) {
-    var score = votePreferences?.score(post.categories) ?? 0;
+    var score = 0;
     final normalizedCategories = post.categories
         .map(_normalizeCategory)
         .toSet();

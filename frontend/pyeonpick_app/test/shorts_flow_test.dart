@@ -5,7 +5,6 @@ import 'package:pyeonpick_app/src/models/combination_battle.dart';
 import 'package:pyeonpick_app/src/models/pyeon_user.dart';
 import 'package:pyeonpick_app/src/repositories/mock_post_repository.dart';
 import 'package:pyeonpick_app/src/screens/combination_battle_screen.dart';
-import 'package:pyeonpick_app/src/services/bot_situation_analyzer.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 BattleMatchEntry match(String id) => BattleMatchEntry(
@@ -159,21 +158,4 @@ void main() {
     expect(find.text('사진을 추가해주세요'), findsNWidgets(2));
     expect(tester.takeException(), isNull);
   });
-
-  test(
-    'learned taste is a small bonus and scarce votes are not over-weighted',
-    () {
-      const scarce = BotVotePreferences(
-        sampleCount: 1,
-        categoryWeights: {'달달': 1},
-      );
-      const established = BotVotePreferences(
-        sampleCount: 10,
-        categoryWeights: {'달달': 1, '짭짤': 1, '야식': 1},
-      );
-      expect(scarce.score(['달달']), 1);
-      expect(established.score(['달달', '짭짤', '야식']), 6);
-      expect(established.score(['새콤']), 0);
-    },
-  );
 }

@@ -6,34 +6,6 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../core/app_environment.dart';
 import '../models/bot_message.dart';
 
-class BotVotePreferences {
-  const BotVotePreferences({
-    this.sampleCount = 0,
-    this.categoryWeights = const {},
-  });
-
-  factory BotVotePreferences.fromJson(Map<String, dynamic>? json) {
-    return BotVotePreferences(
-      sampleCount: (json?['sampleCount'] as num?)?.toInt() ?? 0,
-      categoryWeights: ((json?['categoryWeights'] as Map?) ?? {}).map(
-        (key, value) => MapEntry(key.toString(), (value as num).toDouble()),
-      ),
-    );
-  }
-
-  final int sampleCount;
-  final Map<String, double> categoryWeights;
-
-  int score(Iterable<String> categories) {
-    if (sampleCount == 0) return 0;
-    final affinity = categories.toSet().fold<double>(
-      0,
-      (sum, category) => sum + (categoryWeights[category] ?? 0),
-    );
-    return (affinity * 3 * (sampleCount / 5).clamp(0, 1)).round().clamp(0, 6);
-  }
-}
-
 class BotSituationContext {
   const BotSituationContext({
     required this.emotion,
@@ -45,7 +17,6 @@ class BotSituationContext {
     this.timeAvailableMinutes,
     this.mealPurpose,
     this.bodyCondition,
-    this.preferences = const BotVotePreferences(),
   });
 
   factory BotSituationContext.fromJson(Map<String, dynamic> json) {
@@ -65,9 +36,6 @@ class BotSituationContext {
               .map((item) => item.toString())
               .toList(),
       summary: json['summary'] as String? ?? '',
-      preferences: BotVotePreferences.fromJson(
-        json['preferences'] as Map<String, dynamic>?,
-      ),
     );
   }
 
@@ -80,7 +48,6 @@ class BotSituationContext {
   final List<String> wantedTastes;
   final List<String> avoidConditions;
   final String summary;
-  final BotVotePreferences preferences;
 }
 
 abstract final class BotSituationAnalyzer {

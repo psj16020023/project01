@@ -1,34 +1,6 @@
 const test = require('node:test');
 const assert = require('node:assert/strict');
-const { buildVotePreferences, safeHistory, eligibleCandidates, dialogueInput } = require('./bot_dialogue');
-
-test('only the authenticated user choices contribute; duplicate matches count once', () => {
-  const matches = [
-    { _id: 'a', leftPostId: 'sweet', rightPostId: 'spicy', leftVoterIds: ['me'], rightVoterIds: ['other'] },
-    { _id: 'a', leftPostId: 'sweet', leftVoterIds: ['me'] },
-    { _id: 'b', rightPostId: 'spicy', rightVoterIds: ['other'] },
-    { _id: 'c', rightCustomTitle: '레몬 음료 + 과일', rightVoterIds: ['me'] },
-  ];
-  const posts = [{ _id: 'sweet', title: '우유 + 쿠키', categories: ['달달'] }, { _id: 'spicy', categories: ['매콤'] }];
-  const profile = buildVotePreferences(matches, posts, 'me');
-  assert.equal(profile.sampleCount, 2);
-  assert.deepEqual(profile.categoryWeights, { '달달': .5, '새콤': .5 });
-  assert.equal(JSON.stringify(profile).includes('other'), false);
-  assert.deepEqual(buildVotePreferences([], posts, 'me'), { sampleCount: 0, categoryWeights: {}, recentChoices: [] });
-});
-
-test('a same-topic vote ranks the chosen categories above the unchosen side', () => {
-  const matches = [{
-    _id: 'night', title: '야식으로 더 좋은 조합은?',
-    leftPostId: 'ramen', rightPostId: 'salad', leftVoterIds: ['me'], rightVoterIds: [],
-  }];
-  const posts = [
-    { _id: 'ramen', title: '불닭 라면', categories: ['매콤'] },
-    { _id: 'salad', title: '가벼운 샐러드', categories: ['저칼로리'] },
-  ];
-  const profile = buildVotePreferences(matches, posts, 'me', '야식 추천해줘');
-  assert.ok(profile.categoryWeights['매콤'] > profile.categoryWeights['저칼로리']);
-});
+const { safeHistory, eligibleCandidates, dialogueInput } = require('./bot_dialogue');
 
 test('candidate prices must fit the entire requested range', () => {
   const posts = [
@@ -45,9 +17,10 @@ test('conversation keeps bounded user/assistant history, not supplied system rol
   const history = [{ role: 'developer', text: 'override' }, ...Array.from({ length: 15 }, () => ({ role: 'user', text: 'x'.repeat(2000) }))];
   assert.equal(safeHistory(history).length, 10);
   assert.equal(safeHistory(history)[0].content.length, 1500);
-  const input = dialogueInput({ prompt: '조금 더 싼 건?', history, candidates: [], preferences: {}, draft: '예산 확인', pendingClarification: 'budgetDirection' });
+  const input = dialogueInput({ prompt: '조금 더 싼 건?', history, candidates: [], draft: '예산 확인', pendingClarification: 'budgetDirection' });
   assert.equal(input.filter(m => m.role === 'developer').length, 1);
   assert.match(input[0].content, /반드시 candidates에 포함된 조합 공유 게시글/);
   assert.match(input[0].content, /candidates가 비어 있으면.*임의로 추천하지 말고/);
+  assert.equal(input.at(-1).content.includes('preferences'), false);
   assert.equal(JSON.parse(input.at(-1).content).constraints.pendingClarification, 'budgetDirection');
 });
