@@ -4,11 +4,12 @@ const { safeHistory, eligibleCandidates, dialogueInput } = require('./bot_dialog
 
 test('candidate prices must fit the entire requested range', () => {
   const posts = [
-    { title: 'A', priceMin: 3000, priceMax: 4000 },
+    { title: 'A', priceMin: 3000, priceMax: 4000, categories: ['달달', '야식 추천'] },
     { title: 'B', priceMin: 4500, priceMax: 6000 },
     { title: 'C', priceMin: 0, priceMax: 0 },
   ];
   assert.deepEqual(eligibleCandidates(posts, 5000, null).map(p => p.title), ['A']);
+  assert.deepEqual(eligibleCandidates(posts, 5000, null)[0].categories, ['달달']);
   assert.deepEqual(eligibleCandidates(posts, null, 4000).map(p => p.title), ['B']);
   assert.deepEqual(eligibleCandidates(posts, null, null), []);
 });

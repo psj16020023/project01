@@ -1,3 +1,10 @@
+const legacySituationTags = new Set([
+  '등교길 추천', '야식 추천', '간식 추천', '점심 대용', '아침 대용',
+  '공부할 때 추천', '드라이브 간식', '영화 보며 먹기 좋아요',
+  '여행 갈 때 챙기기 좋아요', '피크닉 추천', '운동 후 추천',
+  '다이어트 할 때 추천',
+]);
+
 function safeHistory(messages) {
   return (Array.isArray(messages) ? messages : [])
     .filter((m) => m && ['user', 'assistant'].includes(m.role) && typeof m.text === 'string')
@@ -18,7 +25,10 @@ function eligibleCandidates(posts, maximumBudget, minimumPrice) {
     title: String(post.title).slice(0, 160),
     priceMin: post.priceMin,
     priceMax: post.priceMax,
-    categories: (post.categories || []).slice(0, 12),
+    categories: (post.categories || [])
+      .map(String)
+      .filter((category) => !legacySituationTags.has(category))
+      .slice(0, 12),
     usedProducts: (post.details?.usedProducts || []).slice(0, 8),
   }));
 }

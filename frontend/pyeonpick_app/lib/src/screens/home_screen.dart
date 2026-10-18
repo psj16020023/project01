@@ -27,6 +27,7 @@ import '../models/sort_mode.dart';
 import '../repositories/post_repository.dart';
 import '../services/barcode_camera_quality.dart';
 import '../services/bot_budget_rules.dart';
+import '../services/bot_recommendation_scorer.dart';
 import '../services/bot_situation_analyzer.dart';
 import '../services/browser_barcode_detector.dart';
 import '../services/local_account_store.dart';
@@ -1529,9 +1530,6 @@ class _HomeScreenState extends State<HomeScreen> {
     final recommendationPool = _botRecommendationPosts.isEmpty
         ? _posts
         : _botRecommendationPosts;
-    final likedPosts = recommendationPool
-        .where((post) => post.likedByMe)
-        .toList();
     final analysis = _analyzeSituationPrompt(normalized);
     final isFoodRequest = _isBotRecommendationRequest(normalized);
     final isGreeting = _hasAny(normalized, const [
@@ -1622,7 +1620,6 @@ class _HomeScreenState extends State<HomeScreen> {
         ? resolvedBudget
         : aiSituation?.budget;
     final budget = resolvedBudget ?? aiSituation?.budget;
-    final matchedSituationTags = _extractPromptSituationTags(normalized);
     final lastAssistantText = lastAssistantMessage?.text ?? '';
     final awaitingRecommendationAnswer =
         _hasAny(lastAssistantText, const [
@@ -1706,7 +1703,7 @@ class _HomeScreenState extends State<HomeScreen> {
     if (isQuestionAboutBot) {
       return const _BotReply(
         text:
-            '나는 네 초기설정과 좋아요 기록을 바탕으로 감정, 예산, 시간, 야식 같은 현재 상황을 함께 읽는 개인 맞춤형 편봇이야. 네 예산을 넘지 않는 조합 중 맛 점수가 잘 맞는 것을 추천해.',
+            '나는 현재 요청과 감정, 예산, 초기설정의 맛 취향을 함께 계산하는 개인 맞춤형 편봇이야. 예산을 넘지 않는 조합 중 점수가 높은 것을 추천해.',
         memoryNote: '편봇 기능 설명',
         recommendedPostIds: <String>[],
       );
@@ -1732,12 +1729,18 @@ class _HomeScreenState extends State<HomeScreen> {
     }
 
     final empathy = <String>[];
-    final targetCategories = <String>{};
+    final requestedTastes = BotRecommendationScorer.requestedTastes(
+      normalized,
+      analyzedTastes: aiSituation?.wantedTastes ?? const <String>[],
+    );
+    final emotionTastes = BotRecommendationScorer.emotionTastes(
+      matchedMoods,
+      setup,
+    );
     final reasonParts = <String>[];
     String memoryNote = analysis.memoryNote;
     if (hasMeaningfulAiContext) {
       final situation = aiSituation;
-      targetCategories.addAll(situation.wantedTastes);
       if (situation.summary.isNotEmpty) {
         empathy.add(situation.summary);
       }
@@ -1757,49 +1760,40 @@ class _HomeScreenState extends State<HomeScreen> {
             ? analysis.emotionSummary
             : '좋은 일이 있었던 것 같아. 말투만 봐도 들뜨고 기분 좋은 쪽으로 느껴져.',
       );
-      targetCategories.addAll(const ['신', '달달']);
       reasonParts.add('기분이 좋고 행복할 때는 상큼한 맛이나 달달한 맛이 그 분위기를 더 살려줄 수 있어요.');
       memoryNote = '기분 좋을 때 상큼하거나 달달한 조합 선호';
     }
     if (matchedMoods.contains('down')) {
       empathy.add('오늘 많이 가라앉아 있었던 것 같아. 그런 날엔 뭘 고르는 것조차 귀찮게 느껴질 수 있어.');
-      targetCategories.add('달달');
       reasonParts.add('우울하고 무기력할 때는 단맛이 잠깐 에너지를 끌어올리고 기분 전환에 도움을 줄 수 있어요.');
       memoryNote = '기분이 가라앉을 때 달달한 조합 선호';
     }
     if (matchedMoods.contains('stress')) {
       empathy.add('스트레스가 꽤 쌓인 상태로 보여. 입 안에서 확 전환되는 맛이 필요할 수 있어.');
-      if (setup.tasteLevel('매콤') >= 4) {
-        targetCategories.add('매콤');
-      } else {
-        targetCategories.addAll(const ['달달', '신']);
-      }
-      reasonParts.add('화가 나거나 스트레스를 받을 때는 매운맛이나 자극 있는 맛이 기분 전환에 도움을 줄 수 있어요.');
+      reasonParts.add(
+        setup.tasteLevel('매콤') >= 4
+            ? '스트레스 상황에는 평소 매콤한 맛을 좋아하는 취향을 확인해 매콤한 후보에 작은 가산점을 줄게요.'
+            : '스트레스 상황에는 매운맛을 강요하지 않고 달달한 후보에 작은 가산점을 줄게요.',
+      );
       memoryNote = '스트레스 상황에서 강한 맛 선호';
     }
     if (matchedMoods.contains('anxious')) {
       empathy.add('긴장감이 꽤 올라와 있네. 지금은 과한 자극보다 안정감이 먼저일 수도 있어.');
-      targetCategories.addAll(const ['저칼로리', '짭짤']);
       reasonParts.add('불안하고 긴장될 때는 따뜻하고 부드러운 컴포트 푸드 쪽이 더 잘 맞을 수 있어요.');
       memoryNote = '긴장될 때 편안한 조합 선호';
     }
     if (matchedMoods.contains('surprised')) {
       empathy.add('예상 밖의 일이 있어서 놀라거나 당황한 마음이 먼저 느껴져.');
-      targetCategories.addAll(const ['신', '달달']);
-      reasonParts.add(
-        '놀람 계열 감정은 기분을 빠르게 정리해 주는 상큼함이나 부드러운 단맛 쪽으로 연결해 볼 수 있어요.',
-      );
-      memoryNote = '놀람 계열을 상큼하거나 부드러운 단맛으로 연결';
+      reasonParts.add('놀람 계열 감정은 상큼한 맛에 작은 가산점만 줄게요.');
+      memoryNote = '놀람 계열을 상큼한 맛으로 연결';
     }
     if (matchedMoods.contains('disgust')) {
       empathy.add('지금은 불쾌감이나 거부감이 커서, 자극적인 것보다 깔끔하고 담백한 쪽이 더 맞아 보여.');
-      targetCategories.addAll(const ['저칼로리', '새콤']);
-      reasonParts.add('혐오나 거부감이 느껴질 때는 입안을 정리하는 깔끔한 맛이나 담백한 맛이 덜 부담스러워요.');
+      reasonParts.add('불쾌감이 느껴질 때는 입안을 정리하는 새콤한 맛에 작은 가산점만 줄게요.');
       memoryNote = '불쾌감이 있을 때 깔끔하고 담백한 조합 선호';
     }
     if (matchedMoods.contains('tired')) {
       empathy.add('에너지가 많이 빠진 상태로 들려. 일단 정신이 조금 깨어나는 쪽이 좋겠어.');
-      targetCategories.addAll(const ['신', '짭짤']);
       reasonParts.add(
         '피곤하고 지칠 때는 신맛이나 짭짤한 맛이 식욕을 돋우고 에너지를 회복하는 데 도움이 될 수 있어요.',
       );
@@ -1807,43 +1801,32 @@ class _HomeScreenState extends State<HomeScreen> {
     }
     if (matchedMoods.contains('sick')) {
       empathy.add('속 상태가 예민해 보여서 자극적인 건 피하는 게 좋겠어.');
-      targetCategories.addAll(const ['저칼로리', '짭짤']);
-      reasonParts.add('속이 불편할 때는 담백하고 부담이 적은 쪽이 더 안전해요.');
-      memoryNote = '속이 예민할 때 담백한 조합 선호';
+      reasonParts.add('몸이 아픈 상태는 특정 맛으로 단정하지 않고, 직접 말한 조건과 초기설정을 우선할게요.');
+      memoryNote = '몸 상태에는 감정 맛 점수를 추가하지 않음';
     }
     if (matchedMoods.contains('hot')) {
       empathy.add('지금은 열감을 낮추고 진정시키는 쪽이 더 맞겠어.');
-      targetCategories.addAll(const ['새콤', '저칼로리']);
       reasonParts.add('열이 오르거나 답답할 때는 시원하고 담백한 느낌의 조합이 덜 부담스러워요.');
       memoryNote = '열감이 있을 때 시원한 조합 선호';
     }
     if (isDieting) {
       empathy.add('지금은 다이어트를 해치지 않으면서도 버틸 수 있는 선택이 중요해 보여.');
-      targetCategories.addAll(const ['저칼로리', '새콤']);
       reasonParts.add(
         '다이어트 중이면 칼로리 부담이 덜하고, 당이 과하지 않으면서도 식단 흐름을 덜 깨는 조합이 더 잘 맞아요.',
       );
       memoryNote = '다이어트 중 가벼운 조합 선호';
     }
     if (wantsLightMeal) {
-      targetCategories.addAll(const ['저칼로리', '새콤']);
       reasonParts.add('지금은 속이 무겁지 않은 쪽이 더 중요해 보여서 가볍고 깔끔한 조합을 우선으로 볼게요.');
     }
     if (wantsProtein) {
-      targetCategories.add('저칼로리');
       reasonParts.add('단백질을 챙기고 싶다면 닭가슴살, 계란, 요거트처럼 포만감과 영양 밸런스가 있는 조합이 유리해요.');
       memoryNote = '단백질 중심 조합 선호';
     }
     if (wantsSatiety) {
-      targetCategories.addAll(const ['저칼로리', '짭짤']);
       reasonParts.add('포만감이 필요할 땐 너무 달기만 한 조합보다 든든하게 버텨주는 조합이 더 만족도가 높아요.');
     }
-    if (matchedSituationTags.isNotEmpty) {
-      targetCategories.addAll(matchedSituationTags);
-      reasonParts.add('지금 말해준 상황 태그와 비슷한 맥락의 조합도 같이 우선해서 볼게요.');
-    }
     if (avoidsSugar) {
-      targetCategories.addAll(const ['저칼로리', '짭짤', '새콤']);
       reasonParts.add('당을 줄이고 싶다면 달달한 조합은 뒤로 두고, 담백하거나 상큼한 쪽을 먼저 보는 게 좋아요.');
     }
     if (lateNight && (isDieting || wantsLightMeal)) {
@@ -1858,7 +1841,6 @@ class _HomeScreenState extends State<HomeScreen> {
       reasonParts.add('${_formatWon(minimumPrice)} 이상 가격의 조합만 보여줄게요.');
     }
     if (isNeedFastAnswer) {
-      targetCategories.add('시간절약');
       reasonParts.add('시간이 부족한 상황이라 바로 먹거나 짧게 준비할 수 있는 조합을 먼저 볼게요.');
     }
     final mealCalorieRange = setup.mealCalorieRange;
@@ -1868,10 +1850,6 @@ class _HomeScreenState extends State<HomeScreen> {
       );
     } else if (!useAgeCalorieGuide && wantsFullMeal) {
       reasonParts.add('이번에는 연령별 한 끼 칼로리 범위를 제외하고 취향과 현재 상황만으로 골라볼게요.');
-    }
-
-    if (targetCategories.isEmpty) {
-      targetCategories.addAll(setup.favoriteTastes);
     }
 
     final recognizedState =
@@ -1965,20 +1943,20 @@ class _HomeScreenState extends State<HomeScreen> {
             .toList()
           ..sort(
             (a, b) =>
-                _scorePost(
-                  b,
-                  setup,
-                  likedPosts,
-                  targetCategories.toList(),
+                BotRecommendationScorer.score(
+                  post: b,
+                  setup: setup,
                   prompt: recommendationPrompt,
+                  requestedTastes: requestedTastes,
+                  emotionTastes: emotionTastes,
                   useAgeCalorieGuide: useAgeCalorieGuide,
                 ) -
-                _scorePost(
-                  a,
-                  setup,
-                  likedPosts,
-                  targetCategories.toList(),
+                BotRecommendationScorer.score(
+                  post: a,
+                  setup: setup,
                   prompt: recommendationPrompt,
+                  requestedTastes: requestedTastes,
+                  emotionTastes: emotionTastes,
                   useAgeCalorieGuide: useAgeCalorieGuide,
                 ),
           );
@@ -1998,7 +1976,7 @@ class _HomeScreenState extends State<HomeScreen> {
         ? '예산과 평소 맛 취향을 기준으로 골랐어.'
         : empathy.join(' ');
     final reasonText = reasonParts.isEmpty
-        ? '지금 메시지에서는 특정 감정보다 평소 좋아하는 맛과 좋아요 패턴을 더 크게 반영했어요.'
+        ? '지금 메시지에서는 현재 요청과 평소 맛 취향을 중심으로 계산했어요.'
         : reasonParts.join(' ');
     final closing = isAskingForEmpathy
         ? varied(const [
@@ -2006,7 +1984,7 @@ class _HomeScreenState extends State<HomeScreen> {
             '지금은 선택을 서두르지 않아도 돼. 마음 가는 후보만 찜해두자.',
           ])
         : varied(const [
-            '취향과 좋아요 기록을 같이 보고 골랐어. 두 개가 고민되면 바로 비교해줄게.',
+            '현재 요청과 초기설정 취향을 같이 보고 골랐어. 두 개가 고민되면 바로 비교해줄게.',
             '지금 조건에서 가능성 높은 순서야. 더 싼 것, 더 맛이 센 것으로 다시 좁혀도 돼.',
             '우선 이 세 개부터 보자. 하나가 마음에 걸리면 그 이유를 중심으로 다시 골라줄게.',
           ]);
@@ -2025,198 +2003,6 @@ class _HomeScreenState extends State<HomeScreen> {
       shouldSyncBudget: shouldSyncBudget,
       recommendationAttempted: true,
     );
-  }
-
-  int _scorePost(
-    Post post,
-    BotSetup setup,
-    List<Post> likedPosts,
-    List<String> targetCategories, {
-    required String prompt,
-    required bool useAgeCalorieGuide,
-  }) {
-    var score = 0;
-    final normalizedCategories = post.categories
-        .map(_normalizeCategory)
-        .toSet();
-    final searchableText = '${post.title} ${post.content}'.toLowerCase();
-    final wantsDiet = _hasAny(prompt, const [
-      '다이어트',
-      '살 빼',
-      '살빼',
-      '감량',
-      '칼로리',
-      '저칼로리',
-    ]);
-    final wantsProtein = _hasAny(prompt, const [
-      '단백질',
-      'protein',
-      '근손실',
-      '운동 후',
-      '운동끝',
-      '헬스',
-    ]);
-    final wantsLightMeal = _hasAny(prompt, const [
-      '가볍게',
-      '부담 없',
-      '안 무거운',
-      '속 편한',
-      '클린',
-      '야식',
-    ]);
-    final wantsFullMeal = _hasAny(prompt, const [
-      '한끼',
-      '한 끼',
-      '식사',
-      '끼니',
-      '아침',
-      '점심',
-      '저녁',
-      '밥',
-      '배고',
-      '든든',
-    ]);
-    final avoidsSugar = _hasAny(prompt, const [
-      '당 줄',
-      '당류',
-      '단 거 말고',
-      '덜 단',
-      '무가당',
-    ]);
-    final promptSituationTags = _extractPromptSituationTags(prompt);
-
-    for (final category in targetCategories.map(_normalizeCategory)) {
-      if (normalizedCategories.contains(category)) score += 5;
-    }
-    for (final tag in promptSituationTags.map(_normalizeCategory)) {
-      if (normalizedCategories.contains(tag)) score += 6;
-    }
-    for (final liked in likedPosts) {
-      if (liked.categories
-          .map(_normalizeCategory)
-          .any(normalizedCategories.contains)) {
-        score += 2;
-      }
-    }
-    for (final entry in setup.priorityValues.asMap().entries) {
-      final priority = entry.value;
-      final weight = entry.key == 0 ? 9 : 6;
-      if (normalizedCategories.contains(priority)) {
-        score += weight;
-      }
-      if (priority == '저칼로리' && post.calories != null) {
-        score += post.calories! <= 450 ? weight : -2;
-      }
-      if (priority == '가성비' && post.priceMax > 0 && post.priceMax <= 4000) {
-        score += weight;
-      }
-      if (priority == '시간절약' &&
-          (_hasAny(searchableText, const ['바로', '간단', '전자레인지', '빠르게']) ||
-              post.details.prepTimeTag.contains('5분'))) {
-        score += weight;
-      }
-      if (priority == '호불호') {
-        score += (post.likes + post.dislikes) ~/ 12;
-      }
-      if (priority == '트렌드') {
-        score += post.likes ~/ 15;
-      }
-    }
-
-    final postTasteRatings = _postTasteRatings(post);
-    var allTastesWithinOne = true;
-    for (final taste in const <String>['달달', '매콤', '새콤', '짭짤']) {
-      final difference =
-          (setup.tasteLevel(taste) - (postTasteRatings[taste] ?? 3)).abs();
-      if (difference > 1) allTastesWithinOne = false;
-      score += switch (difference) {
-        0 => 4,
-        1 => 2,
-        2 => -3,
-        _ => -7,
-      };
-    }
-    if (allTastesWithinOne) {
-      score += 12;
-    }
-
-    if (wantsDiet &&
-        (normalizedCategories.contains('저칼로리') ||
-            normalizedCategories.contains('건강'))) {
-      score += 6;
-    }
-    if (wantsDiet && post.priceMax <= 5200) {
-      score += 1;
-    }
-    if (wantsProtein &&
-        _hasAny(searchableText, const ['닭가슴살', '계란', '구운계란', '요거트', '단백질'])) {
-      score += 7;
-    }
-    if (wantsLightMeal &&
-        _hasAny(searchableText, const [
-          '요거트',
-          '컵과일',
-          '탄산수',
-          '계란',
-          '샐러드',
-          '닭가슴살',
-        ])) {
-      score += 5;
-    }
-    if (avoidsSugar && normalizedCategories.contains('달달')) {
-      score -= 5;
-    }
-    if (wantsDiet && _hasAny(searchableText, const ['초코', '바닐라', '프레첼', '빵'])) {
-      score -= 2;
-    }
-    final mealCalorieRange = setup.mealCalorieRange;
-    final calories = post.calories;
-    if (useAgeCalorieGuide && mealCalorieRange != null && calories != null) {
-      final isWithinRange =
-          calories >= mealCalorieRange.minCalories &&
-          calories <= mealCalorieRange.maxCalories;
-      if (isWithinRange) {
-        score += wantsFullMeal ? 12 : 5;
-      } else if (calories > mealCalorieRange.maxCalories) {
-        final excessRatio = calories / mealCalorieRange.maxCalories;
-        score += wantsFullMeal
-            ? (excessRatio > 1.25 ? -14 : -7)
-            : (excessRatio > 1.25 ? -5 : -2);
-      } else if (wantsFullMeal &&
-          calories < (mealCalorieRange.minCalories * 0.8).round()) {
-        score -= 6;
-      }
-    }
-    return score;
-  }
-
-  Map<String, int> _postTasteRatings(Post post) {
-    if (post.reviews.isNotEmpty) {
-      int average(int Function(PostReview review) pick) =>
-          (post.reviews.map(pick).reduce((a, b) => a + b) / post.reviews.length)
-              .round()
-              .clamp(1, 5);
-      return <String, int>{
-        '달달': average((review) => review.sweet),
-        '매콤': average((review) => review.spicy),
-        '새콤': average((review) => review.sour),
-        '짭짤': average((review) => review.salty),
-      };
-    }
-
-    final text = '${post.title} ${post.content} ${post.categories.join(' ')}';
-    return <String, int>{
-      '달달': _hasAny(text, const ['달달', '초코', '바닐라', '젤리', '디저트']) ? 4 : 2,
-      '매콤': _hasAny(text, const ['매콤', '매운', '불닭', '고추']) ? 4 : 2,
-      '새콤': _hasAny(text, const ['새콤', '상큼', '레몬', '탄산']) ? 4 : 2,
-      '짭짤': _hasAny(text, const ['짭짤', '라면', '김밥', '핫바', '치즈']) ? 4 : 2,
-    };
-  }
-
-  String _normalizeCategory(String category) {
-    final normalized = _cleanTagLabel(category);
-    if (normalized.contains('짭')) return '짭짤';
-    return normalized;
   }
 
   bool _hasAny(String source, List<String> needles) {
@@ -2282,30 +2068,6 @@ class _HomeScreenState extends State<HomeScreen> {
       'sick' || 'unwell' => 'sick',
       _ => '',
     };
-  }
-
-  List<String> _extractPromptSituationTags(String normalized) {
-    const situationAliases = <String, List<String>>{
-      '등교길 추천': ['등교길', '등교', '학교 가는 길'],
-      '야식 추천': ['야식', '늦은 밤', '밤에 먹', '자기 전'],
-      '간식 추천': ['간식', '군것질', '심심풀이'],
-      '점심 대용': ['점심 대용', '점심 대신', '점심으로', '점심'],
-      '아침 대용': ['아침 대용', '아침 대신', '아침으로', '아침'],
-      '공부할 때 추천': ['공부할 때', '공부 중', '시험공부', '과제할 때'],
-      '드라이브 간식': ['드라이브', '차에서 먹', '운전할 때'],
-      '영화 보며 먹기 좋아요': ['영화 볼 때', '영화 보며', '넷플릭스 볼 때'],
-      '여행 갈 때 챙기기 좋아요': ['여행 갈 때', '여행용', '여행 챙길'],
-      '피크닉 추천': ['피크닉', '소풍'],
-      '운동 후 추천': ['운동 후', '운동끝', '헬스 끝', '헬스 후'],
-      '다이어트 할 때 추천': ['다이어트', '감량', '저칼로리', '식단 중'],
-    };
-    final matched = <String>[];
-    for (final entry in situationAliases.entries) {
-      if (_hasAny(normalized, entry.value)) {
-        matched.add(entry.key);
-      }
-    }
-    return matched;
   }
 
   _SituationAnalysis _analyzeSituationPrompt(String normalized) {
@@ -10964,7 +10726,7 @@ class _BotIntroCard extends StatelessWidget {
           ),
           const SizedBox(height: 8),
           const Text(
-            '기분과 예산을 편하게 말해줘. 네 입맛과 좋아요 기록을 보고 실제 게시글에서 골라줄게.',
+            '기분과 예산을 편하게 말해줘. 현재 요청과 초기설정 입맛을 계산해 실제 게시글에서 골라줄게.',
             style: TextStyle(
               color: Color(0xFF657B8D),
               fontWeight: FontWeight.w600,
