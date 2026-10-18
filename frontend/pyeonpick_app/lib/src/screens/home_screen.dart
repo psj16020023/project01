@@ -7803,21 +7803,9 @@ class _ProfilePageState extends State<ProfilePage> with WidgetsBindingObserver {
             ],
           ),
           const SizedBox(height: 8),
-          Builder(
-            builder: (context) {
-              final createdCount = _battleResults.results
-                  .where((result) => result.isCreated)
-                  .length;
-              final votedCount = _battleResults.results
-                  .where((result) => result.isVoted)
-                  .length;
-              return _BattleResultTabs(
-                selected: _battleResultView,
-                createdCount: createdCount,
-                votedCount: votedCount,
-                onChanged: (value) => setState(() => _battleResultView = value),
-              );
-            },
+          _BattleResultTabs(
+            selected: _battleResultView,
+            onChanged: (value) => setState(() => _battleResultView = value),
           ),
           const SizedBox(height: 10),
           if (_loadingResults)
@@ -7934,21 +7922,14 @@ enum _ProfileViewMode {
 enum _BattleResultView { created, voted }
 
 class _BattleResultTabs extends StatelessWidget {
-  const _BattleResultTabs({
-    required this.selected,
-    required this.createdCount,
-    required this.votedCount,
-    required this.onChanged,
-  });
+  const _BattleResultTabs({required this.selected, required this.onChanged});
 
   final _BattleResultView selected;
-  final int createdCount;
-  final int votedCount;
   final ValueChanged<_BattleResultView> onChanged;
 
   @override
   Widget build(BuildContext context) {
-    Widget tab(_BattleResultView value, String label, int count) {
+    Widget tab(_BattleResultView value, String label) {
       final active = selected == value;
       return Expanded(
         child: InkWell(
@@ -7972,7 +7953,7 @@ class _BattleResultTabs extends StatelessWidget {
                   : null,
             ),
             child: Text(
-              '$label $count',
+              label,
               textAlign: TextAlign.center,
               style: TextStyle(
                 color: active ? AppColors.ink : AppColors.muted,
@@ -7993,8 +7974,8 @@ class _BattleResultTabs extends StatelessWidget {
       ),
       child: Row(
         children: [
-          tab(_BattleResultView.created, '내가 올린 것', createdCount),
-          tab(_BattleResultView.voted, '내가 투표한 것', votedCount),
+          tab(_BattleResultView.created, '내가 올린 것'),
+          tab(_BattleResultView.voted, '내가 투표한 것'),
         ],
       ),
     );

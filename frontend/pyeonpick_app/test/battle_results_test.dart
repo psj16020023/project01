@@ -178,8 +178,8 @@ void main() {
       await tester.tap(find.text('픽 쇼츠 · 새 결과 1'));
       await tester.pumpAndSettle();
       expect(find.text('픽 쇼츠'), findsOneWidget);
-      expect(find.text('내가 올린 것 1'), findsOneWidget);
-      expect(find.text('내가 투표한 것 0'), findsOneWidget);
+      expect(find.text('내가 올린 것'), findsOneWidget);
+      expect(find.text('내가 투표한 것'), findsOneWidget);
       expect(find.text('압도적 픽쇼츠'), findsOneWidget);
       expect(find.text('우유 + 쿠키 승리'), findsOneWidget);
       expect(find.text('12표'), findsOneWidget);
@@ -212,10 +212,10 @@ void main() {
       await tester.pumpAndSettle();
       await tester.tap(find.text('픽 쇼츠 · 새 결과 2'));
       await tester.pumpAndSettle();
-      expect(find.text('내가 올린 것 0'), findsOneWidget);
-      expect(find.text('내가 투표한 것 2'), findsOneWidget);
+      expect(find.text('내가 올린 것'), findsOneWidget);
+      expect(find.text('내가 투표한 것'), findsOneWidget);
       expect(find.textContaining('내가 올린 픽 쇼츠가 종료되면'), findsOneWidget);
-      await tester.tap(find.text('내가 투표한 것 2'));
+      await tester.tap(find.text('내가 투표한 것'));
       await tester.pumpAndSettle();
       expect(find.text('결과 mine'), findsOneWidget);
       expect(find.text('결과 voted-close'), findsOneWidget);
